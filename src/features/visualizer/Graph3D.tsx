@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+
 import { Text, Sphere, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 import type { GraphStructure } from '../../types/dataStructures';
@@ -14,9 +14,7 @@ interface Graph3DProps {
 export default function Graph3D({ activeIndex = null, variant = 'Directed Graph', dsState, baseColor }: Graph3DProps) {
   const groupRef = useRef<THREE.Group>(null);
 
-  useFrame((state) => {
-    // Intentionally removed auto-rotation so the user can manually inspect the graph smoothly
-  });
+
 
   const isDirected = variant === 'Directed Graph';
   const isWeighted = variant === 'Weighted Graph';

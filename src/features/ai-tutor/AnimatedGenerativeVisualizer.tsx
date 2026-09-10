@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Stars, Sparkles, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
@@ -268,7 +268,6 @@ export function AnimatedGenerativeVisualizer({ data }: AnimatedGenerativeVisuali
       ? localStructure.elements.map(e => Number(e.value) || e.value)
       : (localStructure.type === 'linked-list' ? localStructure.nodes.map(n => Number(n.value) || n.value) : []);
 
-    const activeDsFormatted = type === 'linked-list' ? 'Linked List' : type === 'binary-tree' ? 'Binary Tree' : type === 'graph' ? 'Graph' : 'Array';
 
     switch (type) {
       case 'array':

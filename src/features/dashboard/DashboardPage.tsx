@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import useAuthStore from '../../stores/useAuthStore';
 import useProgressStore from '../../stores/useProgressStore';
 import { dashboardData } from './dashboardData';
@@ -9,7 +10,7 @@ export default function DashboardPage() {
   const data = dashboardData(progress, stats);
   const hour = new Date().getHours();
   return <div className="ad-page">
-    <div className="ad-greeting">
+    <div className="ad-greeting"><Link className="ad-my-progress" aria-label="My Progress" to="/progress">My Progress →</Link>
       <h1>Good {hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'}, {user?.name?.trim().split(/\s+/)[0] || 'learner'} <span className="ad-wave" aria-hidden="true">👋</span>
       </h1>
       <p>Ready to keep building your problem-solving skills?</p>

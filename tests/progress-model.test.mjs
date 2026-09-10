@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import fixture from './progress-fixture.cjs';
+import { progressData, skillStatus } from '../src/features/progress/progressModel.ts';
+import { localDay } from '../src/services/progressActivity.ts';
+const data=progressData(fixture.progress,fixture.stats,[{recordedAt:new Date().toISOString(),attempts:2}]);
+assert.equal(data.completion,46);assert.equal(data.completed,2);assert.equal(data.quizScore,75);
+assert.equal(data.growthDelta,6);assert.equal(data.quizDelta,20);assert.equal(data.continueTo,'/learn/binary-tree');
+assert.equal(data.studyLabel,'this month');assert(data.studyMinutes>0);assert.equal(data.heatmap.length,30);
+assert.equal(data.heatmap.at(-1).date,localDay(new Date()));assert(data.heatmap.at(-1).count>=3);
+assert.deepEqual(data.week.map(d=>d.name),['Mon','Tue','Wed','Thu','Fri','Sat','Sun']);
+assert.equal(data.actions[0].to,'/learn/binary-tree');assert(data.actions.some(a=>a.to.includes('Graphs')));
+assert.equal(skillStatus(fixture.progress.topics[0]).label,'Strong');assert.equal(skillStatus(fixture.progress.topics[4]).label,'At Risk');
+const empty={...fixture.progress,topics:[],quizHistory:[],dailyActivity:undefined,weakAreas:[],recommendedTopics:[]};
+const blank=progressData(empty,null);assert.equal(blank.quizScore,null);assert.equal(blank.growthDelta,null);assert.equal(blank.studyLabel,'total recorded');assert.equal(blank.continueTo,'/learn');assert.equal(blank.completion,0);
+console.log('PASS: real completion, mastery, quiz averages, monthly deltas, dated activity, legacy totals, current lesson, recommendations and empty states.');

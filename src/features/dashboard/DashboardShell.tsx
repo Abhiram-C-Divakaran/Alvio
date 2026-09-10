@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, Network, BrainCircuit, PlaySquare, Box, UserRound, ChartNoAxesCombined, Trophy, Users, Star, Search, Flame, Shield, Bell, Menu, X, ArrowRight } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Home, BookOpen, Network, BrainCircuit, PlaySquare, Box, UserRound, Trophy, Users, Star, Search, Flame, Shield, Bell, Menu, X, ArrowRight, TrendingUp as ChartIcon } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore';
 import useProgressStore from '../../stores/useProgressStore';
 import { dashboardData, topicUrl } from './dashboardData';
 import { ProgressBar } from './DashboardCards';
 import './dashboard.css';
-const navigation = [{ label: 'Dashboard', to: '/dashboard', Icon: Home }, { label: 'Learn', to: '/learn', Icon: BookOpen }, { label: 'Practice', to: '/coding', Icon: Network }, { label: 'AI Tools', to: '/ai-tutor', Icon: BrainCircuit }, { label: 'Video Learning', to: '/video-learning', Icon: PlaySquare }, { label: '3D Visualizer', to: '/3d-visualizer', Icon: Box }, { label: 'Mock Interview', to: '/mock-interview', Icon: UserRound }, { label: 'Progress', to: '/progress', Icon: ChartNoAxesCombined }, { label: 'Achievements', to: '/dashboard#achievements', Icon: Trophy }];
+const navigation = [{ label: 'Dashboard', to: '/dashboard', Icon: Home }, { label: 'Learn', to: '/learn', Icon: BookOpen }, { label: 'Practice', to: '/coding', Icon: Network }, { label: 'AI Tools', to: '/ai-tutor', Icon: BrainCircuit }, { label: 'Video Learning', to: '/video-learning', Icon: PlaySquare }, { label: '3D Visualizer', to: '/3d-visualizer', Icon: Box }, { label: 'Achievements', to: '/dashboard#achievements', Icon: Trophy }];
 function Brand() {
   return <Link to="/dashboard" className="ad-brand" aria-label="Alvio dashboard">
     <svg width="44" height="40" viewBox="0 0 44 40" aria-hidden="true">
@@ -23,6 +23,7 @@ export function DashboardHeader({ onMenu }: {
   onMenu: () => void;
 }) {
   const user = useAuthStore(s => s.user);
+  const aiSection=['/mock-interview','/ai-tutor','/learn/ai-visualizer'].includes(useLocation().pathname);
   const { progress, stats } = useProgressStore();
   const data = dashboardData(progress, stats);
   const [query, setQuery] = useState('');
@@ -47,7 +48,7 @@ export function DashboardHeader({ onMenu }: {
     <button className="ad-icon-button ad-menu-toggle" onClick={onMenu} aria-label="Open navigation">
       <Menu />
     </button>
-    <div className="ad-search-wrap">
+    {aiSection&&<><div className="ad-ai-brand"><Brand/></div><nav className="ad-global-ai" aria-label="Product sections"><Link to="/dashboard">Dashboard</Link><Link to="/learn">Learn</Link><Link to="/coding">Practice</Link><Link className="active" aria-current="page" to="/ai-tutor">AI Tools</Link></nav></>}<div className="ad-search-wrap">
       <form className="ad-search" onSubmit={e => {
         e.preventDefault(); if (query.trim()) {
           navigate(`/coding?topic=${encodeURIComponent(query.trim())}`);
@@ -95,6 +96,12 @@ export function DashboardHeader({ onMenu }: {
 export default function DashboardShell({ children }: {
   children: ReactNode;
 }) {
+  const pathname = useLocation().pathname;
+  const isProgress = pathname === '/progress';
+  const isProfile = pathname === '/profile';
+  const isAi = ['/mock-interview','/ai-tutor','/learn/ai-visualizer'].includes(pathname);
+  const aiNavigation=[{label:'AI Visualizer',to:'/learn/ai-visualizer',Icon:Box},{label:'AI Tutor',to:'/ai-tutor',Icon:BrainCircuit},{label:'Mock Interview',to:'/mock-interview',Icon:UserRound}];
+  const pageNavigation = isProfile ? [navigation[0], {label:'My Progress',to:'/progress',Icon:ChartIcon}, {label:'My Profile',to:'/profile',Icon:UserRound}, ...navigation.slice(1)] : navigation;
   const [open, setOpen] = useState(false);
   const [community, setCommunity] = useState(false);
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 1000px)').matches);
@@ -128,23 +135,23 @@ export default function DashboardShell({ children }: {
       }
     }; window.addEventListener('keydown', listener); return () => window.removeEventListener('keydown', listener);
   }, []);
-  return <div className="academy-dashboard">
-    <a className="ad-skip" href="#dashboard-content">Skip to dashboard</a>{open && <button className="ad-nav-backdrop" onClick={() => setOpen(false)} aria-label="Close navigation" />}<aside inert={compact && !open} className={`ad-sidebar ${open ? 'open' : ''}`}>
+  return <div className={`academy-dashboard ${isProgress ? 'academy-progress' : ''} ${isAi ? 'academy-ai' : ''}`}>
+    <a className="ad-skip" href="#dashboard-content">Skip to content</a>{open && <button className="ad-nav-backdrop" onClick={() => setOpen(false)} aria-label="Close navigation" />}<aside inert={compact && !open} className={`ad-sidebar ${open ? 'open' : ''}`}>
       <Brand />
       <button className="ad-icon-button ad-close-nav" onClick={() => setOpen(false)} aria-label="Close navigation">
         <X size={18} />
       </button>
-      <nav aria-label="Main navigation">{navigation.map(({ label, to, Icon }, i) => <Link key={label} to={to} className={i === 0 ? 'active' : ''} aria-current={i === 0 ? 'page' : undefined} onClick={() => {
+      {isProfile && <small style={{display:"block",padding:"0 16px 12px",color:"#718099",fontSize:11}}>OVERVIEW</small>}<nav aria-label="Main navigation">{(isAi?[]:pageNavigation).map(({ label, to, Icon }, i) => <Link key={label} to={to} className={(isAi ? label === 'AI Tools' : isProfile ? to === '/profile' : i === 0) ? 'active' : ''} aria-current={(isAi ? label === 'AI Tools' : isProfile ? to === '/profile' : i === 0) ? 'page' : undefined} onClick={() => {
         setOpen(false); if (label === 'Achievements')
           document.getElementById('achievements')?.focus();
       }}>
-        <Icon size={19} />{label}</Link>)}<button onClick={() => { setCommunity(true); setOpen(false); }}>
-          <Users size={19} />Community</button>
+        <Icon size={19} />{label}</Link> )}{!isAi&&<button onClick={() => { setCommunity(true); setOpen(false); }}>
+          <Users size={19} />Community</button>}{isAi&&<div className="ad-ai-subnav"><small>AI TOOLS</small>{aiNavigation.map(({label,to,Icon})=><Link key={to} to={to} className={pathname===to?"active":""} aria-current={pathname===to?"page":undefined} onClick={()=>setOpen(false)}><Icon size={18}/>{label}</Link>)}</div>}
       </nav>
       <div className="ad-motivation">
         <span>
-          <Star size={17} fill="currentColor" />Keep going!</span>
-        <p>“Consistency<br />today, mastery<br />tomorrow.”</p>
+          <Star size={17} fill="currentColor" />{isProfile ? "Keep growing!" : "Keep going!"}</span>
+        <p>{isAi ? <>“Practice today,<br/>perform tomorrow.”</> : isProfile ? <>“A better you<br />is a more capable<br />you.”</> : <>“Small consistent<br />steps lead to big<br />results.”</>}</p><cite>— Alvio Academy</cite>
         <svg viewBox="0 0 185 95" aria-hidden="true">
           <path d="m0 95 32-34 36 25L133 8l52 73v14Z" fill="#242060" />
           <path d="m70 95 63-87 52 73v14h-24l-28-39-33 39Z" fill="#6749ef" />

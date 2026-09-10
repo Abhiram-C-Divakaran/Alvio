@@ -1,0 +1,10 @@
+import { lazy, Suspense, useState, type ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Copy, Check } from 'lucide-react';
+const Animated=lazy(()=>import('./AnimatedGenerativeVisualizer').then(m=>({default:m.AnimatedGenerativeVisualizer})));
+function highlight(text:string):ReactNode[]{return text.split(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|#[^\n]*|\/\/[^\n]*|\b(?:def|class|return|if|else|elif|for|while|in|import|from|const|let|var|function|new|true|false|None|True|False|print|async|await|public|static|void)\b|\b\d+(?:\.\d+)?\b)/g).map((t,i)=><span key={i} className={/^#|^\/\//.test(t)?'tt-comment':/^['"]/.test(t)?'tt-string':/^\d/.test(t)?'tt-number':/^\w+$/.test(t)?'tt-keyword':undefined}>{t}</span>)}
+function CodeBlock({language,code}:{language:string;code:string}){const [copied,setCopied]=useState(false),[error,setError]=useState(false);if(['animated-3d','generative-3d'].includes(language)){try{JSON.parse(code);return <Suspense fallback={<p>Loading interactive example…</p>}><Animated data={code}/></Suspense>}catch{return <p className="tt-visual-pending">Receiving interactive example…</p>}}
+ return <div className="tt-code"><header><span>{language||'Code'}</span><button onClick={async()=>{try{await navigator.clipboard.writeText(code);setCopied(true);setError(false);setTimeout(()=>setCopied(false),2000)}catch{setError(true)}}}>{copied?<Check size={13}/>:<Copy size={13}/>} {copied?'Copied':'Copy code'}</button></header><pre><code>{highlight(code)}</code></pre>{error&&<small role="status">Copy unavailable. Select the code to copy it.</small>}</div>}
+export default function TutorMarkdown({text}:{text:string}){return <ReactMarkdown remarkPlugins={[remarkGfm]} components={{pre({children}){const child=children as any;const language=/language-([\w-]+)/.exec(child?.props?.className||'')?.[1]||'';const code=String(child?.props?.children||'').replace(/\n$/,'');return <CodeBlock language={language} code={code}/>},table({children}){return <div className="tt-table"><table>{children}</table></div>}}}>{text}</ReactMarkdown>}
+

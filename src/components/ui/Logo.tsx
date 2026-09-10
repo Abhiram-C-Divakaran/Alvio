@@ -1,4 +1,3 @@
-import React from 'react';
 
 export default function Logo({ className = "w-10 h-10", variant }: { className?: string; variant?: 'academy' }) {
   if (variant === 'academy') return <svg viewBox="0 0 44 40" className={className} aria-hidden="true"><path d="M22 2 44 35H29L22 24 14 35H0Z" fill="#7254f5"/><path d="m22 2 7 10-7 5-7-5Z" fill="#d1c4ff"/><path d="m15 12 7 5-8 18H0Z" fill="#a18aff"/><path d="m22 24 7 11H14Z" fill="#101627"/></svg>;

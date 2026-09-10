@@ -7,6 +7,7 @@ export interface User {
   name: string;
   email: string;
   avatar?: string;
+  avatar_url?: string;
   createdAt: string;
   settings: UserSettings;
 }
@@ -60,6 +61,12 @@ export interface LearningProgress {
   badges: Badge[];
   weakAreas: string[];
   recommendedTopics: string[];
+  totalXp?: number;
+  weeklyActivity?: WeeklyActivity[];
+  quizHistory?: import('../features/quiz/quizModel').QuizCompletion[];
+  completedQuizIds?: string[];
+  quizTotals?: { completed: number; correct: number; questions: number; bestStreak: number; lastDay: string };
+  dailyActivity?: Record<string, { minutes: number; sessions: number; completion: number }>;
 }
 
 export interface Badge {

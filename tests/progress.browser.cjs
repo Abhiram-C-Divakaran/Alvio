@@ -1,0 +1,48 @@
+const {chromium}=require(process.env.PLAYWRIGHT_PACKAGE || 'C:/Users/Abhiram/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const assert=require('node:assert/strict');
+const fixture=require('./progress-fixture.cjs');
+(async()=>{
+  const browser=await chromium.launch({headless:true,channel:'msedge'});
+  const page=await browser.newPage({viewport:{width:1540,height:1021},reducedMotion:'reduce'});
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.addInitScript(fixture=>{if(!localStorage.getItem('progress-fixture-seeded')){localStorage.setItem('alvio-progress-storage',JSON.stringify({state:fixture,version:0}));localStorage.setItem('progress-fixture-seeded','true');}},fixture);
+  await page.goto('http://localhost:3001/progress');await page.getByRole('heading',{name:'Progress Command Center',exact:true}).waitFor();
+  assert.equal(await page.getByRole('link',{name:'Dashboard',exact:true}).getAttribute('aria-current'),'page');
+  assert.equal(await page.getByRole('link',{name:'Continue Learning',exact:true}).getAttribute('href'),'/learn/binary-tree');
+  assert.match(await page.locator('.pg-hero-copy').innerText(),/46%/);
+  assert.match(await page.locator('.pg-summary').innerText(),/2\/8/);assert.match(await page.locator('.pg-summary').innerText(),/75%/);
+  assert.equal(await page.getByRole('img',{name:'46% overall learning progress'}).count(),1);
+  assert.equal(await page.locator('.pg-growth-ring path').count()>24,true);
+  assert.equal(await page.locator('.pg-heat-cell[tabindex]').count(),30);
+  assert.equal(await page.locator('.pg-week-days>div').count(),7);
+  assert.equal(await page.locator('.ad-sidebar').getByRole('link',{name:'Progress',exact:true}).count(),0);
+  await page.screenshot({path:'data/progress-desktop.png'});
+  await page.getByRole('button',{name:'View all 8 topics'}).click();assert.equal(await page.locator('.pg-skill').count(),8);
+  await page.getByRole('button',{name:'Show fewer topics'}).click();
+  await page.getByRole('link',{name:'Continue Learning',exact:true}).click();await page.waitForURL('**/learn/binary-tree');
+  await page.goto('http://localhost:3001/progress');await page.locator('.pg-actions a').first().click();await page.waitForURL('**/learn/binary-tree');
+  await page.goto('http://localhost:3001/progress');await page.getByRole('link',{name:'View Curriculum',exact:true}).click();await page.waitForURL('**/learn');
+  await page.goto('http://localhost:3001/progress');await page.getByRole('link',{name:'Open profile',exact:true}).click();await page.waitForURL('**/profile');
+  await page.goto('http://localhost:3001/progress');
+  for(const width of [1280,1024,768,390,360]){
+    await page.setViewportSize({width,height:900});
+    await page.locator('.pg-hero').waitFor();
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    assert(await page.locator('.ad-workspace').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+    await page.screenshot({path:`data/progress-${width}.png`,fullPage:true});
+  }
+  await page.getByRole('button',{name:'Open navigation',exact:true}).click();
+  await page.locator('.ad-sidebar').getByRole('link',{name:'Dashboard',exact:true}).waitFor({state:'visible'});
+  await page.locator('.ad-close-nav').click();
+  const empty=await browser.newPage({viewport:{width:1672,height:941}});
+  await empty.goto('http://localhost:3001/progress');await empty.locator('.pg-growth-ring').waitFor();
+  assert.match(await empty.locator('.pg-summary').innerText(),/0\/8/);
+  assert.equal(await empty.locator('.pg-heat-cell.level-1,.pg-heat-cell.level-2,.pg-heat-cell.level-3,.pg-heat-cell.level-4').filter({has:empty.locator('[tabindex]')}).count(),0);
+  await empty.screenshot({path:'data/progress-empty.png'});
+  await page.setViewportSize({width:1540,height:1021});
+  await page.goto('http://localhost:3001/dashboard');await page.getByRole('link',{name:'My Progress',exact:true}).click();await page.waitForURL('**/progress');
+  await page.getByRole('button',{name:'Notifications',exact:true}).click();await page.getByRole('heading',{name:'Your achievements',exact:true}).waitFor();await page.keyboard.press('Escape');
+  await page.locator('.ad-sidebar').getByRole('button',{name:'Community',exact:true}).click();await page.getByRole('dialog').waitFor();await page.getByRole('button',{name:'Close community',exact:true}).click();
+  await page.getByRole('textbox',{name:'Search topics and problems',exact:true}).fill('Arrays');await page.keyboard.press('Enter');await page.waitForURL('**/coding?topic=Arrays');
+  assert.deepEqual(errors,[]);await browser.close();console.log('PASS: populated and empty analytics, real destinations, full topic access, responsive layouts, mobile sidebar.');
+})().catch(e=>{console.error(e);process.exit(1);});

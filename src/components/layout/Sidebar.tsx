@@ -5,18 +5,16 @@ import {
   Code2,
   Video,
   Terminal,
-  Dumbbell,
   BrainCircuit,
   Box,
   TrendingUp,
   HelpCircle,
-  Settings,
   User,
   Layers,
   Sparkles,
   Swords
 } from 'lucide-react';
-import useAuthStore from '../../stores/useAuthStore';
+import type { ReactNode } from 'react';
 
 interface NavItem {
   label: string;
@@ -26,9 +24,8 @@ interface NavItem {
   badgeColor?: string;
 }
 
-export default function Sidebar({ collapsed }: { collapsed?: boolean }) {
+export default function Sidebar({ collapsed, footer }: { collapsed?: boolean; footer?: ReactNode }) {
   const location = useLocation();
-  const user = useAuthStore((s) => s.user);
 
   const getSubNav = (): { title: string, items: NavItem[] } => {
     if (['/dashboard', '/skill-tree', '/progress', '/profile'].some(p => location.pathname.startsWith(p))) {
@@ -131,6 +128,7 @@ export default function Sidebar({ collapsed }: { collapsed?: boolean }) {
       </div>
 
       {/* Bottom Nav */}
+      {footer}
       <div className="px-3 pb-4 shrink-0">
         <nav className="flex flex-col gap-0.5 mb-2 border-t border-[var(--color-border-subtle)] pt-4">
           {bottomNav.map((item) => (

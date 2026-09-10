@@ -1563,3 +1563,15 @@
     font-size:9px;
   }
 }
+/* Shared Dashboard shell: the same navigation, logo, search and account controls. */
+.ad-my-progress { float:right; padding:8px 13px; border:1px solid var(--ad-border); border-radius:9px; color:#b7a5fb!important; font-size:12px; }
+.ad-my-progress:hover { border-color:#9473f1; }
+.ad-motivation cite { display:block; font-style:normal; font-size:10px; color:#a8a2d7; margin:12px 0 15px; position:relative; z-index:1; }
+@media(min-width:1251px) { .ad-sidebar { width:224px; }.ad-workspace { margin-left:224px; }.ad-header { height:80px; } }
+@media(max-width:640px) { .ad-my-progress { float:none; display:inline-flex; margin-bottom:14px; } }
+.ad-ai-subnav{margin-top:14px;border-top:1px solid #7088b426;padding-top:16px}.ad-ai-subnav>small{display:block;font-size:10px;letter-spacing:1px;color:#8c9cba;padding:0 15px 10px}.ad-ai-subnav .active{border-left:2px solid #7657ff;background:linear-gradient(90deg,#6348ff4d,#6348ff1c)}
+.academy-ai .ad-sidebar>.ad-brand{visibility:hidden}.academy-ai .ad-ai-subnav{border-top:0;margin-top:0;padding-top:0}.academy-ai .ad-header{margin-left:-224px;width:calc(100% + 224px);position:relative;z-index:25;padding-left:28px;gap:20px}.ad-ai-brand{width:180px;flex-shrink:0}.ad-ai-brand .ad-brand{margin:0!important;padding:0!important}.ad-ai-brand .ad-brand small{display:none}.ad-global-ai{display:flex;gap:9px;align-items:center;flex-shrink:0}.ad-global-ai a{font-size:12px;padding:10px 13px;text-decoration:none;color:#a7b8d7;border-radius:10px}.ad-global-ai a.active{background:#08091c;color:#fff}.academy-ai .ad-search-wrap{flex:1;width:auto;max-width:410px}.academy-ai .ad-search{width:100%}.academy-ai .ad-header-right{margin-left:auto}.academy-ai .ad-sidebar{padding-top:22px}.academy-ai .ad-sidebar>footer{display:none}
+@media(max-width:1250px){.academy-ai .ad-header{margin-left:-190px;width:calc(100% + 190px);gap:10px;padding-left:20px}.ad-ai-brand{width:150px}.ad-global-ai a{padding:8px;font-size:11px}.academy-ai .ad-header-streak{display:none}}
+@media(max-width:1000px){.academy-ai .ad-header{margin-left:0;width:100%;padding-left:15px}.ad-ai-brand{display:none}.ad-global-ai{gap:2px}.ad-global-ai a{padding:7px 5px;font-size:10px}.academy-ai .ad-sidebar>.ad-brand{visibility:visible}.academy-ai .ad-header-rank{display:none}}
+@media(max-width:640px){.academy-ai .ad-search-wrap{display:none}.academy-ai .ad-header{gap:8px}.ad-global-ai a{font-size:10px}.academy-ai .ad-header-right{gap:8px}.academy-ai .ad-header-right .ad-avatar{width:30px;height:30px}}
+.academy-ai .ad-sidebar>.ad-brand{visibility:visible}

@@ -2,7 +2,7 @@
 // Top Bar Component
 // ============================================================
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Bell, User, LogOut, Hexagon, Menu } from 'lucide-react';
+import { User, LogOut, Menu } from 'lucide-react';
 import Logo from '../ui/Logo';
 import useAuthStore from '../../stores/useAuthStore';
 import useProgressStore from '../../stores/useProgressStore';
@@ -102,17 +102,19 @@ export default function TopBar({ onToggleSidebar }: { onToggleSidebar?: () => vo
                 <span>{xp} XP</span>
               </p>
             </div>
-            <div
+            <button
+              type="button"
+              aria-label="View Profile"
               onClick={() => navigate('/profile')}
               className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center bg-[#3e3e3e] shadow-sm ring-2 ring-[#333] cursor-pointer hover:ring-[#555] transition-all"
               title="View Profile"
             >
               {user ? (
-                <img src={user.avatar_url || `https://api.dicebear.com/7.x/notionists/svg?seed=${user.name}`} alt="Avatar" className="w-full h-full object-cover" />
+                <img src={user.avatar || user.avatar_url || `https://api.dicebear.com/7.x/notionists/svg?seed=${user.name}`} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
                 <User size={14} className="text-white" />
               )}
-            </div>
+            </button>
           </div>
           
           {/* Logout button */}

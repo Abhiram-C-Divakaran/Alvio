@@ -76,7 +76,7 @@ function App() {
             <Route path="/3d-visualizer" element={<VisualizerPage />} />
             <Route path="/algorithms-visualizer" element={<AlgorithmVisualizerPage />} />
             <Route path="/video-learning" element={<VideoLearningPage />} />
-            
+
             <Route path="/learn/data-structures" element={<DataStructuresHubPage />} />
             <Route path="/learn/ai-visualizer" element={<AIVisualizerPage />} />
             <Route path="/learn/array" element={<ArrayPage />} />
@@ -106,11 +106,11 @@ function App() {
             <Route path="/coding" element={<CodingPage />} />
             <Route path="/3d-visualizer" element={<VisualizerPage />} />
             <Route path="/video-learning" element={<VideoLearningPage />} />
-            <Route path="/ai-tutor" element={<AiTutorPage />} />
-            <Route path="/mock-interview" element={<MockInterviewPage />} />
+
+
             <Route path="/quiz" element={<QuizPage />} />
             <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/progress" element={<ProgressPage />} />
+
           </Route>
         </Route>
       </Routes></Suspense>

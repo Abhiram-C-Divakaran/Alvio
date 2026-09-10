@@ -27,7 +27,7 @@ export default function Asteroids({ count = 50 }) {
     return temp;
   }, [count]);
 
-  useFrame((state, delta) => {
+  useFrame((_state, delta) => {
     if (meshRef.current) {
       asteroids.forEach((ast, i) => {
         ast.rx += ast.speed * delta;

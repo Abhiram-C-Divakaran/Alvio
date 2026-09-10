@@ -588,7 +588,7 @@ function removeFirstMatch<T extends DSANode>(list: T[], rawValue: string): T[] {
 function getHeight(nodes: TreeNode[], id: string | null): number {
   if (!id) return 0;
   const n = nodes.find(node => node.id === id);
-  return n ? n.height : 0;
+  return n ? n.height ?? (1 + Math.max(getHeight(nodes, n.left), getHeight(nodes, n.right))) : 0;
 }
 
 function updateHeight(nodes: TreeNode[], id: string) {
@@ -636,12 +636,12 @@ function balanceNode(nodes: TreeNode[], id: string): string {
   updateHeight(nodes, id);
   const idx = nodes.findIndex(n => n.id === id);
   const node = nodes[idx];
-  const bf = node.balanceFactor;
+  const bf = node.balanceFactor ?? 0;
 
   // Left Heavy
   if (bf > 1 && node.left) {
     const leftIdx = nodes.findIndex(n => n.id === node.left);
-    if (nodes[leftIdx].balanceFactor < 0) {
+    if ((nodes[leftIdx].balanceFactor ?? 0) < 0) {
       nodes[idx].left = rotateLeft(nodes, node.left);
     }
     return rotateRight(nodes, id);
@@ -650,7 +650,7 @@ function balanceNode(nodes: TreeNode[], id: string): string {
   // Right Heavy
   if (bf < -1 && node.right) {
     const rightIdx = nodes.findIndex(n => n.id === node.right);
-    if (nodes[rightIdx].balanceFactor > 0) {
+    if ((nodes[rightIdx].balanceFactor ?? 0) > 0) {
       nodes[idx].right = rotateRight(nodes, node.right);
     }
     return rotateLeft(nodes, id);

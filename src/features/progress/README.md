@@ -1,0 +1,11 @@
+# Progress Command Center
+
+The exact shared `DashboardShell` renders both Dashboard and My Progress, including its main sidebar, logo, search, account controls, and community panel. A contextual My Progress link on Dashboard and existing overview cards lead to the single `/progress` route; there is no standalone Progress item in the global sidebar. The supplied artwork is cropped, never regenerated; crop provenance is in `public/progress/artwork.md`.
+
+`progressModel.ts` derives the view from the existing persisted learning progress. Overall progress is mean lesson completion, mastered topics retain their existing completed status, and average quiz score is the mean best score across assessed topics (the previous Progress page's definition). Skill pills use quiz mastery when available, then lesson completion; unstarted/unassessed topics remain Not Started. Continue Learning follows the most recently accessed unfinished topic.
+
+The new `dailyActivity` journal dates quiz completions, recorded study time, and topic updates. Old undated totals remain intact and are labeled **total recorded**. The weekly chart falls back to saved weekday totals, explicitly labeled as undated, until dated activity is available. The heatmap contains exactly 30 days and uses dated local sessions plus real submission counts from the profile API's `practiceActivity` hourly UTC aggregates, converted to the browser's local date. Account creation is not counted as practice. Failed API reads display a retry state rather than silently claiming complete history.
+
+Monthly growth comparisons require a previous month's completion snapshot. Study comparisons require dated records in both months. Quiz comparisons use recorded attempt accuracy in the recent 100-attempt history; the main quiz metric remains best topic scores. Missing comparisons are shown as unavailable, never invented from the reference values. Historical time cannot be reconstructed from old totals.
+
+Verification: `node tests/progress-model.test.mjs`, `node tests/progress.browser.cjs`, client Vite build, server esbuild bundle, and a scoped TypeScript check. Browser fixtures are confined to isolated test contexts and are never application defaults.

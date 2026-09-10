@@ -5,6 +5,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { LearningProgress, TopicProgress, DashboardStats, WeeklyActivity } from '../types/user';
 import { dbService } from '../services/db';
+import type { QuizCompletion } from '../features/quiz/quizModel';
+import { recordActivity, localDay } from '../services/progressActivity';
 
 interface ProgressState {
   progress: LearningProgress | null;
@@ -13,6 +15,7 @@ interface ProgressState {
 }
 
 interface ProgressActions {
+  recordQuiz: (result: QuizCompletion) => Promise<number>;
   setProgress: (progress: LearningProgress) => void;
   updateTopicProgress: (topicId: string, updates: Partial<TopicProgress>) => Promise<void>;
   saveTopicQuizScore: (topicId: string, score: number) => Promise<void>;
@@ -73,6 +76,51 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
       stats: null,
       isLoading: false,
 
+      // Commit one complete attempt atomically. Review/reload must never award XP twice.
+      recordQuiz: async (result) => {
+        const { progress } = get();
+        if (!progress || progress.userId !== result.userId) throw new Error('Your learning profile is not ready. Please try again.');
+        if (progress.completedQuizIds?.includes(result.id)) return progress.quizHistory?.find(q => q.id === result.id)?.awardedXp || 0;
+        const topics = progress.topics.map(t => ({ ...t }));
+        for (const score of result.topics) {
+          let topic = topics.find(t => t.topicId === score.topicId);
+          if (!topic) {
+            topic = { topicId: score.topicId, topicName: score.topicName, status: 'not-started', completionPercent: 0, quizScore: null, timeSpentMinutes: 0, lastAccessed: result.endedAt };
+            topics.push(topic);
+          }
+          topic.quizScore = Math.max(topic.quizScore ?? 0, score.accuracy);
+          // A quiz records mastery; it does not complete unseen lessons.
+          if (topic.status === 'not-started') topic.status = 'in-progress';
+          topic.lastAccessed = result.endedAt;
+          topic.timeSpentMinutes += result.seconds / 60 * score.total / result.total;
+        }
+        const assessed = topics.filter(t => t.quizScore !== null);
+        const weak = [...assessed].sort((a, b) => a.quizScore! - b.quizScore!);
+        const previous = progress.quizTotals || { completed: 0, correct: 0, questions: 0, bestStreak: 0, lastDay: '' };
+        const date = new Date(result.endedAt);
+        const day = localDay(date);
+        const yesterday = new Date(date); yesterday.setDate(date.getDate() - 1);
+        const streak = previous.lastDay === day ? progress.streak : previous.lastDay === localDay(yesterday) ? progress.streak + 1 : Math.max(previous.lastDay ? 1 : progress.streak, 1);
+        const updated: LearningProgress = {
+          ...progress, topics, streak,
+          totalXp: (progress.totalXp || 0) + result.answerXp,
+          totalTimeSpentMinutes: progress.totalTimeSpentMinutes + result.seconds / 60,
+          overallScore: Math.round(assessed.reduce((sum, t) => sum + t.quizScore!, 0) / assessed.length),
+          weakAreas: weak.filter(t => t.quizScore! < 70).map(t => t.topicId),
+          recommendedTopics: weak.slice(0, 3).map(t => t.topicId),
+          weeklyActivity: (progress.weeklyActivity || getInitialWeeklyActivity()).map(a => a.day === daysOfWeek[date.getDay()] ? { ...a, minutes: a.minutes + result.seconds / 60 } : a),
+          completedQuizIds: [...(progress.completedQuizIds || []), result.id],
+          quizTotals: { completed: previous.completed + 1, correct: previous.correct + result.correct, questions: previous.questions + result.total, bestStreak: Math.max(previous.bestStreak, result.bestStreak), lastDay: day },
+        };
+        updated.dailyActivity = recordActivity(updated, result.seconds / 60, 1, date);
+        const stats = calculateStats(updated);
+        const awardedXp = stats.totalXp - calculateStats(progress).totalXp;
+        updated.quizHistory = [...(progress.quizHistory || []), { ...result, awardedXp }].slice(-100);
+        set({ progress: updated, stats });
+        try { await dbService.saveProgress(updated); } catch (err) { console.warn('Quiz saved locally; database sync failed:', err); }
+        return awardedXp;
+      },
+
       setProgress: (progress) => {
         const stats = calculateStats(progress);
         set({ progress, stats });
@@ -102,6 +150,11 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
           ...progress,
           topics: updatedTopics,
         };
+
+        const previousTopic = progress.topics.find(t => t.topicId === topicId);
+        if (previousTopic && ((updates.completionPercent ?? 0) > previousTopic.completionPercent || (updates.timeSpentMinutes ?? 0) > previousTopic.timeSpentMinutes)) {
+          updatedProgress.dailyActivity = recordActivity(updatedProgress, Math.max(0, (updates.timeSpentMinutes ?? previousTopic.timeSpentMinutes) - previousTopic.timeSpentMinutes), 1);
+        }
 
         const stats = calculateStats(updatedProgress);
         set({ progress: updatedProgress, stats });
@@ -187,7 +240,7 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
 
       addTimeSpent: async (minutes) => {
         const { progress } = get();
-        if (!progress) return;
+        if (!progress || !Number.isFinite(minutes) || minutes <= 0) return;
 
         const todayIndex = new Date().getDay();
         const todayName = daysOfWeek[todayIndex];
@@ -207,6 +260,7 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
           ...progress,
           totalTimeSpentMinutes: progress.totalTimeSpentMinutes + minutes,
           weeklyActivity: updatedWeeklyActivity,
+          dailyActivity: recordActivity(progress, minutes, 1),
         } as any;
 
         const stats = calculateStats(updatedProgress);

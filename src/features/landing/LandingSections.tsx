@@ -1,3 +1,4 @@
+import WorldGlobe from './WorldGlobe';
 import { SortingPreview, GraphPreview } from './LandingVisualDemos';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -181,21 +182,7 @@ export function GlobalCommunitySection() {
           <Users size={17} />Join the community</Action>
         <small className="lp-community-note">Community activity currently lives in the coding arena.</small>
       </div>
-      <div className="lp-globe" role="img" aria-label="A stylized globe celebrating learners across India, the United States, Canada, Germany, Nigeria, Singapore, the United Kingdom, and Australia">
-        <svg viewBox="0 0 500 380" aria-hidden="true">
-          <defs>
-            <radialGradient id="lp-globe-fill">
-              <stop stopColor="#2b2368" stopOpacity=".6" />
-              <stop offset="1" stopColor="#090e22" />
-            </radialGradient>
-          </defs>
-          <circle cx="250" cy="185" r="158" fill="url(#lp-globe-fill)" stroke="#443987" />{[45, 95, 140].map(rx => <ellipse key={rx} cx="250" cy="185" rx={rx} ry="158" fill="none" stroke="#3d356b" strokeDasharray="2 5" />)}{[-100, -50, 0, 50, 100].map(d => <ellipse key={d} cx="250" cy={185 + d} rx={Math.sqrt(158 * 158 - d * d)} ry="20" fill="none" stroke="#3d356b" strokeDasharray="2 5" />)}<path d="M131 118 184 88 221 110 202 142 171 147 164 174 137 167ZM190 183 219 196 227 229 202 278 188 244ZM263 109 292 103 318 125 367 132 364 167 330 174 309 153 283 165 264 144ZM257 168 288 173 302 202 275 251 260 227 242 193ZM326 246 365 237 382 261 350 282 325 265Z" fill="#7062c4" opacity=".38" />{[[159, 118], [169, 148], [259, 125], [283, 139], [270, 210], [331, 207], [353, 257], [302, 177]].map(([x, y], i) => <g key={i}>
-            <circle cx={x} cy={y} r="8" fill="#8c69ff" opacity=".16" />
-            <circle cx={x} cy={y} r="3" fill="#c3b2ff" />
-          </g>)}</svg>
-        <div className="lp-country-labels">{['India', 'United States', 'Canada', 'Germany', 'Nigeria', 'Singapore', 'United Kingdom', 'Australia'].map(c => <span key={c}>{c}</span>)}</div>
-        <small>Illustrative global learning community · not a user distribution map</small>
-      </div>
+      <WorldGlobe />
     </div>
   </section>;
 }
@@ -237,13 +224,14 @@ export function FAQSection() {
 export function FinalCTA() {
   return <section className="lp-final">
     <picture>
-      <source srcSet="/landing/mountains-1000.webp 1000w, /landing/mountains-2000.webp 2000w" sizes="100vw" />
-      <img src="/landing/mountains-2000.webp" width="2000" height="177" loading="lazy" alt="Mountain ranges stretching toward a violet horizon" />
+      <source srcSet="/landing/footer-panorama-1000.webp 1000w, /landing/footer-panorama-2000.webp 2000w, /landing/footer-panorama-2804.webp 2804w" sizes="100vw" />
+      <img src="/landing/footer-panorama-2000.webp" width="2804" height="561" loading="lazy" alt="A student looking across a mountain panorama at dusk. Same students, brighter futures. A small step today, a brighter tomorrow." />
     </picture>
     <div className="lp-container">
-      <span className="lp-eyebrow">A SMALL STEP TODAY. A BRIGHTER TOMORROW.</span>
-      <h2>Ready to build a brighter future?</h2>
-      <p>Start learning, practicing, and building stronger problem-solving skills today.</p>
+      <div className="lp-final-copy">
+        <h2>Ready to build a brighter future?</h2>
+        <p>Start learning, practicing, and building stronger problem-solving skills today.</p>
+      </div>
       <div className="lp-actions">
         <Action to={signup}>Start learning</Action>
         <Action to="/workspace/pvp" secondary>

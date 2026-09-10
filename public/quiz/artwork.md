@@ -1,0 +1,5 @@
+# Quiz Arena artwork
+
+Edited with the built-in image generation tool from the user-supplied panoramic Quiz Arena image. The generated file is optimized to a 73.5 kB WebP. All headings, statistics, settings, and actions are React elements.
+
+Prompt: Edit this supplied Alvio Quiz Arena wide image into a decorative website hero background. Preserve the original 3:1 panoramic composition, dark navy #050914 background, subtle perspective grid, and all the right-side laptop quiz screen, floating glowing question mark, code icon, books, plant, mug and violet-blue lighting as closely as possible. Remove ONLY the large website text on the left: the arrow and PRACTICE breadcrumb, Quiz Arena headline, and both lines of descriptive body copy. Fill that space with uninterrupted very dark navy background and subtle grid matching the original, leaving the entire left 48% nearly empty for actual HTML text. Keep text physically on the laptop, books, mug and wall intact. Do not add controls, buttons, headings, cards or new objects. Do not distort the laptop. This is a background asset, not a website mockup. Subtle lighting, not a brighter reinterpretation.

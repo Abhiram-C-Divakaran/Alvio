@@ -1,0 +1,31 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, CalendarDays, ChartNoAxesColumnIncreasing, Check, ChevronRight, GitBranch, Layers, Network, Sparkles, TrendingUp } from 'lucide-react';
+import { ProgressCardTitle } from './ProgressOverview';
+import { learningRoute, shortDays, skillStatus, studyTime, type ProgressData } from './progressModel';
+
+export function WeeklyMomentum({ data }: { data: ProgressData }) {
+  const maximum = Math.max(60, ...data.week.map(d => d.minutes));
+  const x = (i: number) => 12 + i * 40;
+  const y = (minutes: number) => 100 - minutes / maximum * 82;
+  const recordedWeek = data.week.filter(d => !d.future);
+  const points = recordedWeek.map((d,i)=>`${x(i)},${y(d.minutes)}`).join(' ');
+  return <section className="pg-card pg-weekly" id="weekly-momentum"><ProgressCardTitle icon={<CalendarDays size={24}/>} title="Weekly Momentum"><small>Keep the streak alive!</small></ProgressCardTitle><div className="pg-weekly-body"><div className="pg-week-days">{data.week.map(day=><div key={day.date} className={`pg-day ${day.today?'today':''} ${day.future?'future':''}`} title={`${day.date}: ${day.active?'Activity recorded':'No activity recorded'}`}><strong>{day.name}</strong><small>{day.label}</small><span className={day.active?'done':''}>{day.active && <Check size={15}/>}</span></div>)}</div><div className="pg-week-chart"><svg viewBox="0 0 300 130" role="img" aria-label={`Study time by weekday: ${data.week.map(d=>`${d.name} ${studyTime(d.minutes)}`).join(', ')}`}><defs><linearGradient id="pg-week-fill" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#8752ed" stopOpacity=".4"/><stop offset="1" stopColor="#8752ed" stopOpacity="0"/></linearGradient></defs>{[0,.5,1].map(r=><g key={r}><line x1="8" x2="257" y1={y(maximum*r)} y2={y(maximum*r)} stroke="#1f2c4b" strokeWidth=".7"/><text x="265" y={y(maximum*r)+3}>{studyTime(maximum*r)}</text></g>)}<polygon points={`12,100 ${points} ${x(recordedWeek.length-1)},100`} fill="url(#pg-week-fill)"/><polyline points={points} fill="none" stroke="#a16bff" strokeWidth="1.8"/>{data.week.map((d,i)=><g key={d.name}>{!d.future && <circle cx={x(i)} cy={y(d.minutes)} r="3" fill="#a16bff"><title>{d.name}: {studyTime(d.minutes)}</title></circle>}<text x={x(i)} y="121" textAnchor="middle">{d.name}</text></g>)}</svg>{!data.dated && <small>Saved weekday totals · earlier dates unavailable</small>}</div></div></section>;
+}
+export function LearningPath({ data }: { data: ProgressData }) {
+  return <section className="pg-card pg-path" id="learning-path"><ProgressCardTitle icon={<GitBranch size={24}/>} title="Learning Path"><Link to="/learn">View Curriculum <ArrowRight size={14}/></Link></ProgressCardTitle><div className="pg-path-body"><ol>{data.path.map(topic=><li key={topic.topicId} className={topic.status}><Link to={learningRoute(topic)}><span className="pg-path-node">{topic.status==='completed'&&<Check size={12}/>}</span><strong>{topic.topicName}</strong><small>{topic.status==='completed'?'Mastered':topic.status==='in-progress'?'In Progress':'Next'}</small></Link></li>)}</ol><div className="pg-path-art"><p>“A structured path<br/>today, a stronger<br/>you tomorrow.”</p></div></div></section>;
+}
+export function SkillFocus({ data }: { data: ProgressData }) {
+  const [expanded,setExpanded]=useState(false);
+  return <section className="pg-card pg-skills" id="skill-focus"><ProgressCardTitle icon={<ChartNoAxesColumnIncreasing size={24}/>} title="Skill Focus"><small>Focus on weak areas to maximize your growth.</small></ProgressCardTitle><div className="pg-skill-grid">{(expanded?data.skills:data.skills.slice(0,5)).map(topic=>{
+    const status=skillStatus(topic);return <Link key={topic.topicId} className={`pg-skill ${status.tone}`} to={learningRoute(topic)}><h3><span><Layers size={14}/></span>{topic.topicName}</h3><div className="pg-skill-meter"><span role="meter" aria-label={`${topic.topicName} lesson completion`} aria-valuenow={topic.completionPercent} aria-valuemin={0} aria-valuemax={100}><i style={{width:`${topic.completionPercent}%`}}/></span><small>{topic.completionPercent}%</small></div><p>Quiz: {topic.quizScore===null?'—':`${topic.quizScore}%`}</p><strong className="pg-skill-status">{status.label}</strong></Link>;
+  })}</div>{data.skills.length>5&&<button className="pg-show-topics" onClick={()=>setExpanded(!expanded)}>{expanded?'Show fewer topics':`View all ${data.skills.length} topics`}</button>}</section>;
+}
+export function PracticeHeatmap({ data }: { data: ProgressData }) {
+  const firstOffset=data.heatmap[0].weekday;
+  const weeks=Math.ceil((firstOffset+30)/7);
+  return <section className="pg-card pg-heatmap"><ProgressCardTitle icon={<CalendarDays size={23}/>} title="Practice Heatmap"><small>Last 30 days</small></ProgressCardTitle><div className="pg-heatmap-body"><div className="pg-heatmap-days">{shortDays.map(day=><span key={day}>{day}</span>)}</div><div className="pg-heatmap-grid" style={{gridTemplateColumns:`repeat(${weeks},14px)`}}>{Array.from({length:weeks*7},(_,i)=>{const cell=data.heatmap[i-firstOffset];return cell?<div key={i} className={`pg-heat-cell level-${Math.min(4,cell.count)}`} tabIndex={0} aria-label={`${cell.date}: ${cell.count} recorded sessions or submissions, ${studyTime(cell.minutes)} study time`} title={`${cell.date} · ${cell.count} recorded sessions or submissions · ${studyTime(cell.minutes)}`}/>:<div className="pg-heat-cell outside" key={i}/>;})}</div></div><div className="pg-heat-legend">Less{[0,1,2,3,4].map(i=><span className={`pg-heat-cell level-${i}`} key={i}/>)}More</div></section>;
+}
+export function NextBestActions({ data }: { data: ProgressData }) {
+  return <section className="pg-card pg-actions"><ProgressCardTitle icon={<Sparkles size={25}/>} title="Next Best Actions"/><p className="pg-actions-subtitle">Personalized for your learning journey.</p><div>{data.actions.map(action=><Link key={action.topic.topicId} to={action.to}><span className={`pg-action-icon ${action.kind}`}>{action.kind==='practice'?<TrendingUp size={18}/>:action.kind==='quiz'?<GitBranch size={18}/>:<Network size={18}/>}</span><div><strong>{action.title}</strong><small>{action.reason}</small></div><ChevronRight size={17}/></Link>)}</div></section>;
+}

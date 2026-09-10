@@ -1,0 +1,125 @@
+// Runs against the real local app and its BroadcastChannel transport. No accounts or fake problem data.
+const { chromium } = require(process.env.PLAYWRIGHT_PACKAGE || 'C:/Users/Abhiram/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const assert = require('node:assert/strict');
+const base = process.env.ALVIO_URL || 'http://localhost:3001';
+const path = base + '/workspace/pvp';
+(async () => {
+  const browser = await chromium.launch({ headless: true, channel: 'msedge' });
+  const context = await browser.newContext({ viewport: { width: 1290, height: 845 }, reducedMotion: 'reduce', permissions: ['clipboard-read', 'clipboard-write'] });
+  const host = await context.newPage(), guest = await context.newPage(), other = await context.newPage();
+  const errors = [];
+  for (const page of [host, guest, other]) page.on('pageerror', e => errors.push(e.message));
+  const waitForBattle = page => page.locator('.pvp-workspace .monaco-editor').waitFor({ timeout: 60000 });
+  const enterCode = async (page, code) => {
+    const editor = page.getByRole('textbox', { name: 'Your JavaScript solution', exact: true });
+    await editor.focus(); await page.keyboard.press('Control+a'); await page.keyboard.insertText(code);
+  };
+  const hostRoom = async page => {
+    await page.getByRole('button', { name: /HOST MATCH/ }).click();
+    await page.getByRole('heading', { name: 'Room created', exact: true }).waitFor();
+    return page.locator('.pvp-room-code').innerText();
+  };
+  const joinRoom = async (page, code) => {
+    await page.getByRole('button', { name: /JOIN MATCH/ }).click();
+    await page.getByLabel('Room Code', { exact: true }).fill(code);
+    await page.getByRole('button', { name: 'Join Duel', exact: true }).click();
+  };
+  await host.goto(base + '/coding');
+  await host.getByRole('link', { name: 'PvP Coding Duel LIVE', exact: true }).click();
+  await host.getByRole('heading', { name: 'PvP Coding Duel', exact: true }).waitFor();
+  assert.equal(await host.getByRole('link', { name: 'PvP Coding Duel LIVE', exact: true }).getAttribute('aria-current'), 'page');
+  assert.equal(await host.locator('.practice-topnav .active').innerText(), 'Practice');
+  await host.screenshot({ path: 'data/pvp-desktop.png' });
+  await host.getByRole('button', { name: 'Back to Practice', exact: true }).click();
+  await host.waitForURL('**/coding'); await host.goto(path);
+  await host.getByRole('link', { name: 'Leaderboard', exact: true }).click();
+  await host.getByRole('heading', { name: 'Academy Leaderboard', exact: true }).waitFor();
+  const board = await host.request.get(base + '/api/leaderboard').then(r => r.json());
+  await host.waitForFunction(n => document.querySelectorAll('.pvp-leaderboard li').length === n, board.length);
+  await host.keyboard.press('Escape');
+  const cancelledCode = await hostRoom(host); assert(/^[A-HJ-NP-Z2-9]{6}$/.test(cancelledCode));
+  await host.getByRole('button', { name: 'Copy Code', exact: true }).click();
+  await host.getByText('Code copied', { exact: true }).waitFor();
+  assert.equal(await host.evaluate(() => navigator.clipboard.readText()), cancelledCode);
+  await host.getByRole('button', { name: 'Cancel room', exact: true }).click();
+  await guest.goto(path);
+  await joinRoom(guest, 'BAD');
+  await guest.getByText('Enter a valid 6-character room code.', { exact: true }).waitFor();
+  await guest.getByLabel('Room Code', { exact: true }).fill(cancelledCode);
+  await guest.getByRole('button', { name: 'Join Duel', exact: true }).click();
+  await guest.getByText('Room not found. Check the code and try again.', { exact: true }).waitFor({ timeout: 12000 });
+  await guest.keyboard.press('Escape');
+  await other.goto(path); const isolatedRoom = await hostRoom(other);
+  const code = await hostRoom(host); assert.notEqual(code, isolatedRoom);
+  await joinRoom(guest, code);
+  await Promise.all([waitForBattle(host), waitForBattle(guest)]);
+  assert.equal(await other.locator('.pvp-room-code').innerText(), isolatedRoom);
+  await other.getByRole('button', { name: 'Cancel room', exact: true }).click();
+  assert.equal(await host.locator('.pvp-disconnected').count(), 0);
+  assert.equal(await host.locator('.pvp-problem h2').innerText(), await guest.locator('.pvp-problem h2').innerText());
+  await joinRoom(other, code);
+  await other.getByText('This room already has two players. Ask your friend for a new code.', { exact: true }).waitFor();
+  await other.keyboard.press('Escape');
+  const draft = 'function reverseList(head) { return head; }';
+  await enterCode(host, draft);
+  await guest.getByRole('button', { name: 'Opponent · Live view', exact: true }).click();
+  await guest.waitForFunction(() => document.querySelector('.monaco-editor .view-lines')?.textContent.replace(/\u00a0/g, ' ').includes('return head;'));
+  await guest.getByRole('button', { name: 'Your solution', exact: true }).click();
+  await host.getByRole('button', { name: 'Deploy Freeze', exact: true }).click();
+  await guest.getByText('Keyboard frozen', { exact: true }).waitFor();
+  assert(await host.getByRole('button', { name: /Cooldown ·/ }).isDisabled());
+  assert(await guest.getByRole('button', { name: 'Run & Submit', exact: true }).isDisabled());
+  await guest.getByText('Keyboard frozen', { exact: true }).waitFor({ state: 'hidden' });
+  await host.getByRole('button', { name: 'Run & Submit', exact: true }).click();
+  await host.getByText(/0\/1 tests passed/).waitFor();
+  assert.equal(await host.locator('.pvp-result').count(), 0);
+  await enterCode(host, 'function reverseList(head) { while (true) {} }');
+  await host.getByRole('button', { name: 'Run & Submit', exact: true }).click();
+  await host.getByText(/Time limit exceeded/).waitFor({ timeout: 10000 });
+  await enterCode(host, draft);
+  await host.reload();
+  await waitForBattle(host);
+  await host.waitForFunction(() => !document.querySelector('.pvp-disconnected'));
+  await guest.waitForFunction(() => !document.querySelector('.pvp-disconnected'));
+  await host.waitForFunction(() => document.querySelector('.monaco-editor .view-lines')?.textContent.replace(/\u00a0/g, ' ').includes('return head;'));
+  await host.screenshot({ path: 'data/pvp-workspace.png' });
+  await guest.getByRole('button', { name: 'Back to Practice', exact: true }).click();
+  await host.getByText('Your opponent left the match.', { exact: true }).waitFor();
+  await host.getByRole('button', { name: 'Return to PvP Hub', exact: true }).click();
+  await guest.goto(path);
+  const next = await hostRoom(host); await joinRoom(guest, next);
+  await Promise.all([waitForBattle(host), waitForBattle(guest)]);
+  await enterCode(guest, 'function reverseList(head) { return [...head].reverse(); }');
+  await guest.getByRole('button', { name: 'Run & Submit', exact: true }).click();
+  await guest.getByRole('heading', { name: 'Victory', exact: true }).waitFor();
+  await host.getByRole('heading', { name: 'Duel Complete', exact: true }).waitFor();
+  await guest.getByRole('button', { name: 'Review solution', exact: true }).click();
+  await waitForBattle(guest);
+  await guest.waitForFunction(() => document.querySelector('.monaco-editor .view-lines')?.textContent.includes('reverse()'));
+  await guest.getByRole('button', { name: 'Match result', exact: true }).click();
+  await guest.getByRole('button', { name: 'Play Again', exact: true }).click();
+  await host.getByRole('button', { name: 'Play Again', exact: true }).click();
+  for (const width of [1536, 1024, 768, 390, 360]) {
+    await host.setViewportSize({ width, height: 845 }); await host.goto(path);
+    await host.getByRole('button', { name: /HOST MATCH/ }).waitFor();
+    assert(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Document overflow at ${width}`);
+    assert(await host.locator('.practice-main').evaluate(e => e.scrollWidth <= e.clientWidth), `Main overflow at ${width}`);
+    const buttons = await host.locator('.pvp-match-button').all();
+    const a = await buttons[0].boundingBox(), b = await buttons[1].boundingBox();
+    if (width < 768) assert(b.y > a.y + a.height, 'Mobile buttons stack'); else assert.equal(a.y, b.y);
+    if (width === 768) await host.screenshot({ path: 'data/pvp-tablet.png' });
+    if (width === 390) {
+      await host.screenshot({ path: 'data/pvp-mobile.png' });
+      await host.locator('.practice-main').evaluate(e => e.scrollTo({ top: e.scrollHeight }));
+      await host.screenshot({ path: 'data/pvp-mobile-features.png' });
+    }
+    if (width < 1024) {
+      await host.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+      await host.getByRole('link', { name: 'Coding Playground', exact: true }).click();
+      await host.waitForURL('**/coding');
+    }
+  }
+  assert.deepEqual(errors, []);
+  await browser.close();
+  console.log('PASS: Practice navigation, real leaderboard, host/copy/cancel, invalid/missing/full rooms, isolated rooms, two-window connection, shared problem, live code, freeze/cooldown, real failure, infinite-loop timeout, reload/reconnect, disconnect recovery, guest victory, review/replay, desktop/tablet/mobile.');
+})().catch(e => { console.error(e); process.exit(1); });

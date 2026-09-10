@@ -38,7 +38,14 @@ async function startServer() {
   // API routes FIRST
   app.post("/api/chat", async (req, res) => {
     try {
-      const { messages } = req.body;
+      const { messages, tutorMode } = req.body;
+      const tutorModes: Record<string,string> = {
+        'Teach me': 'Use clear examples and manageable steps.',
+        'Give me a hint': 'Override the code and visualization requirements below: give one progressive hint, with no full solution, code, or revealing visualization unless explicitly requested.',
+        'Quiz me': 'Override the code and visualization requirements below: ask one question and wait for the student answer; do not reveal the answer first.',
+        'Review my code': 'Review correctness, edge cases and complexity before proposing fixes.'
+      };
+      const tutorInstruction = typeof tutorMode === 'string' ? tutorModes[tutorMode] || '' : '';
       const apiKey = process.env.GROQ_API_KEY;
       
       if (!apiKey) {
@@ -104,7 +111,7 @@ IMPORTANT:
       const stream = await groq.chat.completions.create({
         model: "llama-3.3-70b-versatile",
         messages: [
-          { role: "system", content: SERVER_SYSTEM_PROMPT },
+          { role: "system", content: SERVER_SYSTEM_PROMPT + (tutorInstruction ? "\n\nCURRENT TUTORING MODE (takes precedence over default response formatting): " + tutorInstruction : "") },
           ...userMessages.map((m: any) => ({ role: m.role, content: m.content }))
         ],
         temperature: 0.7,
@@ -765,7 +772,14 @@ RULES
         ORDER BY solved_at DESC
       `).all(decoded.id);
       
-      res.json({ user, activity, courses, solvedProblems });
+      const attemptedProblems = db.prepare("SELECT DISTINCT problem_id as id FROM user_submissions WHERE user_id = ?").all(decoded.id);
+      const practiceActivity = db.prepare(`
+        SELECT strftime('%Y-%m-%dT%H:00:00Z', created_at) as recordedAt, COUNT(*) as attempts
+        FROM user_submissions WHERE user_id = ? AND created_at >= datetime('now', '-62 days')
+        GROUP BY strftime('%Y-%m-%dT%H:00:00Z', created_at)
+        ORDER BY recordedAt
+      `).all(decoded.id);
+      res.json({ user, activity, courses, solvedProblems, attemptedProblems, practiceActivity });
     } catch (error) {
       res.status(401).json({ error: "Invalid token" });
     }
