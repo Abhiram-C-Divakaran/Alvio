@@ -8,33 +8,36 @@ interface LinkedList3DProps {
   activeIndex?: number | number[] | null;
   variant?: string;
   baseColor?: string;
+  onNodeSelect?: (index: number) => void;
+  selectedIndex?: number;
+  reducedMotion?: boolean;
 }
 
-export default function LinkedList3D({ data = [], activeIndex = null, variant = 'Singly Linked', baseColor }: LinkedList3DProps) {
+export default function LinkedList3D({ data = [], activeIndex = null, variant = 'Singly Linked', baseColor, onNodeSelect, selectedIndex = -1, reducedMotion = false }: LinkedList3DProps) {
   const groupRef = useRef<THREE.Group>(null);
   const spacing = 2.5;
   const startX = -((data.length - 1) * spacing) / 2;
-  
+
   const isDoubly = variant === 'Doubly Linked';
   const isCircular = variant === 'Circular Linked';
 
   useFrame((state) => {
     if (groupRef.current) {
-      groupRef.current.position.y = Math.sin(state.clock.elapsedTime) * 0.2;
+      groupRef.current.position.y = reducedMotion ? 0 : Math.sin(state.clock.elapsedTime) * 0.2;
     }
   });
 
   return (
     <group ref={groupRef}>
       {data.map((value, index) => {
-        const isActive = Array.isArray(activeIndex) ? activeIndex.includes(index) : activeIndex === index;
+        const isActive = selectedIndex === index || (Array.isArray(activeIndex) ? activeIndex.includes(index) : activeIndex === index);
         const color = isActive ? '#10b981' : (baseColor || '#0ea5e9'); // Emerald active, Sky blue normal
         const xPos = startX + index * spacing;
 
         return (
           <group key={index}>
             {/* Node Sphere */}
-            <group position={[xPos, 0, 0]}>
+            <group position={[xPos, 0, 0]} scale={selectedIndex === index ? 1.1 : 1} onClick={event => { event.stopPropagation(); onNodeSelect?.(index); }}>
               <Sphere args={[0.7, 32, 32]}>
                 <meshStandardMaterial
                   color={color}
@@ -61,23 +64,23 @@ export default function LinkedList3D({ data = [], activeIndex = null, variant = 
                   {value}
                 </Text>
               </Billboard>
-              
+
               {/* Cyberpunk Circuit rings */}
               <mesh rotation={[Math.PI / 2, 0, 0]}>
                 <ringGeometry args={[0.9, 1.0, 32]} />
                 <meshStandardMaterial color={color} emissive={color} emissiveIntensity={isActive ? 2 : 0.5} side={THREE.DoubleSide} />
               </mesh>
-              
+
               {/* Head / Tail Labels */}
               <Billboard position={[0, -1.2, 0]}>
                 {index === 0 && (
                   <Text fontSize={0.4} color="#10b981" outlineWidth={0.03} outlineColor="#000">
-                    HEAD ➜
+                    {data.length === 1 ? 'HEAD / TAIL' : 'HEAD'}
                   </Text>
                 )}
-                {index === data.length - 1 && (
+                {index === data.length - 1 && index !== 0 && (
                   <Text fontSize={0.4} color="#f43f5e" outlineWidth={0.03} outlineColor="#000">
-                    TAIL ➜
+                    TAIL
                   </Text>
                 )}
               </Billboard>

@@ -1,113 +1,36 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { ArrowDownAZ, Search, Share2, Sparkles } from 'lucide-react';
-import { ALGO_META } from '../workspace/AlgorithmsWorkspace';
-import type { AlgoType } from '../workspace/AlgorithmsWorkspace';
-
-export default function AlgorithmsHubPage() {
-  const getDifficultyColor = (diff: string) => {
-    switch (diff) {
-      case 'Beginner': return 'bg-green-500/10 text-green-400 border-green-500/20';
-      case 'Intermediate': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-      case 'Advanced': return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-      default: return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-    }
-  };
-
-  const algos = (Object.keys(ALGO_META) as AlgoType[]).map((key) => ({
-    id: key,
-    ...ALGO_META[key],
-  }));
-
-  return (
-    <div className="w-full min-h-full bg-[var(--color-bg-primary)] p-4 md:p-8 lg:p-12 text-white overflow-y-auto">
-      <div className="max-w-[1200px] mx-auto space-y-12 pb-20">
-        <header className="space-y-4">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
-            Algorithms
-          </h1>
-          <p className="text-[var(--color-text-secondary)] text-lg max-w-2xl">
-            Explore the core algorithms used in computer science. Master sorting, searching, and advanced techniques through interactive step-by-step visualizers.
-          </p>
-        </header>
-
-
-        <section className="mb-16">
-          <h2 className="text-2xl font-bold mb-6 text-white">Algorithm Paradigms</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-[var(--color-surface-glass)] border border-[var(--color-border-subtle)] p-6 rounded-2xl hover:border-blue-500/50 transition-colors shadow-lg group flex flex-col relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-              <h3 className="text-xl font-bold mb-2 text-white relative z-10">Dynamic Programming (DP)</h3>
-              <p className="text-sm text-[var(--color-text-secondary)] mb-6 flex-1 relative z-10">Solves complex optimization tasks by storing the results of overlapping subproblems. It uses Arrays or Matrices as look-up tables.</p>
-              <Link to="/algorithms-visualizer?algo=lcs" className="relative z-10 w-full inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-500 transition-all shadow-[0_0_20px_rgba(37,99,235,0.4)] group-hover:shadow-[0_0_25px_rgba(59,130,246,0.6)]">
-                View DP 3D Animation →
-              </Link>
-            </div>
-            
-            <div className="bg-[var(--color-surface-glass)] border border-[var(--color-border-subtle)] p-6 rounded-2xl hover:border-amber-500/50 transition-colors shadow-lg group flex flex-col relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-              <h3 className="text-xl font-bold mb-2 text-white relative z-10">Greedy Approach</h3>
-              <p className="text-sm text-[var(--color-text-secondary)] mb-6 flex-1 relative z-10">Makes the locally optimal choice at each step. It is commonly used alongside Heaps and Graphs.</p>
-              <Link to="/algorithms-visualizer?algo=activity-selection" className="relative z-10 w-full inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold text-white bg-amber-600 rounded-xl hover:bg-amber-500 transition-all shadow-[0_0_20px_rgba(217,119,6,0.4)] group-hover:shadow-[0_0_25px_rgba(245,158,11,0.6)]">
-                View Greedy 3D Animation →
-              </Link>
-            </div>
-            
-            <div className="bg-[var(--color-surface-glass)] border border-[var(--color-border-subtle)] p-6 rounded-2xl hover:border-emerald-500/50 transition-colors shadow-lg group flex flex-col relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-              <h3 className="text-xl font-bold mb-2 text-white relative z-10">Two-Pointer & Sliding Window</h3>
-              <p className="text-sm text-[var(--color-text-secondary)] mb-6 flex-1 relative z-10">Optimizes operations on linear structures like Arrays or Strings by using moving index markers. This avoids redundant loops.</p>
-              <Link to="/algorithms-visualizer?algo=two-pointer" className="relative z-10 w-full inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-500 transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)] group-hover:shadow-[0_0_25px_rgba(52,211,153,0.6)]">
-                View Two-Pointer 3D Animation →
-              </Link>
-            </div>
-          </div>
-        </section>
-        
-        <h2 className="text-2xl font-bold mb-6 text-white">All Algorithms</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {algos.map((algo, i) => {
-            const isSorting = algo.type === 'sorting';
-            const isSearching = algo.type === 'searching';
-            const Icon = isSorting ? ArrowDownAZ : isSearching ? Search : Share2;
-            const themeColor = isSorting 
-              ? 'text-blue-400 bg-blue-500/10 group-hover:bg-blue-500' 
-              : isSearching 
-                ? 'text-indigo-400 bg-indigo-500/10 group-hover:bg-indigo-500'
-                : 'text-amber-400 bg-amber-500/10 group-hover:bg-amber-500';
-            const hoverBorder = isSorting 
-              ? 'group-hover:border-blue-500/50' 
-              : isSearching 
-                ? 'group-hover:border-indigo-500/50'
-                : 'group-hover:border-amber-500/50';
-
-            return (
-              <motion.div 
-                key={algo.id}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-              >
-                <Link to={`/learn/algorithms/${algo.id}`} className="block group">
-                  <div className={`bg-[var(--color-surface-glass)] p-6 rounded-2xl border border-[var(--color-border-subtle)] ${hoverBorder} transition-all h-full hover:-translate-y-1 shadow-sm flex flex-col`}>
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-6 group-hover:text-white transition-colors ${themeColor}`}>
-                      <Icon size={24} />
-                    </div>
-                    <h3 className="text-xl font-bold text-white mb-2">{algo.name}</h3>
-                    <p className="text-[var(--color-text-secondary)] text-sm mb-6 line-clamp-2 flex-1">
-                      {algo.description}
-                    </p>
-                    <div className={`inline-flex px-2.5 py-1 text-xs font-bold rounded-lg border w-fit ${getDifficultyColor(algo.difficulty || 'Beginner')}`}>
-                      {algo.difficulty || 'Beginner'}
-                    </div>
-                  </div>
-                </Link>
-              </motion.div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
+import {useEffect,useRef,useState} from 'react';
+import {Link} from 'react-router-dom';
+import {ArrowRight,BookOpen,Code2,Grid2X2,List,Play,Search,Video,X} from 'lucide-react';
+import useProgressStore from '../../stores/useProgressStore';
+import useAuthStore from '../../stores/useAuthStore';
+import {algorithms,categories,selectAlgorithms} from './algorithms/model';
+import AlgorithmPreview from './algorithms/AlgorithmPreview';
+import './catalog/data-structures.css';
+import './algorithms/algorithms.css';
+const paradigms=[
+ {title:'Dynamic Programming',category:'Dynamic Programming',art:'dp',text:'Solves complex optimization tasks by storing results of overlapping subproblems.',action:'Explore DP',color:'#0860ff'},
+ {title:'Greedy Approach',category:'Greedy',art:'greedy',text:'Makes the locally optimal choice at each step.',action:'Explore Greedy',color:'#e99b00'},
+ {title:'Divide and Conquer',category:'Divide & Conquer',art:'divide',text:'Breaks a problem into smaller subproblems, solves them recursively.',action:'Explore Divide & Conquer',color:'#00b998'},
+ {title:'Backtracking',category:'Backtracking',art:'backtracking',text:'Builds solutions incrementally and backtracks when needed.',action:'Explore Backtracking',color:'#752eff'}
+];
+export default function AlgorithmsHubPage(){
+ const [query,setQuery]=useState(''),[category,setCategory]=useState('All'),[sort,setSort]=useState('Popular'),[view,setView]=useState('grid');
+ const dialog=useRef<HTMLDialogElement>(null);const [overview,setOverview]=useState('Algorithms overview');const library=useRef<HTMLElement>(null);
+ const raw=useProgressStore(s=>s.progress),user=useAuthStore(s=>s.user);const stored=raw&&(!user||raw.userId===user.id)?raw:null;
+ const progress=Object.fromEntries(algorithms.map(a=>{const p=stored?.topics.find(p=>p.topicId===a.id||p.topicId===`algo-${a.id}`);return [a.id,p?.status==='completed'?100:Math.max(0,Math.min(100,p?.completionPercent||0))]}));
+ const next=algorithms.find(a=>(progress[a.id]||0)>0&&progress[a.id]<100)||algorithms.find(a=>stored?.recommendedTopics?.includes(a.id)&&progress[a.id]<100)||algorithms.find(a=>progress[a.id]<100)||algorithms[0];
+ const rows=selectAlgorithms(query,category,sort,progress);
+ function openOverview(title='Algorithms overview'){setOverview(title);dialog.current?.showModal()}
+ function explore(c:string){if(c==='Backtracking'){openOverview('Backtracking');return}setCategory(c);setQuery('');library.current?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth'})}
+ useEffect(()=>{const handle=(e:MouseEvent)=>{if(e.target===dialog.current)dialog.current?.close()};dialog.current?.addEventListener('click',handle);return()=>dialog.current?.removeEventListener('click',handle)},[]);
+ return <div className="al-hub">
+ <header className="al-hero"><div className="al-hero-copy"><div className="al-breadcrumb"><Link to="/learn">LEARN</Link><span>›</span>ALGORITHMS</div><h1>Algorithms</h1><p>Explore the core algorithms used in computer science. Master sorting, searching, and advanced techniques through interactive visualizations.</p><div className="al-hero-actions"><Link className="al-primary" to={next.lessonRoute}><Play size={15} fill="currentColor"/>Start Learning</Link><button onClick={()=>openOverview()}><Video size={18}/>Watch Overview</button></div><div className="al-stats"><span><BookOpen/><strong>{algorithms.length}<small>Algorithms</small></strong></span><span><Play/><strong>{algorithms.filter(a=>a.visualizationRoute).length}<small>Visualizers</small></strong></span><Link to="/coding"><Code2/><strong>Practice<small>Curated problems</small></strong></Link></div></div><div className="al-hero-art" role="img" aria-label="Glowing algorithm cubes with Divide and Conquer, Greedy, Dynamic Programming and Backtracking panels"/></header>
+ <div className="al-toolbar"><div className="al-categories" aria-label="Algorithm categories">{categories.map(c=><button key={c} aria-pressed={category===c} onClick={()=>setCategory(c)}>{c}</button>)}</div><label className="al-search"><Search size={16}/><input aria-label="Search algorithms" placeholder="Search algorithms…" value={query} onChange={e=>setQuery(e.target.value)}/></label></div>
+ <section className="al-paradigms"><div className="al-section-heading"><div><h2>Algorithm Paradigms</h2><p>Different ways to think. A whole new way to learn.</p></div><Link to="/learn/skill-tree">View Learning Path <ArrowRight size={14}/></Link></div><div className="al-paradigm-grid">{paradigms.map(p=><article key={p.art} style={{'--accent':p.color} as React.CSSProperties}><div className={`al-paradigm-art ${p.art}`} aria-hidden="true"/><div><h3>{p.title}</h3><p>{p.text}</p></div><button onClick={()=>explore(p.category)}>{p.action} <ArrowRight size={14}/></button></article>)}</div></section>
+ <section className="al-library" ref={library}><div className="al-section-heading"><div><h2>All Algorithms</h2><p>Browse and learn algorithms with interactive visualizations.</p></div><div className="al-library-tools"><label>Sort by: <select aria-label="Sort algorithms" value={sort} onChange={e=>setSort(e.target.value)}>{['Popular','Beginner First','Difficulty','A–Z','Progress','Recommended'].map(s=><option key={s}>{s}</option>)}</select></label><div className="al-view">{['grid','list'].map(v=><button key={v} aria-label={`${v==='grid'?'Grid':'List'} view`} aria-pressed={view===v} onClick={()=>setView(v)}>{v==='grid'?<Grid2X2 size={17}/>:<List size={17}/>}</button>)}</div></div></div>
+ <div className={`al-library-grid ${view==='list'?'is-list':''}`}>{rows.map(a=><article className="al-algorithm" key={a.id}><AlgorithmPreview algorithm={a}/><span className="al-category">{a.category}</span><h3><Link className="al-lesson-link" to={a.lessonRoute}>{a.name}</Link></h3><p>{a.description}</p>{progress[a.id]>0&&<div className="al-progress"><progress max={100} value={progress[a.id]}/><span>{progress[a.id]}% complete</span></div>}<footer><span className={`al-difficulty ${a.difficulty.toLowerCase()}`}>{a.difficulty}</span><Link to={a.visualizationRoute||a.lessonRoute}>{a.visualizationRoute?'Open Visualizer':'Start Lesson'} <ArrowRight size={13}/></Link></footer></article>)}</div>
+ {!rows.length&&<div className="al-empty"><Search size={30}/><h3>No algorithms found</h3><p>Try another search or clear your filters.</p><button onClick={()=>{setQuery('');setCategory('All')}}>Clear Filters</button></div>}
+ <footer className="al-library-footer"><span role="status">Showing {rows.length} of {algorithms.length} algorithms</span><span>Keep learning. You’re doing great! <span aria-hidden="true">♥</span></span></footer></section>
+ <dialog className="al-overview" ref={dialog} aria-labelledby="al-overview-title"><button className="al-close" aria-label="Close overview" onClick={()=>dialog.current?.close()}><X/></button><h2 id="al-overview-title">{overview}</h2>{overview==='Backtracking'?<><p>Build a candidate one choice at a time. If a choice violates a constraint, undo it and try the next option.</p><ol><li>Choose a possible next step.</li><li>Check whether the partial solution is valid.</li><li>Explore recursively, then undo the choice.</li></ol><pre>{`search(path):\n  if complete(path): emit(path); return\n  for choice in candidates(path):\n    if valid(choice, path):\n      path.append(choice)\n      search(path)\n      path.pop()`}</pre><p>For permutations of n distinct items, the search has n! leaves. Constraint checks can prune branches early. Auxiliary recursion space is O(n), excluding results.</p><Link to="/coding?topic=Backtracking">Practice backtracking →</Link></>:<><p>Algorithms turn a problem into a sequence of precise steps. Explore an approach, inspect how it changes its input, and compare its time and space costs.</p><div className="al-overview-steps">{['Compare & swap','Divide & solve','Store & reuse'].map((s,i)=><div key={s}><b>{i+1}</b><strong>{s}</strong><p>{['Sorting arranges data so later operations are easier.','Divide and conquer solves smaller instances and combines them.','Dynamic programming saves answers to overlapping subproblems.'][i]}</p></div>)}</div><p>Follow a lesson, open its step-by-step visualizer, then try a related practice problem.</p><Link className="al-primary" to={next.lessonRoute}>Continue with {next.name} →</Link></>}</dialog>
+ </div>;
 }

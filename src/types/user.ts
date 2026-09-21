@@ -52,7 +52,17 @@ export interface TopicProgress {
   lastAccessed: string;
 }
 
+export interface VideoLessonProgress {
+  position:number;
+  duration:number;
+  speed:number;
+  watchedSeconds:number[];
+  completed:boolean;
+  notes:{id:string;time:number;text:string;createdAt:string}[];
+}
+
 export interface LearningProgress {
+  videoLessons?:Record<string,VideoLessonProgress>;
   userId: string;
   topics: TopicProgress[];
   totalTimeSpentMinutes: number;

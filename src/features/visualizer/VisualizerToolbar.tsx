@@ -14,12 +14,12 @@ export default function VisualizerToolbar({ onInsert, onDelete, disabled = false
 
   const handleAction = (action: 'insert' | 'delete') => {
     if (!inputValue.trim() && action === 'insert') return;
-    
+
     const idx = idxValue.trim() !== '' ? parseInt(idxValue, 10) : undefined;
 
     if (action === 'insert') onInsert(inputValue, idx);
     if (action === 'delete') onDelete(inputValue || '', idx);
-    
+
     setInputValue('');
     setIdxValue('');
   };
@@ -51,6 +51,7 @@ export default function VisualizerToolbar({ onInsert, onDelete, disabled = false
     <div className="pointer-events-auto flex items-center gap-2 bg-black/60 backdrop-blur-md border border-[var(--color-border-subtle)] rounded-xl p-3 shadow-xl">
       <input
         type="text"
+        aria-label="Operation value"
         placeholder="Value (e.g. 42)"
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
@@ -60,10 +61,11 @@ export default function VisualizerToolbar({ onInsert, onDelete, disabled = false
           if (e.key === 'Enter') handleAction('insert');
         }}
       />
-      
+
       {showIdx && (
         <input
           type="text"
+          aria-label="Operation index (optional)"
           placeholder="Idx (opt)"
           value={idxValue}
           onChange={(e) => setIdxValue(e.target.value)}
@@ -74,9 +76,9 @@ export default function VisualizerToolbar({ onInsert, onDelete, disabled = false
           }}
         />
       )}
-      
+
       <div className="h-6 w-px bg-white/10 mx-1" />
-      
+
       <button
         onClick={() => handleAction('insert')}
         disabled={disabled || !inputValue.trim()}
@@ -84,7 +86,7 @@ export default function VisualizerToolbar({ onInsert, onDelete, disabled = false
       >
         <Plus size={16} /> {insertLabel}
       </button>
-      
+
       <button
         onClick={() => handleAction('delete')}
         disabled={disabled}

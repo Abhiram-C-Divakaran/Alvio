@@ -1,189 +1,71 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Search, Loader2, ArrowRight } from 'lucide-react';
-import AlgorithmsWorkspace from '../workspace/AlgorithmsWorkspace';
-import type { AlgoType } from '../workspace/AlgorithmsWorkspace';
-
-// Smart Mapping Engine to map user queries to existing visualizers
-const mapPromptToAlgo = (prompt: string): AlgoType => {
-  const p = prompt.toLowerCase();
-  
-  // Specific problem patterns
-  if (
-    p.includes('reverse') || 
-    p.includes('linked list') ||
-    p.includes('reverse array')
-  ) return 'reverse-array';
-
-  if (
-    p.includes('two sum') || 
-    p.includes('target sum') || 
-    p.includes('two pointer') || 
-    p.includes('sliding window') ||
-    (p.includes('two numbers') && p.includes('add up to') && p.includes('target'))
-  ) return 'two-pointer';
-
-  if (p.includes('bubble')) return 'bubble-sort';
-  if (p.includes('merge sort')) return 'merge-sort';
-  if (p.includes('quick sort')) return 'quick-sort';
-  if (p.includes('insertion')) return 'insertion-sort';
-  if (p.includes('selection')) return 'selection-sort';
-  if (p.includes('linear search')) return 'linear-search';
-  if (p.includes('binary search')) return 'binary-search';
-  if (p.includes('bfs') || p.includes('breadth')) return 'bfs';
-  if (p.includes('dfs') || p.includes('depth')) return 'dfs';
-  if (p.includes('dijkstra') || p.includes('shortest path')) return 'dijkstra';
-  if (p.includes('bellman')) return 'bellman-ford';
-  if (p.includes('floyd') || p.includes('all pairs')) return 'floyd-warshall';
-  if (p.includes('kruskal') || p.includes('minimum spanning') || p.includes('mst')) return 'kruskal';
-  if (p.includes('prim')) return 'prim';
-  if (p.includes('kahn')) return 'kahns-algorithm';
-  if (p.includes('topological') || p.includes('course schedule') || p.includes('order')) return 'topological-sort';
-  if (p.includes('knapsack') || p.includes('0/1')) return 'knapsack';
-  if (p.includes('fibonacci') || p.includes('climbing stairs')) return 'fibonacci';
-  if (p.includes('lcs') || p.includes('longest common subsequence')) return 'lcs';
-  if (p.includes('activity') || p.includes('intervals')) return 'activity-selection';
-  if (p.includes('huffman')) return 'huffman-coding';
-  if (p.includes('hanoi') || p.includes('tower')) return 'hanoi';
-  if (p.includes('inorder')) return 'inorder-traversal';
-  if (p.includes('preorder')) return 'preorder-traversal';
-  if (p.includes('postorder')) return 'postorder-traversal';
-  
-  // Fallbacks based on broad keywords
-  if (p.includes('sort')) return 'quick-sort';
-  if (p.includes('search')) return 'binary-search';
-  if (p.includes('graph')) return 'bfs';
-  if (p.includes('tree')) return 'inorder-traversal';
-  
-  // Ultimate fallback
-  return 'bubble-sort'; 
-};
-
-export default function AIVisualizerPage() {
-  const [prompt, setPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [activeAlgo, setActiveAlgo] = useState<AlgoType | null>(null);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!prompt.trim()) return;
-
-    setIsGenerating(true);
-    setActiveAlgo(null);
-
-    // Simulate AI Generation / Analysis Delay
-    setTimeout(() => {
-      const algo = mapPromptToAlgo(prompt);
-      setActiveAlgo(algo);
-      setIsGenerating(false);
-    }, 2000);
-  };
-
-  return (
-    <div className="w-full h-full bg-[var(--color-bg-primary)] relative overflow-hidden flex flex-col">
-      {/* Background Decor */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-fuchsia-500/10 rounded-full blur-[120px]" />
-         <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-blue-500/10 rounded-full blur-[100px]" />
-      </div>
-
-      <AnimatePresence mode="wait">
-        {!activeAlgo ? (
-          <motion.div 
-            key="prompt-screen"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20, filter: 'blur(10px)' }}
-            className="flex-1 flex flex-col items-center justify-center p-6 relative z-10"
-          >
-            <div className="max-w-2xl w-full space-y-8 text-center">
-              <div className="inline-flex items-center justify-center p-4 bg-fuchsia-500/10 rounded-2xl mb-4 shadow-[0_0_30px_rgba(217,70,239,0.2)]">
-                <Sparkles size={40} className="text-fuchsia-400" />
-              </div>
-              <h1 className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 to-blue-400">
-                Ask AI to Visualize
-              </h1>
-              <p className="text-[var(--color-text-secondary)] text-lg">
-                Type any programming problem like "Two Sum" or "Shortest Path" and let the AI generate the perfect 3D visualization to explain it.
-              </p>
-
-              <form onSubmit={handleSubmit} className="relative mt-8 group">
-                <div className="absolute inset-0 bg-gradient-to-r from-fuchsia-500 to-blue-500 rounded-2xl blur-lg opacity-20 group-hover:opacity-40 transition-opacity" />
-                <div className="relative bg-[var(--color-surface-glass)] border border-[var(--color-border-subtle)] rounded-2xl p-2 flex items-center shadow-xl focus-within:border-fuchsia-500/50 transition-colors">
-                  <Search className="text-[var(--color-text-muted)] ml-4" size={24} />
-                  <input
-                    type="text"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="e.g., How does the Two Sum algorithm work?"
-                    className="flex-1 bg-transparent border-none outline-none text-white px-4 py-3 text-lg placeholder:text-[var(--color-text-muted)]"
-                    disabled={isGenerating}
-                  />
-                  <button
-                    type="submit"
-                    disabled={isGenerating || !prompt.trim()}
-                    className="bg-fuchsia-600 hover:bg-fuchsia-500 text-white p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                  >
-                    {isGenerating ? <Loader2 size={24} className="animate-spin" /> : <ArrowRight size={24} />}
-                  </button>
-                </div>
-              </form>
-
-              {isGenerating && (
-                <motion.div 
-                  initial={{ opacity: 0 }} 
-                  animate={{ opacity: 1 }}
-                  className="text-fuchsia-400 font-medium animate-pulse mt-4"
-                >
-                  AI is analyzing your problem and building the 3D scene...
-                </motion.div>
-              )}
-              
-              <div className="flex flex-wrap gap-3 justify-center mt-8">
-                {['Two Sum', 'Fibonacci Sequence', 'Dijkstra shortest path', 'Tower of Hanoi', 'Binary Search'].map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    onClick={() => setPrompt(suggestion)}
-                    className="px-4 py-2 rounded-full bg-[var(--color-bg-primary)] border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] text-sm hover:border-fuchsia-500/50 hover:text-white transition-colors"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        ) : (
-          <motion.div 
-            key="workspace-screen"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 1 }}
-            className="flex flex-col flex-1 relative z-10 w-full h-full bg-[var(--color-bg-primary)]"
-          >
-            {/* A full-width header bar to show the prompt and a back button */}
-            <div className="flex-shrink-0 flex items-center gap-4 bg-[var(--color-surface-glass)] backdrop-blur-md px-6 py-3 border-b border-[var(--color-border-subtle)] shadow-sm">
-              <button 
-                onClick={() => setActiveAlgo(null)}
-                className="flex-shrink-0 text-[var(--color-text-secondary)] hover:text-white p-2 rounded-lg hover:bg-white/5 transition-colors"
-                title="Ask another question"
-              >
-                <Search size={18} />
-              </button>
-              <div className="text-white font-medium pr-4 border-l border-[var(--color-border-subtle)] pl-4 truncate flex-1 text-sm text-ellipsis overflow-hidden">
-                "{prompt}"
-              </div>
-              <div className="flex-shrink-0 px-2 py-1 bg-fuchsia-500/20 text-fuchsia-400 text-xs font-bold rounded">
-                AI Generated
-              </div>
-            </div>
-            
-            <div className="flex-1 relative min-h-0 w-full">
-              <AlgorithmsWorkspace initialAlgo={activeAlgo} viewMode="3d" filterType="all" hideSidebar={true} hideViewModeToggle={true} />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+import {Component,lazy,Suspense,useEffect,useRef,useState,type ReactNode} from 'react';
+import {Link} from 'react-router-dom';
+import {Box,Search,ArrowRight,Play,Pause,SkipBack,SkipForward,RotateCcw,Maximize,Lightbulb,Target,ChartNoAxesColumnIncreasing,Settings2,Code2,Copy,Sparkles,BookOpen,Save,FolderOpen,Check,X,LoaderCircle} from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import useAuthStore from '../../stores/useAuthStore';
+import {adapters,languages,safePlatformUrl,validateSpecification,type Specification,type Language} from './model';
+import {example} from './example';
+import Scene2D from './renderers/Scene2D';
+import './visualizer.css';
+import CompareApproaches from './CompareApproaches';
+const Scene3D=lazy(()=>import('./renderers/Scene3D'));
+class SceneBoundary extends Component<{children:ReactNode;fallback:ReactNode},{failed:boolean}>{state={failed:false};static getDerivedStateFromError(){return {failed:true};}render(){return this.state.failed?this.props.fallback:this.props.children;}}
+interface Saved {id:string;problem:string;spec:Specification;index:number;notes:string;source:string|null}
+const modes=['Explain Solution','Visualize Only','Give Me a Hint','Walk Me Through'];
+const defaultProblem='Insert value 30 at zero-based index 2 into linked list [10,20,40]';
+const friendly="We couldn't generate this visualization. Try simplifying the question or paste the full problem statement.";
+function Card({title,icon,children,className=''}:{title:string;icon:ReactNode;children:ReactNode;className?:string}){return <section className={`viz-card ${className}`}><h2>{icon}{title}</h2>{children}</section>;}
+export default function AIVisualizerPage(){
+ const uid=useAuthStore(s=>s.user?.id||'guest');
+ const [spec,setSpec]=useState<Specification>(example),[index,setIndex]=useState(2),[playing,setPlaying]=useState(false),[speed,setSpeed]=useState(1);
+ const [view,setView]=useState<'3D'|'2D'|'Text'>(()=>(matchMedia('(max-width: 760px)').matches||navigator.hardwareConcurrency<=4)?'2D':'3D');
+ const [problem,setProblem]=useState(''),[loadedProblem,setLoadedProblem]=useState(defaultProblem),[language,setLanguage]=useState<Language>('cpp'),[mode,setMode]=useState(modes[0]),[inputMode,setInputMode]=useState('Ask a question');
+ const [busy,setBusy]=useState(false),[stage,setStage]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[source,setSource]=useState<string|null>(null);
+ const [question,setQuestion]=useState(''),[answer,setAnswer]=useState(''),[answerBusy,setAnswerBusy]=useState(false),[notes,setNotes]=useState(''),[saved,setSaved]=useState<Saved[]>([]),[showSaved,setShowSaved]=useState(false);
+ const [custom,setCustom]=useState(false),[values,setValues]=useState('[10,20,40]'),[value,setValue]=useState('30'),[position,setPosition]=useState('2'),[why,setWhy]=useState(false),[copied,setCopied]=useState(false),[camera,setCamera]=useState(0);
+ const root=useRef<HTMLDivElement>(null),controller=useRef<AbortController|null>(null),followController=useRef<AbortController|null>(null),input=useRef<HTMLTextAreaElement>(null);
+ const step=spec.steps[index],hint=mode==='Give Me a Hint',hidden=hint||mode==='Visualize Only';
+ const state=step?.afterState||{nodes:[],edges:[]};
+ const key=`alvio-visualizations-${uid}`;
+ useEffect(()=>{if(!showSaved)return;const previous=document.activeElement as HTMLElement|null;const trap=(e:KeyboardEvent)=>{if(e.key==='Escape'){setShowSaved(false);return;}if(e.key!=='Tab')return;const controls=Array.from(document.querySelectorAll<HTMLElement>('.viz-modal button'));const first=controls[0],last=controls.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}};document.addEventListener('keydown',trap);return()=>{document.removeEventListener('keydown',trap);previous?.focus();};},[showSaved]);
+ useEffect(()=>{setPlaying(false);setBusy(false);setAnswerBusy(false);setSpec(example);setIndex(2);setNotes("");setAnswer("");setProblem("");setLoadedProblem(defaultProblem);setSource(null);try{const list=JSON.parse(localStorage.getItem(key)||'[]');setSaved(Array.isArray(list)?list.slice(0,20).filter(s=>{try{validateSpecification(s.spec);return typeof s.id==="string"&&typeof s.problem==="string"&&typeof s.notes==="string"&&Number.isInteger(s.index)&&s.index>=0;}catch{return false;}}):[]);}catch{setSaved([]);}return()=>{controller.current?.abort();controller.current=null;followController.current?.abort();followController.current=null;};},[key]);
+ useEffect(()=>{if(!playing||!spec.steps.length)return;const timer=setTimeout(()=>{if(index>=spec.steps.length-1){setPlaying(false);return;}setIndex(i=>i+1);if(mode==='Walk Me Through')setPlaying(false);},2000/speed);return()=>clearTimeout(timer);},[playing,index,speed,spec,mode]);
+ const seek=(n:number)=>{setPlaying(false);setIndex(Math.max(0,Math.min(spec.steps.length-1,n)));};
+ useEffect(()=>{const fn=(e:KeyboardEvent)=>{if((e.target as HTMLElement).closest('input,textarea,select,button,a,[contenteditable="true"]')||showSaved||busy||hint)return;if(e.code==='Space'){e.preventDefault();setPlaying(p=>!p);}if(e.key==='ArrowRight'){e.preventDefault();seek(index+1);}if(e.key==='ArrowLeft'){e.preventDefault();seek(index-1);}if(e.key.toLowerCase()==='r'){seek(0);setCamera(c=>c+1);}};window.addEventListener('keydown',fn);return()=>window.removeEventListener('keydown',fn);},[index,spec.steps.length,showSaved,busy,hint]);
+ async function generate(text=problem){
+  if(!text.trim()){input.current?.focus();return;}
+  const url=safePlatformUrl(text);if(/^https?:\/\/\S+$/i.test(text.trim())){setSource(url);setError("We couldn't import this problem automatically. Paste the problem statement instead.");setInputMode('Paste a problem');return;}
+  controller.current?.abort();followController.current?.abort();followController.current=null;setAnswerBusy(false);const c=new AbortController();controller.current=c;
+  setBusy(true);setError('');setPlaying(false);setStage('Understanding problem…');
+  const timeout=setTimeout(()=>c.abort(),100000);
+  try{setStage('Building solution…');const r=await fetch('/api/visualizer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({problem:text,language,mode}),signal:c.signal});if(!r.ok)throw new Error('Generation failed');setStage('Creating visualization…');const result=validateSpecification(await r.json());if(controller.current!==c)return;setSpec(result);if(text!==problem)setSource(null);setLoadedProblem(text);setIndex(0);setAnswer('');setNotes('');setCamera(x=>x+1);setNotice('');}
+  catch(e){if(controller.current===c){console.warn('Visualization request unsuccessful',e);setError(friendly);}}
+  finally{clearTimeout(timeout);if(controller.current===c){setBusy(false);controller.current=null;}}
+ }
+ async function followup(q=question){if(!q.trim()||answerBusy)return;followController.current?.abort();const c=new AbortController();followController.current=c;setAnswerBusy(true);setAnswer('');const timer=setTimeout(()=>c.abort(),100000);try{const r=await fetch('/api/visualizer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({problem:loadedProblem,question:q,context:{spec,index},mode}),signal:c.signal});if(!r.ok)throw new Error('Follow-up failed');const data=await r.json();if(followController.current===c)setAnswer(typeof data.answer==='string'?data.answer:'Please try again.');}catch{if(followController.current===c)setAnswer('We couldn’t explain this step right now. Please try again.');}finally{clearTimeout(timer);if(followController.current===c)setAnswerBusy(false);}}
+ const explainElement=(label:string)=>{setQuestion(`Explain ${label} in this step. Why does it change?`);setNotice(`Selected ${label}. Use “Ask follow-up” below for an explanation.`);};
+ function save(){try{const next=[{id:crypto.randomUUID(),problem:loadedProblem,spec,index,notes,source},...saved].slice(0,20);localStorage.setItem(key,JSON.stringify(next));setSaved(next);setNotice('Saved to My Learning on this device.');}catch{setNotice('Could not save. Your browser storage may be full.');}}
+ const operations=adapters[spec.structure];
+ return <div className="viz-page" ref={root}>
+  <header className="viz-header"><span className="viz-emblem"><Box size={32}/></span><div><div className="viz-title"><h1>AI Visualizer</h1><span>Interactive 3D explanation engine</span></div><p>Ask any DSA question and watch the solution come alive in 3D.</p></div><p className="viz-header-aside">Turn abstract logic into<br/>interactive 3D visuals. <Box size={42}/></p></header>
+  <form className="viz-problem" onSubmit={e=>{e.preventDefault();generate();}}><Search size={19}/><textarea ref={input} aria-label="DSA question or problem statement" maxLength={16000} value={problem} onChange={e=>setProblem(e.target.value)} placeholder={'Try “Visualize insertion in a linked list” or “Explain bubble sort on [5,2,8,1] step by step”…'}/><div className="viz-platforms"><button type="button" onClick={()=>{setInputMode('Paste a URL');setProblem('https://leetcode.com/problems/');input.current?.focus();}}>⟨ LeetCode</button><button type="button" onClick={()=>{setInputMode('Paste a URL');setProblem('https://www.geeksforgeeks.org/');input.current?.focus();}}>⇄ GeeksforGeeks</button><button type="button" onClick={()=>{setInputMode('Paste a problem');input.current?.focus();}}><Code2 size={15}/>Custom Problem</button></div><button className="viz-primary" disabled={busy}>{busy?<LoaderCircle className="viz-spin" size={16}/>:null}{busy?'Generating…':'Generate Visualization'}<ArrowRight size={18}/></button></form>
+  <div className="viz-options"><select aria-label="Input mode" value={inputMode} onChange={e=>{setInputMode(e.target.value);input.current?.focus();}}>{['Ask a question','Paste a problem','Paste a URL'].map(m=><option key={m}>{m}</option>)}</select><select aria-label="Learning mode" value={mode} onChange={e=>{setMode(e.target.value);setPlaying(false);}}>{modes.map(m=><option key={m}>{m}</option>)}</select><button onClick={()=>setCustom(c=>!c)}>Customize values</button><span className="viz-grow"/><button onClick={save}><Save size={13}/>Save to My Learning</button><button onClick={()=>setShowSaved(true)}><FolderOpen size={13}/>Saved ({saved.length})</button></div>
+  {inputMode==='Paste a problem'&&<p className="viz-help">Paste the title, description, examples, and constraints above. {source&&<>Source attached: <a href={source} target="_blank" rel="noreferrer">View problem</a> <button onClick={()=>setSource(null)}>Remove</button></>}</p>}
+  {custom&&<form className="viz-custom" onSubmit={e=>{e.preventDefault();try{const arr=JSON.parse(values);if(!Array.isArray(arr)||arr.length>40||!arr.every(v=>typeof v==='string'||typeof v==='number'&&Number.isFinite(v)))throw new Error();const text=`${spec.operation} on ${spec.structure}. Initial values: ${JSON.stringify(arr)}. Target value: ${value}. Zero-based position: ${position}. Show edge cases and all meaningful steps.`;setProblem(text);generate(text);}catch{setError('Enter a JSON array with up to 40 numbers or strings.');}}}><label>Values<input value={values} onChange={e=>setValues(e.target.value)}/></label><label>Value / target<input value={value} maxLength={80} onChange={e=>setValue(e.target.value)}/></label><label>Position (zero-based)<input type="number" min="0" max="40" value={position} onChange={e=>setPosition(e.target.value)}/></label><button className="viz-primary" disabled={busy}>Regenerate</button></form>}
+  {error&&<div className="viz-alert" role="alert">{error}<button disabled={busy} onClick={()=>generate()}>Retry</button></div>}{notice&&<div className="viz-notice" role="status">{notice}<button aria-label="Dismiss notice" onClick={()=>setNotice('')}><X size={14}/></button></div>}
+  {busy&&<div className="viz-loading" role="status"><LoaderCircle size={16} className="viz-spin"/>{stage}<button onClick={()=>{controller.current?.abort();controller.current=null;setBusy(false);}}>Cancel</button></div>}
+  {!spec.supported&&<div className="viz-alert">I can explain this problem, but this visualization isn’t supported yet.<button onClick={()=>setMode('Explain Solution')}>Show explanation and code</button></div>}
+  <div className="viz-main-grid">
+   <section className="viz-workspace viz-card"><header className="viz-canvas-header"><Box size={25}/><div><h2>{view==='Text'?'Text Steps':`${view} Visualization`}</h2><p>{spec.title}</p></div><div className="viz-view-toggle">{(['3D','2D','Text'] as const).map(v=><button key={v} aria-pressed={view===v} onClick={()=>setView(v)}>{v}{v==='Text'?' Steps':' View'}</button>)}</div><button aria-label="Fullscreen visualization" onClick={()=>{if(document.fullscreenElement)document.exitFullscreen();else root.current?.requestFullscreen().catch(()=>setNotice('Fullscreen is unavailable in this browser.'));}}><Maximize size={16}/></button></header>
+    <div className="viz-scene">{hint?<div className="viz-hint"><Lightbulb size={32}/><h2>Think it through</h2><p>{spec.hint}</p><button onClick={()=>setMode('Walk Me Through')}>Walk me through the solution <ArrowRight size={16}/></button></div>:!spec.supported?<div className="viz-hint"><BookOpen size={32}/><p>{spec.explanation}</p></div>:view==='Text'?<div className="viz-text-state"><h3>{step?.title}</h3><p>{step?.explanation}</p><p>Nodes: {state.nodes.map(n=>`${n.label||n.id}: ${n.value} (${n.state})`).join(' · ')}</p><p>Links: {state.edges.map(e=>`${e.from} ${e.directed?'→':'—'} ${e.to}${e.weight!==undefined?` (${e.weight})`:''}`).join(' · ')||'None'}</p></div>:view==='2D'?<Scene2D state={state} structure={spec.structure} onExplain={explainElement}/>:<SceneBoundary key={camera} fallback={<><p className="viz-help">3D unavailable. Showing the 2D view.</p><Scene2D state={state} structure={spec.structure} onExplain={explainElement}/></>}><Suspense fallback={<div className="viz-hint">Loading 3D workspace…</div>}><Scene3D state={state} structure={spec.structure} onExplain={explainElement} onUnavailable={()=>{setView("2D");setNotice("3D is unavailable. Switched to the 2D view.");}}/></Suspense></SceneBoundary>}
+    {!hint&&spec.supported&&view!=='Text'&&<div className="viz-overlay"><strong>{spec.title}</strong>{spec.steps.slice(Math.max(0,index-2),index+2).map((s,i)=><button key={s.id} onClick={()=>seek(spec.steps.indexOf(s))}><span className={spec.steps.indexOf(s)<=index?'done':''}>{spec.steps.indexOf(s)<index?<Check size={11}/>:Math.max(0,index-2)+i+1}</span>{s.title}</button>)}</div>}</div>
+    <div className="viz-controls"><button aria-label="Previous step" disabled={index===0||hint||!spec.supported} onClick={()=>seek(index-1)}><SkipBack size={17}/></button><button className="viz-primary" aria-label={playing?'Pause':'Play'} disabled={hint||!spec.supported} onClick={()=>{if(index===spec.steps.length-1)setIndex(0);setPlaying(p=>!p);}}>{playing?<Pause size={19}/>:<Play size={19}/>}</button><button aria-label="Next step" disabled={index===spec.steps.length-1||hint||!spec.supported} onClick={()=>seek(index+1)}><SkipForward size={17}/></button><div className="viz-play-label"><strong>Step {spec.steps.length?index+1:0} of {spec.steps.length}</strong><small>{hint?'Hint mode':step?.title}</small></div><input type="range" aria-label="Visualization timeline" min="0" max={Math.max(0,spec.steps.length-1)} value={index} disabled={hint||!spec.supported} onChange={e=>seek(Number(e.target.value))}/><select aria-label="Playback speed" value={speed} onChange={e=>setSpeed(Number(e.target.value))}>{[.5,1,1.5,2].map(n=><option key={n} value={n}>{n}x speed</option>)}</select><button onClick={()=>{seek(0);setCamera(n=>n+1);}}><RotateCcw size={14}/>Reset</button></div><div className="viz-legend"><span>● Active</span><span>● Comparing</span><span>● Visited</span><small>Drag to orbit · scroll to zoom · right-drag to pan</small></div>
+   </section>
+   <aside className="viz-explanations"><Card title="AI Explanation" icon={<Lightbulb/>}><p>{hint?spec.hint:mode==='Visualize Only'?'Explore the structure and timeline. Switch to Explain Solution for reasoning.':spec.explanation}</p>{!hidden&&<div className="viz-inline"><button onClick={()=>followup('Explain this step more simply.')}>Explain simpler</button><button onClick={()=>followup('Explain this step in more depth, including edge cases.')}>Explain deeper</button></div>}</Card><Card title="Current Step" icon={<Target/>} className="viz-current"><small>Step {spec.steps.length?index+1:0} of {spec.steps.length}</small><h3>{hint?'A hint to get started':step?.title||'Explanation available'}</h3><p>{hint?spec.hint:step?.explanation}</p></Card><div className="viz-mini-grid"><Card title="Complexity" icon={<ChartNoAxesColumnIncreasing/>}><p className="viz-metric">Time Complexity <b>{hint?'—':spec.complexity.time}</b></p><p className="viz-metric">Space Complexity <b>{hint?'—':spec.complexity.space}</b></p>{!hint&&<button onClick={()=>setWhy(w=>!w)}>Why?</button>}{why&&!hint&&<p>{spec.complexity.why}</p>}</Card><Card title="Operations" icon={<Settings2/>}><div className="viz-operations">{operations.map(op=><button key={op} disabled={busy} onClick={()=>{const text=`${op} on a ${spec.structure}. Use these values: ${JSON.stringify(spec.steps[0]?.beforeState.nodes.map(n=>n.value)||[])}. Explain all steps.`;setProblem(text);generate(text);}}>{op}</button>)}</div></Card></div></aside>
+  </div>
+  <div className="viz-bottom-grid"><Card title="Step-by-step reasoning" icon={<BookOpen/>}><div className="viz-reasoning">{hint?<p>{spec.hint}</p>:mode==="Visualize Only"?<p>Switch to Explain Solution to see the reasoning.</p>:spec.steps.map((s,i)=><button key={s.id} className={i===index?'active':''} onClick={()=>seek(i)}><span>{i<index?<Check size={13}/>:i+1}</span><div><strong>{s.title}</strong><small>{s.explanation}</small></div></button>)}</div></Card><Card title="Code snippet" icon={<Code2/>} className="viz-code-card"><div className="viz-code-tools"><select aria-label="Code language" value={language} onChange={e=>setLanguage(e.target.value as Language)}>{Object.entries(languages).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><button onClick={async()=>{try{await navigator.clipboard.writeText(spec.code);setCopied(true);setTimeout(()=>setCopied(false),1500);}catch{setNotice('Copy unavailable. Select the code to copy it manually.');}}} disabled={hint}><Copy size={13}/>{copied?'Copied':'Copy'}</button></div>{language!==spec.language&&<button className="viz-language-apply" disabled={busy} onClick={()=>generate(loadedProblem)}>Generate matching {languages[language]} code and steps</button>}{hidden?<p className="viz-help">Switch to Explain Solution to reveal code.</p>:<pre aria-label={`${languages[spec.language]} solution code`}>{spec.code.split('\n').map((line,i)=><div key={i} className={step?.codeLines.includes(i+1)?'active':''}><span>{i+1}</span><code>{line||' '}</code></div>)}</pre>}</Card><Card title="Practice this problem" icon={<Target/>}><p>Try this problem yourself, then revisit the steps.</p>{source&&<a className="viz-action-link" href={source} target="_blank" rel="noreferrer">Open original problem ↗</a>}<Link className="viz-action-link" to="/coding?view=all">Try Similar Problems <ArrowRight size={14}/></Link><label className="viz-notes">Learning notes<textarea value={notes} maxLength={3000} onChange={e=>setNotes(e.target.value)} placeholder="What did you learn?"/></label><button className="viz-primary" onClick={save}><Save size={14}/>Save to My Learning</button></Card><Card title="Suggested Questions" icon={<Sparkles/>}><div className="viz-suggestions">{spec.suggestions.map(s=><button key={s} disabled={busy} onClick={()=>{setProblem(s);generate(s);}}>{s}<ArrowRight size={13}/></button>)}</div></Card></div>
+  <section className="viz-followup viz-card"><h2><Sparkles size={18}/>Explain this step</h2><form onSubmit={e=>{e.preventDefault();followup();}}><input aria-label="Follow-up question" value={question} onChange={e=>setQuestion(e.target.value)} maxLength={2000} placeholder="Why do we update this pointer first?"/><button disabled={answerBusy||!question.trim()}>{answerBusy?'Thinking…':'Ask follow-up'}<ArrowRight size={15}/></button></form>{answer&&<div className="viz-answer"><ReactMarkdown>{answer}</ReactMarkdown></div>}</section>
+  {spec.structure==="array"&&!hint&&<CompareApproaches key={loadedProblem} values={spec.steps[0]?.beforeState.nodes.map(n=>n.value)||[]}/>}
+  {showSaved&&<div className="viz-modal-backdrop" onClick={()=>setShowSaved(false)}><section className="viz-modal" role="dialog" aria-modal="true" aria-label="Saved visualizations" onClick={e=>e.stopPropagation()} onKeyDown={e=>{if(e.key==='Escape')setShowSaved(false);}}><h2>My Learning<button autoFocus aria-label="Close saved visualizations" onClick={()=>setShowSaved(false)}><X size={19}/></button></h2><p>Saved on this device for your account.</p>{!saved.length&&<p>No saved visualizations yet.</p>}{saved.map(s=><div key={s.id}><button onClick={()=>{controller.current?.abort();controller.current=null;followController.current?.abort();followController.current=null;setBusy(false);setAnswerBusy(false);setSpec(validateSpecification(s.spec));setIndex(Math.max(0,Math.min(s.index,s.spec.steps.length-1)));setLanguage(s.spec.language);setLoadedProblem(s.problem);setProblem(s.problem);setNotes(s.notes);setSource(safePlatformUrl(s.source||''));setPlaying(false);setAnswer('');setShowSaved(false);setCamera(c=>c+1);}}>{s.spec.title}<small>Resume step {s.index+1} · {languages[s.spec.language]}</small></button><button aria-label={`Delete ${s.spec.title}`} onClick={()=>{try{const next=saved.filter(x=>x.id!==s.id);localStorage.setItem(key,JSON.stringify(next));setSaved(next);}catch{setNotice('Could not update browser storage.');}}}><X size={15}/></button></div>)}</section></div>}
+ </div>;
 }

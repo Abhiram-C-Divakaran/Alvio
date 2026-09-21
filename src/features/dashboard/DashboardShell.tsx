@@ -1,6 +1,7 @@
+import {algorithms as learningAlgorithms} from '../learn/algorithms/model';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, Network, BrainCircuit, PlaySquare, Box, UserRound, Trophy, Users, Star, Search, Flame, Shield, Bell, Menu, X, ArrowRight, TrendingUp as ChartIcon } from 'lucide-react';
+import { Home, Layers, Sparkles, Code2, BookOpen, Network, BrainCircuit, PlaySquare, Box, UserRound, Trophy, Users, Star, Search, Flame, Shield, Bell, Menu, X, ArrowRight, TrendingUp as ChartIcon } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore';
 import useProgressStore from '../../stores/useProgressStore';
 import { dashboardData, topicUrl } from './dashboardData';
@@ -23,6 +24,7 @@ export function DashboardHeader({ onMenu }: {
   onMenu: () => void;
 }) {
   const user = useAuthStore(s => s.user);
+  const learnSection=['/learn','/learn/data-structures','/learn/complexity','/learn/algorithms','/video-learning','/3d-visualizer','/algorithms-visualizer'].includes(useLocation().pathname);
   const aiSection=['/mock-interview','/ai-tutor','/learn/ai-visualizer'].includes(useLocation().pathname);
   const { progress, stats } = useProgressStore();
   const data = dashboardData(progress, stats);
@@ -48,7 +50,7 @@ export function DashboardHeader({ onMenu }: {
     <button className="ad-icon-button ad-menu-toggle" onClick={onMenu} aria-label="Open navigation">
       <Menu />
     </button>
-    {aiSection&&<><div className="ad-ai-brand"><Brand/></div><nav className="ad-global-ai" aria-label="Product sections"><Link to="/dashboard">Dashboard</Link><Link to="/learn">Learn</Link><Link to="/coding">Practice</Link><Link className="active" aria-current="page" to="/ai-tutor">AI Tools</Link></nav></>}<div className="ad-search-wrap">
+    {(aiSection||learnSection)&&<><div className="ad-ai-brand"><Brand/></div><nav className="ad-global-ai" aria-label="Product sections"><Link to="/dashboard">Dashboard</Link><Link className={learnSection?"active":""} aria-current={learnSection?"page":undefined} to="/learn">Learn</Link><Link to="/coding">Practice</Link><Link className={aiSection?"active":""} aria-current={aiSection?"page":undefined} to="/ai-tutor">AI Tools</Link></nav></>}<div className="ad-search-wrap">
       <form className="ad-search" onSubmit={e => {
         e.preventDefault(); if (query.trim()) {
           navigate(`/coding?topic=${encodeURIComponent(query.trim())}`);
@@ -97,10 +99,15 @@ export default function DashboardShell({ children }: {
   children: ReactNode;
 }) {
   const pathname = useLocation().pathname;
+  const algorithmProgress=useProgressStore(s=>s.progress);
+  const algorithmStats=useProgressStore(s=>s.stats);
+  const nextAlgorithm=learningAlgorithms.find(a=>!algorithmProgress?.topics.some(t=>t.topicId===a.id&&t.status==='completed'))||learningAlgorithms[0];
   const isProgress = pathname === '/progress';
   const isProfile = pathname === '/profile';
+  const isLearn=['/learn','/learn/data-structures','/learn/complexity','/learn/algorithms','/video-learning','/3d-visualizer','/algorithms-visualizer'].includes(pathname);
   const isAi = ['/mock-interview','/ai-tutor','/learn/ai-visualizer'].includes(pathname);
   const aiNavigation=[{label:'AI Visualizer',to:'/learn/ai-visualizer',Icon:Box},{label:'AI Tutor',to:'/ai-tutor',Icon:BrainCircuit},{label:'Mock Interview',to:'/mock-interview',Icon:UserRound}];
+  const learnNavigation=pathname==='/learn'?[{label:'Learning Map',to:'/learn',Icon:Sparkles},{label:'Lessons',to:'/learn/data-structures',Icon:BookOpen},{label:'Visual Lab',to:'/3d-visualizer',Icon:Box},{label:'Practice',to:'/coding',Icon:Code2},{label:'Complexity Lab',to:'/learn/complexity',Icon:ChartIcon}]:[{label:'Constellation',to:'/learn',Icon:Sparkles},{label:'Data Structures',to:'/learn/data-structures',Icon:Layers},{label:'Algorithms',to:'/learn/algorithms',Icon:Code2},{label:'3D Complexity',to:'/learn/complexity',Icon:ChartIcon},{label:'Video Lessons',to:'/video-learning',Icon:PlaySquare},{label:'3D Data Structures',to:'/3d-visualizer',Icon:Box},{label:'3D Algorithms',to:'/algorithms-visualizer',Icon:Box}];
   const pageNavigation = isProfile ? [navigation[0], {label:'My Progress',to:'/progress',Icon:ChartIcon}, {label:'My Profile',to:'/profile',Icon:UserRound}, ...navigation.slice(1)] : navigation;
   const [open, setOpen] = useState(false);
   const [community, setCommunity] = useState(false);
@@ -135,30 +142,31 @@ export default function DashboardShell({ children }: {
       }
     }; window.addEventListener('keydown', listener); return () => window.removeEventListener('keydown', listener);
   }, []);
-  return <div className={`academy-dashboard ${isProgress ? 'academy-progress' : ''} ${isAi ? 'academy-ai' : ''}`}>
+  return <div className={`academy-dashboard ${pathname==='/learn'?'academy-universe':pathname==='/learn/algorithms'?'academy-algorithms':pathname==='/video-learning'?'academy-video':['/3d-visualizer','/algorithms-visualizer'].includes(pathname)?'academy-structures':''} ${isLearn ? 'academy-learn' : ''} ${isProgress ? 'academy-progress' : ''} ${(isAi||isLearn) ? 'academy-ai' : ''}`}>
     <a className="ad-skip" href="#dashboard-content">Skip to content</a>{open && <button className="ad-nav-backdrop" onClick={() => setOpen(false)} aria-label="Close navigation" />}<aside inert={compact && !open} className={`ad-sidebar ${open ? 'open' : ''}`}>
       <Brand />
       <button className="ad-icon-button ad-close-nav" onClick={() => setOpen(false)} aria-label="Close navigation">
         <X size={18} />
       </button>
-      {isProfile && <small style={{display:"block",padding:"0 16px 12px",color:"#718099",fontSize:11}}>OVERVIEW</small>}<nav aria-label="Main navigation">{(isAi?[]:pageNavigation).map(({ label, to, Icon }, i) => <Link key={label} to={to} className={(isAi ? label === 'AI Tools' : isProfile ? to === '/profile' : i === 0) ? 'active' : ''} aria-current={(isAi ? label === 'AI Tools' : isProfile ? to === '/profile' : i === 0) ? 'page' : undefined} onClick={() => {
+      {isProfile && <small style={{display:"block",padding:"0 16px 12px",color:"#718099",fontSize:11}}>OVERVIEW</small>}<nav aria-label="Main navigation">{((isAi||isLearn)?[]:pageNavigation).map(({ label, to, Icon }, i) => <Link key={label} to={to} className={(isAi ? label === 'AI Tools' : isProfile ? to === '/profile' : i === 0) ? 'active' : ''} aria-current={(isAi ? label === 'AI Tools' : isProfile ? to === '/profile' : i === 0) ? 'page' : undefined} onClick={() => {
         setOpen(false); if (label === 'Achievements')
           document.getElementById('achievements')?.focus();
       }}>
-        <Icon size={19} />{label}</Link> )}{!isAi&&<button onClick={() => { setCommunity(true); setOpen(false); }}>
-          <Users size={19} />Community</button>}{isAi&&<div className="ad-ai-subnav"><small>AI TOOLS</small>{aiNavigation.map(({label,to,Icon})=><Link key={to} to={to} className={pathname===to?"active":""} aria-current={pathname===to?"page":undefined} onClick={()=>setOpen(false)}><Icon size={18}/>{label}</Link>)}</div>}
+        <Icon size={19} />{label}</Link> )}{!isAi&&!isLearn&&<button onClick={() => { setCommunity(true); setOpen(false); }}>
+          <Users size={19} />Community</button>}{(isAi||isLearn)&&<div className="ad-ai-subnav"><small>{isLearn?"LEARN":"AI TOOLS"}</small>{(isLearn?learnNavigation:aiNavigation).map(({label,to,Icon})=><Link key={to} to={to} className={pathname===to?"active":""} aria-current={pathname===to?"page":undefined} onClick={()=>setOpen(false)}><Icon size={18}/><span>{label}{['/learn/algorithms','/video-learning','/3d-visualizer','/algorithms-visualizer'].includes(pathname)&&<small className="al-nav-description">{({'Constellation':'Learning overview','Algorithms':'Learn & visualize','3D Complexity':'Interactive analysis','Video Lessons':'Visual learning','3D Data Structures':'Explore in 3D','3D Algorithms':'Step-by-step visuals'} as Record<string,string>)[label]}</small>}{pathname==='/learn'&&<small className="uv-nav-description">{({"Learning Map":"Explore your path",Lessons:"Structured learning","Visual Lab":"3D interactive labs",Practice:"Exercises & challenges","Complexity Lab":"Analyze & compare"} as Record<string,string>)[label]}</small>}</span>{isLearn&&label==="3D Complexity"&&<span className="ds-nav-badge">3D</span>}{isLearn&&label==="Video Lessons"&&<span className="ds-nav-badge ai">AI</span>}</Link>)}</div>}
       </nav>
-      <div className="ad-motivation">
+      {pathname==='/learn'&&<div className="uv-sidebar-topics"><small>TOPICS</small><Link to="/learn/data-structures"><i style={{background:'#24d6b0'}}/>Data Structures</Link><Link to="/learn/algorithms"><i style={{background:'#8651ff'}}/>Algorithms</Link><Link to="/ai-tutor?topic=system-design"><i style={{background:'#348cff'}}/>System Design</Link><Link to="/mock-interview"><i style={{background:'#ff9a42'}}/>Interview Prep</Link></div>}
+      <div className="ad-motivation">{['/3d-visualizer','/algorithms-visualizer'].includes(pathname)&&<Link className="st-side-cta" to="/ai-tutor" aria-label="Try AI Tutor"><img src="/learn/structures/motivation.png" alt="Turn Concepts Into Clarity. Interactive 3D visualizations powered by AI. Try AI Tutor."/></Link>}{pathname==='/video-learning'&&<Link className="vl-side-cta" to="/ai-tutor">Try AI Tutor →</Link>}{pathname==='/learn/algorithms'&&<Link className="al-side-continue" to={nextAlgorithm.lessonRoute}>Continue Learning →</Link>}
         <span>
           <Star size={17} fill="currentColor" />{isProfile ? "Keep growing!" : "Keep going!"}</span>
-        <p>{isAi ? <>“Practice today,<br/>perform tomorrow.”</> : isProfile ? <>“A better you<br />is a more capable<br />you.”</> : <>“Small consistent<br />steps lead to big<br />results.”</>}</p><cite>— Alvio Academy</cite>
+        <p>{pathname==='/video-learning'?<>Turn Concepts<br/>Into Clarity<br/><small>Beautiful visual lessons<br/>powered by AI.</small></>:pathname==='/learn' ? <>Build Smarter<br/>Go Further<br/><small>Interactive. Visual.<br/>Made for your growth.</small></> : pathname==='/learn/complexity' ? <>Learn Smarter<br/>Build Brighter<br/><small>Visualize. Understand.<br/>Master Computer Science.</small></> : isLearn ? <>“Small steps<br/>today, big results<br/>tomorrow.”</> : isAi ? <>“Practice today,<br/>perform tomorrow.”</> : isProfile ? <>“A better you<br />is a more capable<br />you.”</> : <>“Small consistent<br />steps lead to big<br />results.”</>}</p><cite>— Alvio Academy</cite>
         <svg viewBox="0 0 185 95" aria-hidden="true">
           <path d="m0 95 32-34 36 25L133 8l52 73v14Z" fill="#242060" />
           <path d="m70 95 63-87 52 73v14h-24l-28-39-33 39Z" fill="#6749ef" />
           <path d="m119 28 14-20 15 21-14-6Z" fill="#b29aff" />
         </svg>
       </div>
-      <footer>Alvio Academy<small>Learn. Practice. Build. Grow.</small>
+      <footer>{['/learn/algorithms','/video-learning','/3d-visualizer','/algorithms-visualizer'].includes(pathname)?<div className="al-side-progress"><span>Level {algorithmStats?.level||1}</span><span>{algorithmStats?.totalXp||0} / {algorithmStats?.nextLevelXp||1000} XP</span><progress max={algorithmStats?.nextLevelXp||1000} value={algorithmStats?.totalXp||0}/></div>:<>Alvio Academy<small>Learn. Practice. Build. Grow.</small></>}
       </footer>
     </aside>
     <div className="ad-workspace" inert={community || (compact && open)}>

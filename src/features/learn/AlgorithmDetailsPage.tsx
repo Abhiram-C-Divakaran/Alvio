@@ -1,12 +1,14 @@
+import SupplementalAlgorithmLesson from './algorithms/SupplementalAlgorithmLesson';
 import React from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import AlgorithmPageLayout from './components/AlgorithmPageLayout';
-import { ALGO_META } from '../workspace/AlgorithmsWorkspace';
-import type { AlgoType } from '../workspace/AlgorithmsWorkspace';
+import { ALGO_META } from './algorithms/metadata';
+import type { AlgoType } from './algorithms/metadata';
 
 export default function AlgorithmDetailsPage() {
   const { algo } = useParams<{ algo: string }>();
 
+  if (algo === 'heap-sort' || algo === 'rabin-karp') return <SupplementalAlgorithmLesson id={algo}/>;
   if (!algo || !ALGO_META[algo as AlgoType]) {
     return <Navigate to="/learn/algorithms" replace />;
   }
@@ -22,7 +24,7 @@ export default function AlgorithmDetailsPage() {
             <section className="space-y-4">
               <h2 className="text-3xl font-extrabold text-white">Understanding Bubble Sort</h2>
               <p className="text-[var(--color-text-secondary)] text-lg leading-relaxed">
-                Bubble Sort is one of the simplest comparison-based sorting algorithms. It gets its name because smaller or larger elements "bubble" to the top (end) of the list with each iteration. 
+                Bubble Sort is one of the simplest comparison-based sorting algorithms. It gets its name because smaller or larger elements "bubble" to the top (end) of the list with each iteration.
                 Although it is not highly efficient for large datasets, it is extremely valuable for educational purposes to understand the fundamentals of sorting logic, loops, and swaps.
               </p>
             </section>
@@ -36,15 +38,15 @@ export default function AlgorithmDetailsPage() {
                   {/* Item 1 */}
                   <rect x="0" y="0" width="50" height="50" rx="8" fill="#1e293b" stroke="#3b82f6" strokeWidth="2" />
                   <text x="25" y="30" fill="white" fontSize="16" fontWeight="bold" textAnchor="middle">14</text>
-                  
+
                   {/* Item 2 */}
                   <rect x="70" y="0" width="50" height="50" rx="8" fill="#1e293b" stroke="#3b82f6" strokeWidth="2" />
                   <text x="95" y="30" fill="white" fontSize="16" fontWeight="bold" textAnchor="middle">33</text>
-                  
+
                   {/* Item 3 (Comparing/Swapping) */}
                   <rect x="140" y="0" width="50" height="50" rx="8" fill="#f59e0b" fillOpacity="0.2" stroke="#f59e0b" strokeWidth="3" />
                   <text x="165" y="30" fill="white" fontSize="16" fontWeight="bold" textAnchor="middle">45</text>
-                  
+
                   {/* Item 4 (Comparing/Swapping) */}
                   <rect x="210" y="0" width="50" height="50" rx="8" fill="#f59e0b" fillOpacity="0.2" stroke="#f59e0b" strokeWidth="3" />
                   <text x="235" y="30" fill="white" fontSize="16" fontWeight="bold" textAnchor="middle">19</text>
@@ -93,7 +95,7 @@ export default function AlgorithmDetailsPage() {
             <section className="space-y-4">
               <h3 className="text-2xl font-bold text-white">Complexity & Optimization</h3>
               <p className="text-[var(--color-text-secondary)] leading-relaxed">
-                In the worst-case and average-case, Bubble Sort has a time complexity of <strong className="text-white font-mono">O(N²)</strong> because it uses nested loops to compare every element. 
+                In the worst-case and average-case, Bubble Sort has a time complexity of <strong className="text-white font-mono">O(N²)</strong> because it uses nested loops to compare every element.
                 However, it can be optimized by adding a boolean flag <code className="bg-slate-800 text-pink-400 px-1.5 py-0.5 rounded font-mono">swapped</code>. If a full pass completes without any swaps, the array is already sorted, allowing the algorithm to terminate early with a best-case time complexity of <strong className="text-white font-mono">O(N)</strong>.
               </p>
             </section>
@@ -106,7 +108,7 @@ export default function AlgorithmDetailsPage() {
             <section className="space-y-4">
               <h2 className="text-3xl font-extrabold text-white">Understanding Selection Sort</h2>
               <p className="text-[var(--color-text-secondary)] text-lg leading-relaxed">
-                Selection Sort is an intuitive, in-place sorting algorithm. It logically divides the input array into two parts: a sorted subarray built from left to right, and an unsorted subarray containing the rest of the elements. 
+                Selection Sort is an intuitive, in-place sorting algorithm. It logically divides the input array into two parts: a sorted subarray built from left to right, and an unsorted subarray containing the rest of the elements.
                 With each iteration, it finds the smallest element in the unsorted portion and moves it to the beginning of the unsorted list.
               </p>
             </section>
@@ -195,7 +197,7 @@ export default function AlgorithmDetailsPage() {
                   {/* Sorted left part */}
                   <rect x="0" y="0" width="50" height="50" rx="8" fill="#1e293b" stroke="#10b981" strokeWidth="2" />
                   <text x="25" y="30" fill="white" fontSize="16" fontWeight="bold" textAnchor="middle">12</text>
-                  
+
                   <rect x="70" y="0" width="50" height="50" rx="8" fill="#1e293b" stroke="#10b981" strokeWidth="2" />
                   <text x="95" y="30" fill="white" fontSize="16" fontWeight="bold" textAnchor="middle">35</text>
 
@@ -205,7 +207,7 @@ export default function AlgorithmDetailsPage() {
 
                   {/* Temporary Slot where key was */}
                   <rect x="140" y="0" width="50" height="50" rx="8" fill="#ef4444" fillOpacity="0.05" stroke="#ef4444" strokeWidth="1.5" strokeDasharray="3 3" />
-                  
+
                   {/* Key lifted above */}
                   <g transform="translate(210, -10)">
                     <rect x="0" y="0" width="50" height="50" rx="8" fill="#f59e0b" fillOpacity="0.2" stroke="#f59e0b" strokeWidth="2.5" />
@@ -375,7 +377,7 @@ export default function AlgorithmDetailsPage() {
                   {/* Smaller Elements (Blue) */}
                   <rect x="0" y="10" width="40" height="40" rx="6" fill="#3b82f6" fillOpacity="0.2" stroke="#3b82f6" strokeWidth="2" />
                   <text x="20" y="34" fill="white" fontSize="14" fontWeight="bold" textAnchor="middle">12</text>
-                  
+
                   <rect x="50" y="10" width="40" height="40" rx="6" fill="#3b82f6" fillOpacity="0.2" stroke="#3b82f6" strokeWidth="2" />
                   <text x="70" y="34" fill="white" fontSize="14" fontWeight="bold" textAnchor="middle">5</text>
                   <text x="45" y="-8" fill="#3b82f6" fontSize="10" fontWeight="bold" textAnchor="middle">Smaller</text>
@@ -388,7 +390,7 @@ export default function AlgorithmDetailsPage() {
                   {/* Greater Elements (Purple) */}
                   <rect x="220" y="10" width="40" height="40" rx="6" fill="#a855f7" fillOpacity="0.2" stroke="#a855f7" strokeWidth="2" />
                   <text x="240" y="34" fill="white" fontSize="14" fontWeight="bold" textAnchor="middle">33</text>
-                  
+
                   <rect x="270" y="10" width="40" height="40" rx="6" fill="#a855f7" fillOpacity="0.2" stroke="#a855f7" strokeWidth="2" />
                   <text x="290" y="34" fill="white" fontSize="14" fontWeight="bold" textAnchor="middle">24</text>
                   <text x="275" y="-8" fill="#a855f7" fontSize="10" fontWeight="bold" textAnchor="middle">Greater</text>
@@ -452,7 +454,7 @@ export default function AlgorithmDetailsPage() {
                   <rect x="140" y="0" width="50" height="50" rx="8" fill="#ec4899" fillOpacity="0.1" stroke="#ec4899" strokeWidth="3" />
                   <text x="165" y="30" fill="white" fontSize="16" fontWeight="bold" textAnchor="middle">24</text>
                   <text x="165" y="65" fill="#ec4899" fontSize="10" fontWeight="bold" textAnchor="middle">Comparing</text>
-                  
+
                   {/* Target Match pointer */}
                   <text x="165" y="-12" fill="#ec4899" fontSize="10" fontWeight="bold" textAnchor="middle">MATCH? (24 == 24)</text>
 

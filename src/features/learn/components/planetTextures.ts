@@ -51,7 +51,7 @@ export function createCoronaTexture(): THREE.CanvasTexture {
 
 // 8-15% organic, cloudy/marbled procedural surface variations tailored per topic
 export function createPlanetTexture(
-  type: string,
+  _type: string,
   baseColorHex: string,
   secondaryColorHex: string
 ): THREE.CanvasTexture {

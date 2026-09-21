@@ -1,3 +1,4 @@
+import useReducedMotion from '../visualizer/useReducedMotion';
 import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { RoundedBox, Text, Billboard } from '@react-three/drei';
@@ -14,6 +15,7 @@ interface AlgoTile3DProps {
 
 function AlgoTile3D({ val, xTarget, yTarget, color, isActive, speed = 1 }: AlgoTile3DProps) {
   const ref = useRef<THREE.Group>(null);
+  const reducedMotion=useReducedMotion();
 
   // Instantly place on mount so it doesn't animate from (0, 0, 0)
   useEffect(() => {
@@ -25,7 +27,7 @@ function AlgoTile3D({ val, xTarget, yTarget, color, isActive, speed = 1 }: AlgoT
   useFrame(() => {
     if (ref.current) {
       // Smoothly interpolate position towards target coordinates
-      const lerpFactor = 0.12 * speed;
+      const lerpFactor = reducedMotion ? 1 : 0.12 * speed;
       ref.current.position.x = THREE.MathUtils.lerp(ref.current.position.x, xTarget, lerpFactor);
       ref.current.position.y = THREE.MathUtils.lerp(ref.current.position.y, yTarget, lerpFactor);
     }
@@ -49,7 +51,7 @@ function AlgoTile3D({ val, xTarget, yTarget, color, isActive, speed = 1 }: AlgoT
           emissiveIntensity={isActive ? 0.5 : 0}
         />
       </RoundedBox>
-      
+
       {/* Platform under each item */}
       <mesh position={[0, -0.65, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.5, 0.7, 32]} />
@@ -81,6 +83,7 @@ interface Algorithms3DProps {
 
 export default function Algorithms3D({ step, algoType, speed = 1 }: Algorithms3DProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const reducedMotion=useReducedMotion();
 
   const array = step ? step.array : [];
   const comparing = step ? step.comparing : [];
@@ -101,7 +104,7 @@ export default function Algorithms3D({ step, algoType, speed = 1 }: Algorithms3D
   // Slowly animate the entire array group for a dynamic floating effect
   useFrame((state) => {
     if (groupRef.current) {
-      groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 1.5) * 0.1;
+      groupRef.current.position.y = reducedMotion ? 0 : Math.sin(state.clock.elapsedTime * 1.5) * 0.1;
     }
   });
 
@@ -114,11 +117,11 @@ export default function Algorithms3D({ step, algoType, speed = 1 }: Algorithms3D
           const count = seenCount.get(val) || 0;
           seenCount.set(val, count + 1);
           const uniqueKey = `${val}-${count}`;
-          
+
           const isSearching = algoType === 'linear-search' || algoType === 'binary-search';
           let color = isSearching ? '#ec4899' : '#3b82f6'; // pink for searching, blue for sorting
           let isActive = false;
-          
+
           if (sorted.includes(i) || foundIndex === i) {
             color = '#10b981'; // green for sorted/found
             isActive = true;

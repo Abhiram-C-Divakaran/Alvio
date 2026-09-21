@@ -1,317 +1,44 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { PlayCircle, MonitorPlay, CheckCircle2, Play, BookOpen, Sparkles, Activity } from 'lucide-react';
-import Card from '../../components/ui/Card';
-import Badge from '../../components/ui/Badge';
-import VisualizerPage from "../visualizer/VisualizerPage";
-import AlgorithmsWorkspace from "../workspace/AlgorithmsWorkspace";
-import type { AlgoType } from "../workspace/AlgorithmsWorkspace";
-
-import makeItASecVideo from '../../assets/ll.mp4';
-import queueVideo from '../../assets/PixVerse_V6_Image_Text_540P_make_a_game_like_v.mp4';
-import binaryTreeVideo from '../../assets/bt.mp4';
-import arr from '../../assets/i_want_the_video_to_explain_ab.mp4';
-import ss from '../../assets/create_a_video_explaining_abou.mp4';
-import hash from '../../assets/hash.mp4';
-import heapVideo from '../../assets/WhatsApp Video 2026-07-22 at 10.44.31 AM.mp4';
-
-interface VideoLesson {
-  id: string;
-  title: string;
-  duration: string;
-  description: string;
-  completed: boolean;
-  videoUrl?: string;
-  videoType?: 'youtube' | 'mp4';
-  type?: 'ds' | 'algo' | 'video';
-  target?: string;
-  transcript: string[];
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {Link,useSearchParams} from 'react-router-dom';
+import {BookOpen,Video,Clock,FileText,NotebookPen,Code2,Box,Sparkles,Download,ArrowRight,CheckCircle2,Circle,Copy,Plus,Trash2} from 'lucide-react';
+import useAuthStore from '../../stores/useAuthStore';
+import useProgressStore from '../../stores/useProgressStore';
+import type {VideoLessonProgress} from '../../types/user';
+import {useTutor} from '../ai-tutor/useTutor';
+import TutorMarkdown from '../ai-tutor/TutorMarkdown';
+import {StructurePreview} from '../learn/catalog/StructurePreview';
+import {lessons,topicIds,topicNames,formatTime} from './lessons';
+import {languages,codeExample,type ExampleLanguage} from './examples';
+import VideoLessonPlayer from './VideoLessonPlayer';
+import './video-learning.css';
+const tabs=[['Transcript',FileText],['Notes',NotebookPen],['Code Examples',Code2],['Resources',Box],['Ask AI',Sparkles]] as const;
+function download(name:string,text:string){const url=URL.createObjectURL(new Blob([text],{type:'text/plain'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+export default function VideoLearningPage(){
+ const [params,setParams]=useSearchParams();const lesson=lessons.find(l=>l.id===params.get('lesson'))||lessons[0];const index=lessons.indexOf(lesson);const next=lessons[index+1];
+ const owner=useAuthStore(s=>s.user?.id||'guest'),raw=useProgressStore(s=>s.progress),saveLesson=useProgressStore(s=>s.saveVideoLesson);const records=raw?.userId===owner?raw.videoLessons||{}:{};const saved=records[lesson.id];
+ const [syllabusOpen,setSyllabusOpen]=useState(false);const video=useRef<HTMLVideoElement>(null);const [time,setTime]=useState(0),[durations,setDurations]=useState<Record<string,number>>({}),[tab,setTab]=useState('Transcript'),[language,setLanguage]=useState<ExampleLanguage>('Python'),[question,setQuestion]=useState(''),[notice,setNotice]=useState('');const tutor=useTutor();
+ const save=useCallback((patch:Partial<VideoLessonProgress>)=>{void saveLesson(lesson.id,patch,owner,topicIds[lesson.id])},[lesson.id,owner,saveLesson]);
+ useEffect(()=>{setTime(0);setNotice('')},[lesson.id]);
+ useEffect(()=>{const videos=lessons.map(l=>{const v=document.createElement('video');v.preload='metadata';v.onloadedmetadata=()=>setDurations(d=>({...d,[l.id]:v.duration}));v.src=l.videoUrl;return v});return()=>videos.forEach(v=>{v.onloadedmetadata=null;v.removeAttribute('src');v.load()})},[]);
+ const completed=lessons.filter(l=>records[l.id]?.completed).length;const percent=Math.round(completed/lessons.length*100);const duration=durations[lesson.id]||saved?.duration||0;const transcript=lesson.transcript||[];const activeSegment=transcript.filter(t=>t.time<=time).at(-1);const notes=saved?.notes||[];
+ function select(id:string){video.current?.pause();setParams({lesson:id});setTab('Transcript')}
+ function seek(n:number){if(video.current)video.current.currentTime=Math.min(n,video.current.duration||n)}
+ function ask(text=question){if(!text.trim()||tutor.busy)return;setTab('Ask AI');setQuestion('');tutor.send(`Lesson: ${lesson.title}. Topic: ${topicNames[lesson.id]}. Playback position: ${formatTime(time)}. ${activeSegment?'Current transcript: '+activeSegment.text:'Lesson summary: '+lesson.summary.join(' ')}\n\nStudent question: ${text.trim()}`)}
+ return <div className="vl-page"><div className="vl-main"><header className="vl-heading"><nav aria-label="Breadcrumb"><Link to="/learn">Learn</Link><span>›</span><Link to="/video-learning">Video Lessons</Link><span>›</span><Link to={`/learn/${topicIds[lesson.id]}`}>{topicNames[lesson.id]}</Link><span>›</span><span>{lesson.title}</span></nav><div className="vl-title"><span><Video/></span><div><h1>{lesson.title}</h1><p>{lesson.description}</p><div className="vl-badges"><span>{topicNames[lesson.id]}</span><span className="green">{['arrays','linked-lists','queues'].includes(lesson.id)?'Beginner':'Intermediate'}</span><span><Clock size={11}/>{duration?formatTime(duration):'Loading duration…'}</span><span><Video size={11}/>Video Lesson</span></div></div></div><div className="vl-heading-art" aria-hidden="true"><StructurePreview type={topicIds[lesson.id]} color="#5148d9" title=""/></div></header>
+ <VideoLessonPlayer key={`${owner}-${lesson.id}`} lesson={lesson} saved={saved} videoRef={video} onSave={save} onTime={setTime} onDuration={n=>setDurations(d=>({...d,[lesson.id]:n}))}/>
+ {(saved?.position||0)>0&&!saved?.completed&&<p className="vl-resume">Resuming your lesson from {formatTime(saved!.position)}.</p>}
+ <div className="vl-tabs" role="tablist" aria-label="Lesson tools">{tabs.map(([name,Icon],i)=><button role="tab" key={name} id={`vl-tab-${i}`} aria-controls="vl-tab-panel" aria-selected={tab===name} tabIndex={tab===name?0:-1} onClick={()=>setTab(name)} onKeyDown={e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const n=e.key==='Home'?0:e.key==='End'?4:(i+(e.key==='ArrowRight'?1:4))%5;setTab(tabs[n][0]);document.getElementById(`vl-tab-${n}`)?.focus()}}}><Icon size={16}/>{name}</button>)}</div>
+ <section className="vl-panel vl-tools" role="tabpanel" id="vl-tab-panel" aria-labelledby={`vl-tab-${tabs.findIndex(t=>t[0]===tab)}`}>
+ {tab==='Transcript'&&<><header><h2><FileText/>Lesson Transcript</h2>{transcript.length>0&&<button onClick={()=>download(`${lesson.id}-transcript.txt`,transcript.map(t=>formatTime(t.time)+' '+t.text).join('\n'))}><Download size={14}/>Download</button>}</header>{transcript.length?transcript.map((t,i)=><div key={i} className={`vl-transcript-line ${activeSegment===t?'active':''}`}><button onClick={()=>seek(t.time)}>{formatTime(t.time)}</button><p>{t.text}</p></div>):<><p className="vl-muted">Transcript is being prepared. Check back shortly.</p><h3>Lesson summary</h3><div className="vl-summary">{lesson.summary.map((s,i)=><p key={s}><span>{i+1}</span>{s}</p>)}</div></>}</>}
+ {tab==='Notes'&&<><header><h2><NotebookPen/>My Notes</h2><button onClick={()=>save({notes:[...notes,{id:crypto.randomUUID(),time,text:'',createdAt:new Date().toISOString()}]})}><Plus size={14}/>Add Note</button></header><p className="vl-muted">Notes save automatically on this device.</p>{!notes.length&&<p>Add a note to remember an idea or question.</p>}{notes.map(n=><div className="vl-note" key={n.id}><button onClick={()=>seek(n.time)}>{formatTime(n.time)}</button><textarea aria-label={`Note at ${formatTime(n.time)}`} value={n.text} onChange={e=>save({notes:notes.map(item=>item.id===n.id?{...item,text:e.target.value}:item)})}/><button aria-label="Delete note" onClick={()=>save({notes:notes.filter(item=>item.id!==n.id)})}><Trash2 size={15}/></button></div>)}</>}
+ {tab==='Code Examples'&&<><header><h2><Code2/>Code Examples</h2><select aria-label="Code language" value={language} onChange={e=>setLanguage(e.target.value as ExampleLanguage)}>{languages.map(l=><option key={l}>{l}</option>)}</select><button onClick={()=>navigator.clipboard.writeText(codeExample(lesson.id,language)).then(()=>setNotice('Code copied.')).catch(()=>setNotice('Copy unavailable. Select the code to copy it.'))}><Copy size={14}/>Copy</button></header><pre>{codeExample(lesson.id,language)}</pre><Link className="vl-resource" to="/workspace?tab=code" state={{lessonCode:codeExample(lesson.id,language),lessonLanguage:({'Python':'python','JavaScript':'javascript','Java':'java','C++':'cpp'} as const)[language]}}>Open in Playground <ArrowRight size={15}/></Link></>}
+ {tab==='Resources'&&<><header><h2><Box/>Lesson Resources</h2></header><button className="vl-resource" onClick={()=>download(`${lesson.id}-summary.txt`,lesson.title+'\n\n'+lesson.summary.join('\n\n')+'\n\n'+codeExample(lesson.id,'Python'))}>Download summary & example <Download size={15}/></button><Link className="vl-resource" to={`/learn/${topicIds[lesson.id]}`}>Further reading: {topicNames[lesson.id]} <BookOpen size={15}/></Link><Link className="vl-resource" to={`/3d-visualizer?ds=${encodeURIComponent(({arrays:'Array','linked-lists':'Linked List',queues:'Queue','binary-tree':'Binary Tree',hash:'Hash Table',heap:'Heap'} as Record<string,string>)[lesson.id])}`}>Related visualization <Box size={15}/></Link><Link className="vl-resource" to={`/coding?topic=${encodeURIComponent(lesson.id==='hash'?'Hash':topicNames[lesson.id])}`}>Practice problems <Code2 size={15}/></Link></>}
+ {tab==='Ask AI'&&<><header><h2><Sparkles/>Ask Alvio AI Tutor</h2><Link to="/ai-tutor">Open AI Tutor →</Link></header><div className="vl-ai-prompts">{['Explain this more simply.','Give me an example in Python.','Quiz me on this topic.'].map(q=><button key={q} disabled={tutor.busy} onClick={()=>ask(q)}>{q}</button>)}</div><div className="vl-ai-messages">{tutor.chat.messages.map(m=><div key={m.id} className={m.role}><strong>{m.role==='user'?'You':'Alvio AI'}</strong><TutorMarkdown text={m.role==='user'?m.content.split('Student question: ')[1]||m.content:m.content}/></div>)}</div>{tutor.busy&&<p role="status">Thinking… <button onClick={tutor.stop}>Stop</button></p>}{tutor.error&&<p role="alert">AI assistance is temporarily unavailable. Your video lesson is still available. <button onClick={tutor.retry}>Retry</button></p>}</>}
+ <form className="vl-question" onSubmit={e=>{e.preventDefault();ask()}}><Sparkles size={18}/><input aria-label="Ask a question about this lesson" placeholder="Ask a question about this lesson…" value={question} onChange={e=>setQuestion(e.target.value)}/><button aria-label="Send lesson question" disabled={!question.trim()||tutor.busy}><ArrowRight size={20}/></button></form>{notice&&<p role="status">{notice}</p>}
+ </section></div>
+ <aside className="vl-sidebar"><section className="vl-panel vl-progress"><h2>Lesson Progress</h2><div><div className="vl-ring" style={{background:`conic-gradient(#05ceb4 ${percent}%,#102953 0)`}}><strong>{completed}/{lessons.length}</strong></div><div><p>{completed} of {lessons.length} lessons completed</p><div className="vl-progress-bar"><progress max="100" value={percent}/><span>{percent}%</span></div><button disabled={saved?.completed} onClick={()=>save({completed:true})}>{saved?.completed?'Completed':'Mark as Complete'}<CheckCircle2 size={16}/></button></div></div>{duration>0&&(saved?.watchedSeconds.length||0)/duration>=.9&&!saved?.completed&&<p className="vl-completion-hint">You’ve watched most of this lesson. Ready to mark it complete?</p>}</section>
+ <section className={`vl-panel vl-syllabus ${syllabusOpen?'':'is-collapsed'}`}><h2>Syllabus <button className="vl-syllabus-toggle" aria-expanded={syllabusOpen} onClick={()=>setSyllabusOpen(v=>!v)}>{syllabusOpen?'Hide lessons':'Show lessons'}</button></h2>{lessons.map((l,i)=><button key={l.id} aria-current={l.id===lesson.id?'step':undefined} onClick={()=>select(l.id)}><span className="vl-number">{i+1}</span><span className="vl-thumbnail"><StructurePreview type={topicIds[l.id]} color="#448dff" title=""/></span><span><strong>{l.title}</strong><small><Clock size={11}/>{durations[l.id]?formatTime(durations[l.id]):'Loading…'}</small></span>{records[l.id]?.completed?<CheckCircle2 className="complete" size={20} aria-label="Completed"/>:<Circle size={20} aria-label="Available"/>}</button>)}</section>
+ {next&&<button className="vl-panel vl-next" onClick={()=>select(next.id)}><h2>Next Lesson <ArrowRight size={15}/></h2><div><span className="vl-thumbnail"><StructurePreview type={topicIds[next.id]} color="#5f79ff" title=""/></span><span><strong>{next.title}</strong><small>{next.description}</small><small><Clock size={12}/>{durations[next.id]?formatTime(durations[next.id]):'Loading…'}</small></span><i><ArrowRight size={22}/></i></div></button>}
+ </aside></div>;
 }
 
-const lessons: VideoLesson[] = [
-  {
-    id: 'arrays',
-    title: 'Understanding Arrays',
-    duration: '00:10',
-    description: 'Learn array structure, indexes, and layout.',
-    completed: true,
-    videoUrl: arr,
-    videoType: 'mp4',
-    type: 'video',
-    transcript: [
-      "An array is a collection of items stored at contiguous memory locations.",
-      "The idea is to store multiple items of the same type together.",
-      "This makes it easier to calculate the position of each element by simply adding an offset to a base value."
-    ]
-  },
-  {
-    id: 'linked-lists',
-    title: 'Linked List Operations',
-    duration: '00:10',
-    description: 'Pointers, Node links, and traversal.',
-    completed: false,
-    videoUrl: makeItASecVideo,
-    videoType: 'mp4',
-    type: 'video',
-    transcript: [
-      "Unlike arrays, linked lists do not store elements in contiguous memory.",
-      "Each element is a separate object called a Node, storing data and a next pointer."
-    ]
-  },
-  {
-    id: 'queues',
-    title: 'Queues',
-    duration: '00:10',
-    description: 'FIFO data transfer and rings.',
-    completed: false,
-    videoUrl: queueVideo,
-    videoType: 'mp4',
-    type: 'video',
-    transcript: [
-      "A Queue is a linear structure which follows First In First Out order.",
-      "Circular Queues wrap the tail back to index zero to maximize memory utilization."
-    ]
-  },
-  {
-    id: 'binary-tree',
-    title: 'Binary Tree',
-    duration: '00:10',
-    description: 'Binary Tree .',
-    completed: false,
-    videoUrl: binaryTreeVideo,
-    type: 'video',
-    transcript: [
-      "Binary Tree is a tree data structure in which each node has at most two children, referred to as the left child and the right child."
-    ]
-  },
-  {
-    id: 'hash',
-    title: 'Hash Map Explained',
-    duration: '00:10',
-    description: 'Explore Hashing',
-    completed: false,
-    videoUrl: hash,
-    videoType: 'mp4',
-    type: 'video',
-    transcript: [
-      "Hash maps, also known as hash tables or dictionaries, are one of the most important data structures used in computer science.",
-      "They provide a way to store and retrieve data using a key-value pair system.",
-      "The primary advantage of using a hash map is its average-case time complexity of O(1) for insertion, deletion, and search operations."
-    ]
-  },
-  {
-    id: 'heap',
-    title: 'Heap Data Structure',
-    duration: '00:10',
-    description: 'Understand Min-Heaps and Max-Heaps.',
-    completed: false,
-    videoUrl: heapVideo,
-    videoType: 'mp4',
-    type: 'video',
-    transcript: [
-      "A Heap is a special Tree-based data structure in which the tree is a complete binary tree.",
-      "In a Max-Heap, the root node key must be greatest among all keys present in the heap.",
-      "In a Min-Heap, the root node key must be minimum among all keys present in the heap."
-    ]
-  }
-];
-
-// Stagger Animation Variants
-const listVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.05
-    }
-  }
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 15 },
-  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } }
-};
-
-export default function VideoLearningPage() {
-  const [activeLessonId, setActiveLessonId] = useState(lessons[0].id);
-  const [isPlaying, setIsPlaying] = useState(true);
-
-  const activeLesson = lessons.find(l => l.id === activeLessonId) || lessons[0];
-  const completedCount = lessons.filter(l => l.completed).length;
-
-  return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-transparent text-[var(--color-text-primary)]">
-
-      {/* Premium Header Panel */}
-      <div className="flex-shrink-0 px-8 py-6 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-glass)] backdrop-blur-md z-10 relative overflow-hidden">
-        {/* Soft elegant neon glow */}
-        <div className="absolute top-0 left-10 w-96 h-20 bg-[var(--color-accent-primary)] opacity-10 rounded-full blur-[80px] pointer-events-none" />
-
-        <div className="max-w-7xl mx-auto flex items-center justify-between relative z-10">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-[var(--color-bg-hover)] border border-[var(--color-border-default)] text-[var(--color-text-accent)] shadow-[var(--shadow-glow)]">
-              <MonitorPlay size={22} className="animate-pulse" />
-            </div>
-            <div>
-              <h1 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                Personalized Syllabus <Sparkles size={16} className="text-[var(--color-accent-primary)]" />
-              </h1>
-              <p className="text-xs font-semibold text-[var(--color-text-secondary)] mt-0.5">
-                Learn data structures and algorithms from your personalized AI tutor.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Badge variant="success" className="px-3.5 py-1.5 flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px]">
-              <CheckCircle2 size={12} /> {completedCount} / {lessons.length} Completed
-            </Badge>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-6 md:p-8">
-        <div className="max-w-7xl mx-auto grid lg:grid-cols-[1fr_360px] gap-8 items-start">
-
-          {/* Main Visualizer/Video Content Column */}
-          <div className="flex flex-col gap-6">
-
-            {/* Premium Interactive Player Frame */}
-            <div className="w-full aspect-video rounded-3xl overflow-hidden relative border border-[var(--color-border-default)] bg-black/40 shadow-2xl flex flex-col group">
-              {activeLesson.type === 'ds' ? (
-                <div className="w-full h-full">
-                  <VisualizerPage initialDs={activeLesson.target} hideUI={false} />
-                </div>
-              ) : activeLesson.type === 'algo' ? (
-                <div className="w-full h-full">
-                  <AlgorithmsWorkspace initialAlgo={activeLesson.target as AlgoType} immersive={true} hideSidebar={true} />
-                </div>
-              ) : (
-                activeLesson.videoType === 'mp4' ? (
-                  <video
-                    src={activeLesson.videoUrl}
-                    controls
-                    autoPlay
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <iframe
-                    src={activeLesson.videoUrl}
-                    title={activeLesson.title}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    className="w-full h-full border-0"
-                  ></iframe>
-                )
-              )}
-            </div>
-
-            {/* Transcript Card using design systems */}
-            <Card strong gradientBorder className="flex flex-col overflow-hidden shadow-2xl rounded-3xl">
-              <div className="p-5 border-b border-[var(--color-border-subtle)] flex items-center justify-between bg-white/[0.01]">
-                <div className="flex items-center gap-3">
-                  <BookOpen size={18} className="text-[var(--color-text-accent)]" />
-                  <h3 className="font-extrabold text-white tracking-tight text-sm">Lesson Transcript</h3>
-                </div>
-                <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-[var(--color-text-muted)]">
-                  <Activity size={10} className="text-[var(--color-success)] animate-pulse" /> Live transcript
-                </div>
-              </div>
-              <div className="p-5 space-y-4 max-h-60 overflow-y-auto font-medium text-[var(--color-text-secondary)]">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeLesson.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className="space-y-4"
-                  >
-                    {activeLesson.transcript.map((line, idx) => (
-                      <p key={idx} className="text-sm leading-relaxed">
-                        <span className="text-[10px] font-mono font-bold text-[var(--color-text-accent)] mr-3 bg-[var(--color-bg-hover)] border border-[var(--color-border-subtle)] px-2 py-0.5 rounded-md select-none">
-                          {`0${Math.floor(idx * 1.5)}:${(idx * 30 % 60).toString().padStart(2, '0')}`}
-                        </span>
-                        {line}
-                      </p>
-                    ))}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
-            </Card>
-
-          </div>
-
-          {/* Playlist Sidebar */}
-          <div className="flex flex-col gap-4">
-            <h3 className="text-xs font-black uppercase tracking-widest text-[var(--color-text-muted)] mb-1 px-1">Syllabus Progression</h3>
-
-            <motion.div
-              variants={listVariants}
-              initial="hidden"
-              animate="show"
-              className="space-y-3"
-            >
-              {lessons.map((lesson) => {
-                const isActive = lesson.id === activeLessonId;
-
-                return (
-                  <motion.button
-                    key={lesson.id}
-                    variants={itemVariants}
-                    onClick={() => {
-                      setActiveLessonId(lesson.id);
-                      setIsPlaying(true);
-                    }}
-                    whileHover={{ scale: 1.02, x: 4 }}
-                    whileTap={{ scale: 0.98 }}
-                    className={`w-full text-left p-4.5 rounded-2xl border transition-all ${isActive
-                      ? 'border-[var(--color-accent-primary)] bg-[var(--color-surface-glass-hover)] shadow-[var(--shadow-glow)]'
-                      : 'border-[var(--color-border-subtle)] bg-[var(--color-surface-glass)] hover:bg-[var(--color-surface-glass-hover)] hover:border-[var(--color-border-default)]'
-                      }`}
-                  >
-                    <div className="flex items-start gap-3.5">
-                      <div className={`mt-0.5 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-[var(--color-accent-primary)] text-white shadow-[0_0_10px_rgba(161,98,247,0.5)]'
-                        : lesson.completed ? 'bg-[var(--color-success-muted)] border border-[var(--color-success)] text-[var(--color-success)]'
-                          : 'bg-[var(--color-bg-hover)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
-                        }`}>
-                        {isActive ? <Play size={10} fill="currentColor" className="ml-0.5 animate-pulse" /> :
-                          lesson.completed ? <CheckCircle2 size={12} /> :
-                            <PlayCircle size={12} />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start gap-2">
-                          <h4 className="font-extrabold text-sm text-white line-clamp-1">
-                            {lesson.title}
-                          </h4>
-                          {lesson.type && (
-                            <span className="text-[8px] font-black uppercase tracking-wider text-[var(--color-text-accent)] bg-[var(--color-border-subtle)] px-1.5 py-0.5 rounded shrink-0">
-                              {lesson.type}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs line-clamp-2 leading-relaxed text-[var(--color-text-secondary)] font-medium mt-1">
-                          {lesson.description}
-                        </p>
-                        <div className="mt-3 flex items-center gap-2 text-[9px] font-mono font-bold text-[var(--color-text-muted)] tracking-wider">
-                          <span className="px-2 py-0.5 rounded border border-[var(--color-border-subtle)] bg-black/20">
-                            {lesson.duration}
-                          </span>
-                          {isActive && (
-                            <span className="px-2 py-0.5 rounded border border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary-light)] animate-pulse uppercase tracking-wider">
-                              NOW PLAYING
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </motion.button>
-                );
-              })}
-            </motion.div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  );
-}

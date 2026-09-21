@@ -355,8 +355,8 @@ export function insertValue(structure: DataStructure, rawValue: string, idx?: nu
         balanceFactor: 0
       };
 
-      const newNodes = [...structure.nodes, newNode];
-      
+      const newNodes = [...structure.nodes.map(n => ({ ...n })), newNode];
+
       // Heapify up
       let currIdx = newNodes.length - 1;
       const isMinHeap = structure.heapType === 'min';
@@ -516,7 +516,7 @@ export function deleteValue(structure: DataStructure, rawValue?: string, idx?: n
 
     case 'heap': {
       if (structure.nodes.length === 0) return structure;
-      
+
       let targetIdx = 0;
       if (idx !== undefined && idx >= 0 && idx < structure.nodes.length) {
         targetIdx = idx;
@@ -526,7 +526,7 @@ export function deleteValue(structure: DataStructure, rawValue?: string, idx?: n
 
       if (targetIdx === -1) return structure;
 
-      let newNodes = [...structure.nodes];
+      let newNodes = structure.nodes.map(n => ({ ...n }));
       if (newNodes.length === 1) {
         return { ...structure, root: null, nodes: [] };
       }
@@ -540,6 +540,14 @@ export function deleteValue(structure: DataStructure, rawValue?: string, idx?: n
       const size = newNodes.length;
       let curr = targetIdx;
       const isMinHeap = structure.heapType === 'min';
+      // A replacement at an arbitrary index can violate its parent, not only its children.
+      while (curr > 0 && curr < size) {
+        const parent = Math.floor((curr - 1) / 2);
+        const better = isMinHeap ? Number(newNodes[curr].value) < Number(newNodes[parent].value) : Number(newNodes[curr].value) > Number(newNodes[parent].value);
+        if (!better) break;
+        [newNodes[curr].value, newNodes[parent].value] = [newNodes[parent].value, newNodes[curr].value];
+        curr = parent;
+      }
 
       while (true) {
         let best = curr;

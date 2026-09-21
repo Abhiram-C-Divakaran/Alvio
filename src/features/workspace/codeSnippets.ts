@@ -1,6 +1,6 @@
 import type { DataStructureType } from '../../types/dataStructures';
 
-export const codeSnippets: Record<DataStructureType, Record<string, string>> = {
+export const codeSnippets: Record<DataStructureType | 'bubble-sort' | 'selection-sort' | 'insertion-sort' | 'merge-sort' | 'quick-sort' | 'linear-search' | 'binary-search', Record<string, string>> = {
   array: {
     python: `class Array:
     def __init__(self, capacity=8):
@@ -381,9 +381,9 @@ public:
     java: `class AVLNode {
     int value, height;
     AVLNode left, right;
-    AVLNode(int value) { 
-        this.value = value; 
-        this.height = 1; 
+    AVLNode(int value) {
+        this.value = value;
+        this.height = 1;
     }
 }`,
     cpp: `struct AVLNode {
@@ -458,7 +458,7 @@ public:
         this.buckets = Array.from({ length: size }, () => []);
     }
     _hash(key) {
-        return typeof key === 'number' ? key % this.size : 
+        return typeof key === 'number' ? key % this.size :
             key.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % this.size;
     }
     insert(key, value) {
@@ -917,8 +917,8 @@ function quickSort(arr, low = 0, high = arr.length - 1) {
 }`,
     java: `public class QuickSort {
     int partition(int arr[], int low, int high) {
-        int pivot = arr[high]; 
-        int i = (low-1); 
+        int pivot = arr[high];
+        int i = (low-1);
         for (int j = low; j < high; j++) {
             if (arr[j] <= pivot) {
                 i++;

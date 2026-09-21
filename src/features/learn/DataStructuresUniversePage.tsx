@@ -1,56 +1,17 @@
-import '../../configure3DText';
-import { useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import TopNavbar from './components/TopNavbar';
-import LearningSidebar from './components/LearningSidebar';
-import CurriculumUniverse, { type CurriculumUniverseHandle } from './components/CurriculumUniverse';
-import TopicDetailsPanel from './components/TopicDetailsPanel';
-import { curriculumData, type CurriculumTopic } from './data/curriculumData';
-import { RotateCw, X } from 'lucide-react';
-
-export default function DataStructuresUniversePage() {
-  const [selectedTopic, setSelectedTopic] = useState<CurriculumTopic>(curriculumData.find(t => t.id === 'linked-lists') || curriculumData[0]);
-  const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
-  const [menuOpen, setMenuOpen] = useState(false);
-  const universeRef = useRef<CurriculumUniverseHandle>(null);
-  return <div className="h-dvh flex flex-col overflow-hidden bg-[#050817] text-white">
-    <TopNavbar onToggleMenu={() => setMenuOpen(open => !open)} />
-    <div className="flex flex-1 min-h-0">
-      <div className="hidden lg:block shrink-0"><LearningSidebar /></div>
-      {menuOpen && <div className="fixed inset-0 z-[60] lg:hidden">
-        <button aria-label="Close learning menu" className="absolute inset-0 bg-black/70" onClick={() => setMenuOpen(false)} />
-        <div className="relative h-full w-[240px] max-w-[85vw]" onClick={event => { if ((event.target as HTMLElement).closest('a')) setMenuOpen(false); }}>
-          <LearningSidebar />
-          <button aria-label="Close learning menu" className="absolute right-2 top-2 p-2 bg-slate-900 rounded" onClick={() => setMenuOpen(false)}><X size={18} /></button>
-        </div>
-      </div>}
-      <main className="flex-1 min-w-0 overflow-y-auto p-4 md:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
-          <div><h1 className="text-2xl font-bold">Data Structures Universe</h1><p className="text-sm text-slate-400 mt-1">Master concepts. Visualize deeply. Code confidently.</p></div>
-          <div className="flex gap-2" aria-label="Learning view">
-            {(['map', 'list'] as const).map(mode => <button key={mode} aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)} className={`rounded-lg px-4 py-2 capitalize ${viewMode === mode ? 'bg-violet-600' : 'bg-white/5 hover:bg-white/10'}`}>{mode}</button>)}
-          </div>
-        </div>
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_330px] gap-5 items-start">
-          <section className="min-w-0">
-            {viewMode === 'map' ? <>
-              <div className="h-[50dvh] min-h-[320px] xl:h-[65dvh] rounded-2xl overflow-hidden border border-white/10">
-                <CurriculumUniverse ref={universeRef} selectedTopic={selectedTopic} onTopicSelect={setSelectedTopic} />
-              </div>
-              <div className="flex flex-wrap justify-between items-center gap-3 mt-3 text-xs text-slate-400">
-                <p>Drag to orbit · Scroll to zoom · Select a planet to explore</p>
-                <button onClick={() => universeRef.current?.resetView()} className="flex items-center gap-2 rounded-lg px-3 py-2 bg-white/5 hover:text-white"><RotateCw size={14} />Reset View</button>
-              </div>
-            </> : <div className="grid sm:grid-cols-2 gap-3">
-              {curriculumData.map(topic => <article key={topic.id} className={`rounded-xl border p-4 ${selectedTopic.id === topic.id ? 'border-violet-500 bg-violet-500/10' : 'border-white/10 bg-white/5'}`}>
-                <button onClick={() => setSelectedTopic(topic)} className="text-left w-full" aria-label={`View ${topic.name} details`}><h2 className="font-semibold text-lg">{topic.name}</h2><p className="text-sm text-slate-400 mt-2">{topic.description}</p></button>
-                <Link to={topic.path} className="inline-block mt-4 text-sm text-violet-300 hover:text-white">Open lesson →</Link>
-              </article>)}
-            </div>}
-          </section>
-          <aside className="min-w-0"><TopicDetailsPanel topic={selectedTopic} /></aside>
-        </div>
-      </main>
-    </div>
-  </div>;
-}
+import {lazy,Suspense,useEffect,useState} from 'react';
+import {Link} from 'react-router-dom';
+import {BookOpen,Box,ArrowRight,RotateCcw,Mouse,Check,Search} from 'lucide-react';
+import DashboardShell from '../dashboard/DashboardShell';
+import useProgressStore from '../../stores/useProgressStore';
+import useAuthStore from '../../stores/useAuthStore';
+import {topics} from './universe/model';
+import './catalog/data-structures.css';
+import './universe/universe.css';
+const Scene=lazy(()=>import('./universe/UniverseScene'));
+export default function DataStructuresUniversePage(){const raw=useProgressStore(s=>s.progress),user=useAuthStore(s=>s.user);const progress=raw&&(!user||raw.userId===user.id)?raw:null;const [selected,setSelected]=useState<string|null>('linked-lists'),[view,setView]=useState(()=>matchMedia('(max-width:700px)').matches?'list':'map'),[category,setCategory]=useState('All'),[query,setQuery]=useState(''),[reset,setReset]=useState(0),[details,setDetails]=useState(false),[reduced,setReduced]=useState(()=>matchMedia('(prefers-reduced-motion:reduce)').matches);
+useEffect(()=>{const media=matchMedia('(prefers-reduced-motion:reduce)');const update=()=>setReduced(media.matches);const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){setSelected(null);setDetails(false)}};media.addEventListener('change',update);window.addEventListener('keydown',key);return()=>{media.removeEventListener('change',update);window.removeEventListener('keydown',key)}},[]);
+const percents=Object.fromEntries(topics.map(t=>{const p=progress?.topics.find(p=>p.topicId===t.progressId);return [t.id,p?.status==='completed'?100:Math.min(100,Math.max(0,p?.completionPercent||0))]}));const matches=topics.filter(t=>(category==='All'||t.group===category||(category==='Advanced'&&t.category==='Advanced'))&&`${t.name} ${t.description} ${t.concepts.join(' ')}`.toLowerCase().includes(query.toLowerCase()));const topic=topics.find(t=>t.id===selected);const completed=topics.filter(t=>percents[t.id]===100).length;const percent=Math.round(completed/topics.length*100);const next=topics.find(t=>percents[t.id]<100)||topics[0];const missing=topic?.prerequisites.map(id=>topics.find(t=>t.id===id)).filter(t=>t&&percents[t.id]<100)||[];
+return <DashboardShell><main className="uv-page"><header className="uv-header"><div><small>LEARNING MAP</small><h1>Data Structures Universe</h1><p>Explore, connect, and master data structures through an interactive 3D universe.</p></div><div className="uv-switch">{['map','list'].map(v=><button key={v} aria-pressed={view===v} onClick={()=>setView(v)}>{v==='map'?'Map':'List'}</button>)}</div><Link className="uv-path" to="/learn/skill-tree"><BookOpen size={18}/>Learning Path <ArrowRight size={15}/></Link></header>
+<div className="uv-layout"><section className="uv-map" aria-label="Learning universe"><div className="uv-toolbar"><div>{['All','Linear','Non-Linear','Hashing','Advanced'].map(c=><button key={c} aria-pressed={category===c} onClick={()=>setCategory(c)}>{c}</button>)}</div><label><Search size={14}/><input aria-label="Search data structures" placeholder="Search data structures…" value={query} onChange={e=>setQuery(e.target.value)}/></label></div>{view==='map'?<div className="uv-scene"><Suspense fallback={<p>Loading learning universe…</p>}><Scene selected={selected} onSelect={id=>{setSelected(id);setDetails(false)}} matches={matches.map(t=>t.id)} progress={percents} reset={reset} reduced={reduced}/></Suspense></div>:<div className="uv-list"><div className="uv-list-head">Topic / Category <span>Progress · Lessons · Status</span></div>{matches.map(t=><button key={t.id} aria-pressed={selected===t.id} onClick={()=>setSelected(t.id)}><i style={{background:t.color}}/><div><strong>{t.name}</strong><small>{t.group} · {t.difficulty}</small></div><span>{percents[t.id]}% · {t.lessons} lessons<small>{percents[t.id]===100?'Completed':percents[t.id]>0?'In progress':'Not started'}</small></span></button>)}</div>}{!matches.length&&<p className="uv-no-results" role="status">No matching topics. Try “pointer”, “hash”, or “tree”.</p>}<footer><span><Mouse size={16}/>{view==='map'?'Drag to rotate · Scroll to zoom · Click a topic to explore':'Choose a topic to explore its lessons'}</span>{view==='map'&&<button onClick={()=>setReset(v=>v+1)}><RotateCcw size={16}/>Reset View</button>}</footer></section>
+<aside className="uv-details" aria-label="Topic details">{topic?<div key={topic.id}><header><span className="uv-mini-planet" style={{'--planet-color':topic.color} as React.CSSProperties}/><div><small>IN FOCUS</small><h2>{topic.name}</h2><p>{topic.group} Data Structure</p></div></header><p className="uv-description">{topic.description}</p><Link className="uv-primary" to={topic.path}>{percents[topic.id]>0?'Continue Learning':'Start Learning'} <ArrowRight size={16}/></Link><button className="uv-detail-button" aria-expanded={details} onClick={()=>setDetails(v=>!v)}><BookOpen size={16}/>View Details</button>{details&&<p className="uv-description">{topic.difficulty} · {topic.estimatedTime} · {percents[topic.id]}% complete. {topic.description}</p>}<div className="uv-stats"><span><BookOpen/>{topic.lessons}<small>Lessons</small></span><Link to="/3d-visualizer"><Box/>{topic.visualizations}<small>Visualizations</small></Link><Link to={`/coding?topic=${encodeURIComponent(topic.id==='hash-tables'?'Hash':topic.name)}`}>{topic.practiceProblems}<small>Practice Problems</small></Link></div>{missing.length>0&&<p className="uv-prereq">Recommended prerequisite: {missing.map(t=>t?.name).join(', ')}. You can explore freely.</p>}<h3>Key Concepts</h3><div className="uv-concepts">{topic.concepts.map(c=><Link key={c} to={topic.path}>{c}</Link>)}</div><h3>Related Topics</h3><div className="uv-related">{topics.filter(t=>t.id!==topic.id&&(t.prerequisites.includes(topic.id)||t.group===topic.group)).sort((a,b)=>Number(b.prerequisites.includes(topic.id))-Number(a.prerequisites.includes(topic.id))).slice(0,3).map(t=><button key={t.id} onClick={()=>setSelected(t.id)}><Box size={17}/>{t.name}<ArrowRight size={15}/></button>)}</div></div>:<p>Select a topic from the map or list to explore its lessons.</p>}</aside></div>
+<section className="uv-journey"><header><h2>Your Learning Journey</h2><Link to="/learn/skill-tree">View Full Path →</Link></header><div className="uv-journey-body"><div className="uv-progress-ring" style={{background:`conic-gradient(#348cff ${percent}%,#152744 0)`}}><strong>{percent}%</strong></div><p>{completed} of {topics.length} topics completed<small>Keep going! Every lesson moves you forward.</small></p><div className="uv-timeline">{[...topics].sort((a,b)=>['arrays','linked-lists','stacks','queues','trees','graphs','hash-tables'].indexOf(a.id)-['arrays','linked-lists','stacks','queues','trees','graphs','hash-tables'].indexOf(b.id)).map(t=><button key={t.id} onClick={()=>setSelected(t.id)} className={percents[t.id]===100?'complete':t.id===next.id?'current':''}><i>{percents[t.id]===100?<Check size={16}/>:t.id===next.id?'✦':'○'}</i>{t.name}</button>)}</div></div></section></main></DashboardShell>}

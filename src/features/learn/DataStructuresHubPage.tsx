@@ -1,90 +1,23 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import Card from '../../components/ui/Card';
-import { 
-  Rows3, 
-  Link2, 
-  Layers3, 
-  ArrowRightLeft, 
-  GitBranch, 
-  Network, 
-  Share2, 
-  Hash,
-  Sparkles
-} from 'lucide-react';
-import type { DataStructureType } from '../../types/dataStructures';
-import { structureMeta } from '../workspace/dataStructureOps';
+import {useEffect,useRef,useState} from 'react';
+import {Link} from 'react-router-dom';
+import {ArrowRight,Box,ChevronRight,Code2,PlayCircle,Search,Target,X} from 'lucide-react';
+import useProgressStore from '../../stores/useProgressStore';
+import useAuthStore from '../../stores/useAuthStore';
+import {browseStructures,recommendedStructure,topicPercent,type Category,type Sort,type StructureItem} from './catalog/structureCatalog';
 
-const dsItems: { type: DataStructureType; icon: React.ReactNode; path: string; difficulty: string }[] = [
-  { type: 'array', icon: <Rows3 size={24} />, path: '/learn/array', difficulty: 'Beginner' },
-  { type: 'linked-list', icon: <Link2 size={24} />, path: '/learn/linked-list', difficulty: 'Beginner' },
-  { type: 'stack', icon: <Layers3 size={24} />, path: '/learn/stack', difficulty: 'Beginner' },
-  { type: 'queue', icon: <ArrowRightLeft size={24} />, path: '/learn/queue', difficulty: 'Beginner' },
-  { type: 'binary-tree', icon: <GitBranch size={24} />, path: '/learn/binary-tree', difficulty: 'Intermediate' },
-  { type: 'avl-tree', icon: <Network size={24} />, path: '/learn/avl-tree', difficulty: 'Advanced' },
-  { type: 'graph', icon: <Share2 size={24} />, path: '/learn/graph', difficulty: 'Advanced' },
-  { type: 'hash-table', icon: <Hash size={24} />, path: '/learn/hash-table', difficulty: 'Intermediate' },
-  { type: 'heap', icon: <GitBranch size={24} />, path: '/learn/heap', difficulty: 'Intermediate' },
-];
-
-export default function DataStructuresHubPage() {
-  const getDifficultyColor = (diff: string) => {
-    switch (diff) {
-      case 'Beginner': return 'bg-green-500/10 text-green-400 border-green-500/20';
-      case 'Intermediate': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-      case 'Advanced': return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-      default: return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-    }
-  };
-
-  return (
-    <div className="w-full min-h-full bg-[var(--color-bg-primary)] p-4 md:p-8 lg:p-12 text-white overflow-y-auto">
-      <div className="max-w-[1200px] mx-auto space-y-12">
-        <header className="space-y-4">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
-            Data Structures
-          </h1>
-          <p className="text-[var(--color-text-secondary)] text-lg max-w-2xl">
-            Explore the fundamental building blocks of computer science. Learn how data is organized, stored, and retrieved through interactive 3D visualizations.
-          </p>
-        </header>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          <motion.div 
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0 }}
-            className="md:col-span-2 lg:col-span-3 xl:col-span-4"
-          >
-
-          </motion.div>
-
-          {dsItems.map((item, i) => (
-            <motion.div 
-              key={item.type}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-            >
-              <Link to={item.path} className="block group">
-                <div className="bg-[var(--color-surface-glass)] p-6 rounded-2xl border border-[var(--color-border-subtle)] hover:border-blue-500/50 transition-all h-full hover:-translate-y-1 shadow-sm">
-                  <div className="w-12 h-12 bg-blue-500/10 text-blue-400 rounded-xl flex items-center justify-center mb-6 group-hover:bg-blue-500 group-hover:text-white transition-colors">
-                    {item.icon}
-                  </div>
-                  <h3 className="text-xl font-bold text-white mb-2">{structureMeta[item.type].label}</h3>
-                  <p className="text-[var(--color-text-secondary)] text-sm mb-6 line-clamp-2">
-                    {structureMeta[item.type].description}
-                  </p>
-                  <div className={`inline-flex px-2.5 py-1 text-xs font-bold rounded-lg border ${getDifficultyColor(item.difficulty)}`}>
-                    {item.difficulty}
-                  </div>
-                </div>
-              </Link>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+import arrayVideo from '../../assets/i_want_the_video_to_explain_ab.mp4';
+import './catalog/data-structures.css';
+function StructureCard({item,percent,recommended}:{item:StructureItem;percent:number;recommended:boolean}){return <Link className="ds-topic-card" to={item.route} aria-label={`Open ${item.title} lesson`}><img className="ds-card-reference" src={`/learn/data-structures/${item.id}.png`} alt="" loading="lazy" width="1254" height="1254"/><h2>{item.title}</h2><p>{item.description}</p>{percent>0&&<div className="ds-topic-progress"><span style={{width:`${percent}%`}}/><small>{percent}% complete</small></div>}<footer><span className={`ds-difficulty ${item.difficulty.toLowerCase()}`}>{item.difficulty}</span>{recommended&&<small className="ds-recommended">Next</small>}<span className="ds-card-arrow" aria-hidden="true"><ArrowRight size={17}/></span></footer></Link>;}
+function Overview({onClose}:{onClose:()=>void}){const ref=useRef<HTMLDivElement>(null);useEffect(()=>{const previous=document.activeElement as HTMLElement|null;const fn=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();if(e.key==='Tab'){const controls=Array.from(ref.current?.querySelectorAll<HTMLElement>('button,a,video')||[]);const first=controls[0],last=controls.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}};document.addEventListener('keydown',fn);return()=>{document.removeEventListener('keydown',fn);previous?.focus();};},[onClose]);return <div className="ds-overview-backdrop" onClick={onClose}><div className="ds-overview" ref={ref} role="dialog" aria-modal="true" aria-label="Data Structures overview" onClick={e=>e.stopPropagation()}><button autoFocus aria-label="Close overview" className="ds-close" onClick={onClose}><X/></button><h2>Data Structures overview</h2><p>Choose how to organize data based on the operations you need. Arrays offer indexed access; linked lists connect nodes; stacks and queues control order; trees, heaps, graphs, and hash tables support different search and relationship patterns.</p><h3>A first look: arrays</h3><video controls preload="metadata" src={arrayVideo} aria-label="Understanding arrays video"/><p className="ds-transcript">An array stores elements in contiguous locations. An index identifies each element, making direct access efficient. Start here, then explore how other structures change the way data is stored and retrieved.</p><Link to="/learn/array" className="ds-primary">Open the Array lesson <ArrowRight size={17}/></Link></div></div>;}
+export default function DataStructuresHubPage(){
+ const rawProgress=useProgressStore(s=>s.progress),user=useAuthStore(s=>s.user);const progress=rawProgress&&(!user||rawProgress.userId===user.id)?rawProgress:null;
+ const [query,setQuery]=useState(''),[category,setCategory]=useState<Category>('All'),[sort,setSort]=useState<Sort>('Popular'),[overview,setOverview]=useState(false);
+ const items=browseStructures(query,category,sort,progress),recommended=recommendedStructure(progress),started=!!progress?.topics.some(t=>t.completionPercent>0);
+ return <div className="ds-catalog">
+  <header className="ds-hero"><img className="ds-hero-reference" src="/learn/data-structures/hero.png" alt="" width="2172" height="724"/><div className="ds-hero-copy"><nav aria-label="Breadcrumb"><Link to="/learn">Learn</Link><ChevronRight size={15}/><span>Data Structures</span></nav><h1>Data Structures</h1><h2>Visualize. Interact. Understand.</h2><p>Explore the fundamental building blocks of computer science. Learn how data is organized, stored, and retrieved through interactive 3D visualizations, code examples, and practice problems.</p><div className="ds-hero-actions"><Link to={recommended.route} className="ds-primary">Start Learning <ArrowRight size={18}/></Link><button onClick={()=>setOverview(true)}><PlayCircle size={18}/>Watch Overview</button></div></div><blockquote>“Data structures<br/>turn ideas into<br/>powerful programs.”<cite>— Alvio</cite></blockquote></header>
+  <div className="ds-toolbar"><label className="ds-search"><Search size={19}/><input aria-label="Search data structures" placeholder="Search a data structure (e.g. array, tree, graph...)" value={query} onChange={e=>setQuery(e.target.value)}/>{query&&<button aria-label="Clear search" onClick={()=>setQuery('')}><X size={15}/></button>}</label><div className="ds-filters" aria-label="Structure categories">{(['All','Linear','Non-Linear','Advanced'] as Category[]).map(c=><button key={c} aria-pressed={category===c} onClick={()=>setCategory(c)}>{c}</button>)}</div><label className="ds-sort"><span>Sort by:</span><select aria-label="Sort data structures" value={sort} onChange={e=>setSort(e.target.value as Sort)}>{(['Popular','Beginner First','Difficulty','Progress','A–Z'] as Sort[]).map(s=><option key={s}>{s}</option>)}</select></label></div>
+  <span className="ds-sr" role="status">{items.length} data structures</span><div className="ds-structure-grid">{items.map(item=><StructureCard key={item.id} item={item} percent={topicPercent(item,progress)} recommended={started&&recommended.id===item.id}/>)}</div>{!items.length&&<div className="ds-empty"><Search size={26}/><h2>No structures found</h2><p>Try “hashmap”, “priority queue”, or a broader topic.</p><button onClick={()=>{setQuery('');setCategory('All');}}>Clear search and filters</button></div>}
+  <section className="ds-feature-grid" aria-label="Learning tools"><Link to="/3d-visualizer" className="ds-feature blue"><span><Box/></span><div><h2>Interactive 3D Visualizations</h2><p>Rotate, zoom, and interact with data structures in real-time. See how operations work step by step.</p></div><ChevronRight/></Link><Link to="/learn/array#code-examples" className="ds-feature violet"><span><Code2/></span><div><h2>Code Examples</h2><p>Get clean implementations in multiple languages with explanations.</p></div><ChevronRight/></Link><Link to="/coding?view=all" className="ds-feature green"><span><Target/></span><div><h2>Practice Problems</h2><p>Reinforce your learning with curated problems from LeetCode, GFG and more.</p></div><ChevronRight/></Link></section>
+  {overview&&<Overview onClose={()=>setOverview(false)}/>}
+ </div>;
 }

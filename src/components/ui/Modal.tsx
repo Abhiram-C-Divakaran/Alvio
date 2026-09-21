@@ -1,7 +1,7 @@
 // ============================================================
 // Modal / Dialog Component
 // ============================================================
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 
@@ -19,20 +19,32 @@ interface ModalProps {
  * Automatically traps focus and closes on Escape.
  */
 export default function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg' }: ModalProps) {
+  const dialog = useRef<HTMLDivElement>(null);
   // Close on Escape key
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      if (e.key === 'Tab') {
+        const items = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],select,input,textarea,[tabindex="0"]') || []);
+        const first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
     };
+    const previous = document.activeElement as HTMLElement | null;
+    let frame = 0;
     if (open) {
+      frame = requestAnimationFrame(() => dialog.current?.querySelector<HTMLElement>('button')?.focus());
       document.addEventListener('keydown', handleKey);
       document.body.style.overflow = 'hidden';
     }
     return () => {
+      cancelAnimationFrame(frame);
+      if (open) previous?.focus();
       document.removeEventListener('keydown', handleKey);
       document.body.style.overflow = '';
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <AnimatePresence>
@@ -56,6 +68,10 @@ export default function Modal({ open, onClose, title, children, maxWidth = 'max-
 
           {/* Modal Content */}
           <motion.div
+            ref={dialog}
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
             className={`glass-card-strong relative w-full ${maxWidth} p-6`}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}

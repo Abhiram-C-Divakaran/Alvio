@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { createDefaultStructure, insertValue, deleteValue, searchValue } from '../../workspace/dataStructureOps';
 import Visualization3D from '../../workspace/Visualization3D';
 import Visualization2D from '../../workspace/Visualization2D';
@@ -34,6 +34,8 @@ export default function DataStructurePageLayout({
   content,
 }: DataStructurePageLayoutProps) {
   const navigate = useNavigate();
+  const {hash}=useLocation();
+  useEffect(()=>{if(!hash)return;const timer=requestAnimationFrame(()=>{const target=document.getElementById(hash.slice(1));target?.scrollIntoView({block:'start'});target?.focus({preventScroll:true});});return()=>cancelAnimationFrame(timer);},[hash]);
   const [structure, setStructure] = useState<DataStructure | null>(null);
   const [language, setLanguage] = useState<'python' | 'javascript' | 'java' | 'cpp'>('python');
   const [isVisualizerExpanded, setIsVisualizerExpanded] = useState(false);
@@ -46,12 +48,12 @@ export default function DataStructurePageLayout({
     if (!structure || !val) return;
     setStructure(insertValue(structure, val));
   };
-  
+
   const handleDelete = (val: string) => {
     if (!structure || !val) return;
     setStructure(deleteValue(structure, val));
   };
-  
+
   const handleSearch = (val: string) => {
     if (!structure || !val) return;
     setStructure(searchValue(structure, val));
@@ -89,9 +91,9 @@ export default function DataStructurePageLayout({
 
   return (
     <div className="w-full min-h-full bg-[var(--color-bg-primary)] p-4 md:p-8 lg:p-12 text-white font-sans overflow-y-auto selection:bg-blue-500/30">
-      
+
       <div className="max-w-[1000px] mx-auto space-y-16 pb-24">
-        
+
         {/* Header */}
         <header className="space-y-6 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-[var(--color-border-subtle)] pb-8 pt-8">
           <div className="space-y-4">
@@ -107,8 +109,8 @@ export default function DataStructurePageLayout({
               {description}
             </p>
           </div>
-          
-          <button 
+
+          <button
             onClick={() => navigate(`/3d-visualizer?ds=${encodeURIComponent(visualizerDsName)}`)}
             className="flex-shrink-0 flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-500/25 transition-all hover:scale-105"
           >
@@ -118,13 +120,13 @@ export default function DataStructurePageLayout({
         </header>
 
         {/* 2D Visualization (Big and Prominent) */}
-        <div className={`bg-[var(--color-surface-glass)] rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden flex flex-col shadow-xl ${isVisualizerExpanded ? 'fixed inset-4 z-50 shadow-2xl bg-[var(--color-bg-primary)] border-indigo-500/50' : 'h-[600px] w-full'}`}> 
+        <div className={`bg-[var(--color-surface-glass)] rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden flex flex-col shadow-xl ${isVisualizerExpanded ? 'fixed inset-4 z-50 shadow-2xl bg-[var(--color-bg-primary)] border-indigo-500/50' : 'h-[600px] w-full'}`}>
            <div className="border-b border-[var(--color-border-subtle)] bg-black/20 p-4 flex justify-between items-center">
             <h2 className="text-xl font-bold flex items-center gap-2 m-0">
               <Box className="text-blue-400" size={24} />
               Interactive {type === 'heap' ? '2D' : '3D'} Visualization
             </h2>
-            <button 
+            <button
               onClick={() => setIsVisualizerExpanded(!isVisualizerExpanded)}
               className="p-2 hover:bg-white/10 rounded-lg transition-colors text-[var(--color-text-secondary)] hover:text-white"
               title={isVisualizerExpanded ? "Minimize" : "Expand Fullscreen"}
@@ -134,9 +136,9 @@ export default function DataStructurePageLayout({
           </div>
           <div className="w-full flex-1 flex flex-col p-6 bg-[var(--color-bg-primary)] relative">
              <div className="flex justify-center mb-6">
-              <VisualizerToolbar 
-                onInsert={(val) => handleInsert(val)} 
-                onDelete={(val) => handleDelete(val)} 
+              <VisualizerToolbar
+                onInsert={(val) => handleInsert(val)}
+                onDelete={(val) => handleDelete(val)}
               />
             </div>
             <div className="flex-1 flex items-center justify-center overflow-hidden relative min-h-[400px]">
@@ -148,10 +150,10 @@ export default function DataStructurePageLayout({
             </div>
           </div>
         </div>
-        
+
         {/* Backdrop for expanded view */}
         {isVisualizerExpanded && (
-          <div 
+          <div
             className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md cursor-pointer"
             onClick={() => setIsVisualizerExpanded(false)}
           />
@@ -167,7 +169,7 @@ export default function DataStructurePageLayout({
           </div>
           <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
             {timeComplexities.access && (
-              <div 
+              <div
                 onClick={() => navigateToComplexity(timeComplexities.access)}
                 className="flex flex-col p-4 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] hover:border-blue-500 hover:scale-[1.03] transition-all cursor-pointer shadow-sm group"
               >
@@ -175,21 +177,21 @@ export default function DataStructurePageLayout({
                 <span className="font-mono font-bold text-white bg-blue-500/20 px-3 py-2 rounded-lg text-center text-lg group-hover:bg-blue-500/30">{timeComplexities.access}</span>
               </div>
             )}
-            <div 
+            <div
               onClick={() => navigateToComplexity(timeComplexities.search)}
               className="flex flex-col p-4 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] hover:border-blue-500 hover:scale-[1.03] transition-all cursor-pointer shadow-sm group"
             >
               <span className="font-semibold text-[var(--color-text-secondary)] mb-2 text-center text-sm uppercase tracking-wider group-hover:text-blue-300">Search</span>
               <span className="font-mono font-bold text-white bg-blue-500/20 px-3 py-2 rounded-lg text-center text-lg group-hover:bg-blue-500/30">{timeComplexities.search}</span>
             </div>
-            <div 
+            <div
               onClick={() => navigateToComplexity(timeComplexities.insert)}
               className="flex flex-col p-4 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] hover:border-blue-500 hover:scale-[1.03] transition-all cursor-pointer shadow-sm group"
             >
               <span className="font-semibold text-[var(--color-text-secondary)] mb-2 text-center text-sm uppercase tracking-wider group-hover:text-blue-300">Insertion</span>
               <span className="font-mono font-bold text-white bg-blue-500/20 px-3 py-2 rounded-lg text-center text-lg group-hover:bg-blue-500/30">{timeComplexities.insert}</span>
             </div>
-            <div 
+            <div
               onClick={() => navigateToComplexity(timeComplexities.delete)}
               className="flex flex-col p-4 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] hover:border-blue-500 hover:scale-[1.03] transition-all cursor-pointer shadow-sm group"
             >
@@ -207,22 +209,22 @@ export default function DataStructurePageLayout({
         </div>
 
         {/* Code Implementations */}
-        <section className="bg-[var(--color-surface-glass)] rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden shadow-xl">
+        <section id="code-examples" tabIndex={-1} className="bg-[var(--color-surface-glass)] rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden shadow-xl">
           <div className="border-b border-[var(--color-border-subtle)] bg-black/20 p-4">
             <h2 className="text-xl font-bold flex items-center gap-2 m-0">
               <Code2 className="text-indigo-400" size={24} />
               Implementation
             </h2>
           </div>
-          
+
           <div className="flex border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-tertiary)] overflow-x-auto custom-scrollbar">
             {(['python', 'javascript', 'java', 'cpp'] as const).map((lang) => (
               <button
                 key={lang}
                 onClick={() => setLanguage(lang)}
                 className={`px-8 py-4 text-sm font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${
-                  language === lang 
-                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5' 
+                  language === lang
+                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5'
                     : 'text-[var(--color-text-muted)] hover:text-white hover:bg-white/5'
                 }`}
               >
@@ -230,7 +232,7 @@ export default function DataStructurePageLayout({
               </button>
             ))}
           </div>
-          
+
           <div className="h-[500px]">
             <Editor
               height="100%"

@@ -1,9 +1,9 @@
 // ============================================================
 // Workspace Page — Data Structure Visualizer
 // ============================================================
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import Editor from '@monaco-editor/react';
@@ -48,20 +48,22 @@ const structureList: { type: DataStructureType; icon: React.ReactNode }[] = [
 export default function WorkspacePage() {
   const [searchParams] = useSearchParams();
   const currentTab = searchParams.get('tab');
+  const lessonDraft=useRef(useLocation().state as {lessonCode?:string;lessonLanguage?:'python'|'javascript'|'java'|'cpp'}|null);
 
   const { activeStructureType, setActiveStructure, structure, setStructure } = useVisualizationStore();
   const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
-  const [activeTab, setActiveTab] = useState<'viz' | 'code' | 'split'>('split');
+  const [activeTab, setActiveTab] = useState<'viz' | 'code' | 'split'>(currentTab==='code'?'code':'split');
   const [value, setValue] = useState('');
   const [isTutorialMode, setIsTutorialMode] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [language, setLanguage] = useState<'python' | 'javascript' | 'java' | 'cpp'>('python');
+  const [language, setLanguage] = useState<'python' | 'javascript' | 'java' | 'cpp'>(lessonDraft.current?.lessonLanguage||'python');
   const [editorCode, setEditorCode] = useState('');
 
   // Sync editor code whenever active tab, structure or language changes
   useEffect(() => {
     const snippet = codeSnippets[activeStructureType]?.[language] || codeSnippets[activeStructureType]?.['python'] || '';
-    setEditorCode(snippet);
+    setEditorCode(lessonDraft.current?.lessonCode||snippet);
+    lessonDraft.current=null;
   }, [activeStructureType, language]);
 
   // Seed a sample structure whenever the active type changes (or on first load)
@@ -83,18 +85,18 @@ export default function WorkspacePage() {
     setStructure(insertValue(structure, val));
     setValue('');
   };
-  
+
   const handleDelete = (val: string = value.trim()) => {
     if (!structure) return;
     setStructure(deleteValue(structure, val || undefined));
     setValue('');
   };
-  
+
   const handleSearch = (val: string = value.trim()) => {
     if (!structure || !val) return;
     setStructure(searchValue(structure, val));
   };
-  
+
   const handleReset = () => setStructure(createDefaultStructure(activeStructureType));
 
   const handleTutorialAction = (actionType: 'insert' | 'delete' | 'search', val: number) => {
@@ -114,7 +116,7 @@ export default function WorkspacePage() {
     'avl-tree': 'tree',
     'graph': 'graph'
   };
-  
+
   const activeScript = tutorialScripts[scriptIdMap[activeStructureType]];
 
   return (
@@ -185,10 +187,10 @@ export default function WorkspacePage() {
           style={{ borderColor: 'var(--color-border-subtle)' }}
         >
           <div className="flex items-center gap-3">
-            <Button 
-               variant="ghost" 
-               size="sm" 
-               onClick={() => setShowSidebar(!showSidebar)} 
+            <Button
+               variant="ghost"
+               size="sm"
+               onClick={() => setShowSidebar(!showSidebar)}
                title={showSidebar ? "Hide Sidebar" : "Show Sidebar"}
                className="text-[var(--color-text-muted)] hover:text-white"
             >
@@ -253,11 +255,11 @@ export default function WorkspacePage() {
                 ))}
               </div>
             )}
-            
+
             {(activeTab === 'viz' || activeTab === 'split') && activeScript && !isTutorialMode && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 className="ml-2 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10"
                 onClick={() => setIsTutorialMode(true)}
               >
@@ -307,11 +309,11 @@ export default function WorkspacePage() {
                 )}
               </motion.div>
             </AnimatePresence>
-            
+
             {/* Tutorial Overlay inside Viz Tab */}
             {isTutorialMode && activeScript && (
-              <TutorialOverlay 
-                script={activeScript} 
+              <TutorialOverlay
+                script={activeScript}
                 onClose={() => setIsTutorialMode(false)}
                 onPerformAction={handleTutorialAction}
                 onClearDataStructure={handleReset}
@@ -319,11 +321,11 @@ export default function WorkspacePage() {
             )}
           </div>
         )}
-        
+
         {activeTab === 'code' && (
           <div className="flex-1 flex flex-col h-full overflow-hidden">
             <div className="flex items-center justify-end px-4 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-secondary)]">
-              <select 
+              <select
                 value={language}
                 onChange={(e) => setLanguage(e.target.value as any)}
                 className="input-field text-xs px-2 py-1"
@@ -353,7 +355,7 @@ export default function WorkspacePage() {
             </div>
           </div>
         )}
-        
+
         {activeTab === 'split' && (
           <div className="flex-1 flex overflow-hidden w-full">
             <div className="flex-1 relative overflow-hidden border-r border-[var(--color-border-subtle)]">
@@ -372,10 +374,10 @@ export default function WorkspacePage() {
                   )}
                 </motion.div>
               </AnimatePresence>
-              
+
               {isTutorialMode && activeScript && (
-                <TutorialOverlay 
-                  script={activeScript} 
+                <TutorialOverlay
+                  script={activeScript}
                   onClose={() => setIsTutorialMode(false)}
                   onPerformAction={handleTutorialAction}
                   onClearDataStructure={handleReset}
@@ -384,7 +386,7 @@ export default function WorkspacePage() {
             </div>
             <div className="flex-1 flex flex-col h-full overflow-hidden relative min-w-0">
               <div className="flex items-center justify-end px-4 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-secondary)] absolute top-0 right-0 z-10 w-full">
-                <select 
+                <select
                   value={language}
                   onChange={(e) => setLanguage(e.target.value as any)}
                   className="input-field text-xs px-2 py-1"

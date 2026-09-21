@@ -1,0 +1,10 @@
+import {useId} from 'react';
+import type {Snapshot,Structure} from '../model';
+import {layout,colors,nodeCaption} from './layout';
+export default function Scene2D({state,structure,onExplain}:{state:Snapshot;structure:Structure;onExplain:(label:string)=>void}){
+ const {positions,width,height}=layout(state,structure);const marker=useId().replace(/:/g,'');
+ return <svg className="viz-svg" viewBox={`${-width*25} ${-height*25} ${width*50} ${height*50}`} role="img" aria-label={`${structure} visualization with ${state.nodes.length} nodes`}><defs><marker id={marker} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="none" stroke="#acbdfa"/></marker></defs>
+ {state.edges.map(e=>{const a=positions.get(e.from)!,b=positions.get(e.to)!;const dx=b[0]-a[0],dy=b[1]-a[1],d=Math.hypot(dx,dy)||1;return <g key={e.id} role="button" tabIndex={0} aria-label={`Explain link ${e.from} to ${e.to}`} onClick={()=>onExplain(`link ${e.from} to ${e.to}`)} onKeyDown={ev=>{if(ev.key==='Enter')onExplain(`link ${e.from} to ${e.to}`);}}><line x1={(a[0]+dx/d*.68)*50} y1={-(a[1]+dy/d*.68)*50} x2={(b[0]-dx/d*.8)*50} y2={-(b[1]-dy/d*.8)*50} stroke={colors[e.state||'idle']} strokeWidth="4" markerEnd={e.directed?`url(#${marker})`:undefined}/>{e.weight!==undefined&&<text x={(a[0]+b[0])*25} y={-(a[1]+b[1])*25-8}>{e.weight}</text>}</g>;})}
+ {state.nodes.map((node,i)=>{const p=positions.get(node.id)!;return <g key={node.id} transform={`translate(${p[0]*50},${-p[1]*50})`} role="button" tabIndex={0} aria-label={`Explain node ${node.value}`} onClick={()=>onExplain(`node ${node.value} (${node.label||node.id})`)} onKeyDown={e=>{if(e.key==='Enter')onExplain(`node ${node.value}`);}}><rect x="-32" y="-30" width="64" height="60" rx="10" fill={colors[node.state]} fillOpacity=".3" stroke={colors[node.state]} strokeWidth="2"/><text y="5" className="viz-value">{node.value}</text><text y="-44">{node.label||''}</text><text y="50">{nodeCaption(structure,i,state.nodes.length,node.row,node.col)}</text></g>;})}</svg>;
+}
+

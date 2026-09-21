@@ -1,0 +1,14 @@
+import {useId} from 'react';
+import {type Algorithm} from './model';
+// Tiny diagrams use SVG geometry, not separate WebGL contexts.
+export default function AlgorithmPreview({algorithm:a}:{algorithm:Algorithm}) {
+ const id=useId().replaceAll(':','');const tree=a.category==='Tree'||['heap-sort','huffman-coding','merge-sort'].includes(a.id);const graph=a.category==='Graph';const highlight:Record<string,number[]>={dfs:[0,1,2],bfs:[0,4,5],dijkstra:[0,1],kruskal:[0,2,4,5],prim:[0,1,5,6],'bellman-ford':[1,3],'floyd-warshall':[0,3,6],'topological-sort':[0,1,2,3]};
+ return <svg className="al-preview" viewBox="0 0 76 66" aria-hidden="true"><defs><linearGradient id={id} x2="1" y2="1"><stop stopColor="#57dcff"/><stop offset="1" stopColor="#5034ff"/></linearGradient></defs>
+ {tree||graph?<><g stroke="#5378dc" strokeWidth="2">{(tree?[[38,9,19,31],[38,9,57,31],[19,31,9,54],[19,31,29,54],[57,31,48,54],[57,31,68,54]]:[[12,18,40,8],[40,8,65,28],[65,28,53,55],[53,55,15,50],[15,50,12,18],[40,8,15,50],[40,8,53,55]]).map((v,i)=><path key={i} d={`M${v[0]} ${v[1]}L${v[2]} ${v[3]}`} stroke={highlight[a.id]?.includes(i)?'#55dfd1':i===(a.id.length%5)?'#f8c56b':undefined}/> )}</g>{graph&&a.id==='dijkstra'&&<text x='45' y='14' fill='#fbbf24' fontSize='8'>3</text>}{(tree?[[38,9],[19,31],[57,31],[9,54],[29,54],[48,54],[68,54]]:[[12,18],[40,8],[65,28],[53,55],[15,50]]).map(([x,y],i)=><circle key={i} cx={x} cy={y} r={5} fill={`url(#${id})`} stroke="#9acbff"/>)}</>:
+ a.id==='hanoi'?<><path d="M12 57h54M20 56V12M39 56V12M59 56V12" stroke="#748bd5" strokeWidth="3"/>{[0,1,2,3].map(i=><rect key={i} x={7+i*3} y={49-i*8} width={27-i*6} height="7" rx="3" fill={i%2?'#7657ff':'#fbbf24'}/>)}</>:
+ a.category==='Dynamic Programming'?<>{Array.from({length:16},(_,i)=><rect key={i} x={9+i%4*15} y={5+Math.floor(i/4)*14} width="12" height="11" rx="2" fill={i===a.id.length%16?'#27dfb8':'#133d83'} stroke="#396eff"/>)}<text x="38" y="39" fill="white" textAnchor="middle" fontSize="15">{a.id==='knapsack'?'01':a.id==='lcs'?'LCS':'ƒ(n)'}</text></>:
+ a.category==='Searching'||a.category==='Two Pointer'||a.category==='String'?<>{[0,1,2,3,4].map(i=><rect key={i} x={3+i*14} y="27" width="11" height="16" rx="3" fill={i===2?'#3bd8ff':'#19427e'} stroke="#4787f9"/>)}<path d={a.id==='reverse-array'?'M8 13h55m-8-6 8 6-8 6M63 55H8m8-6-8 6 8 6':'M8 14h30l-6-5m6 5-6 5'} fill="none" stroke="#b5b2ff" strokeWidth="2"/></>:
+ a.category==='Greedy'?<>{[0,1,2].map(i=><g key={i}><rect x={12+i*16} y={36-i*10} width="17" height={20+i*10} rx="4" fill="#ad7004"/><ellipse cx={20+i*16} cy={36-i*10} rx="9" ry="4" fill="#ffcb46"/></g>)}</>:
+ <>{[19,35,48,29].map((h,i)=><rect key={i} x={9+i*16} y={58-h} width="10" height={h} rx="3" fill={a.id==='selection-sort'&&i===0?'#29deb0':`url(#${id})`}/>)}{a.id==='insertion-sort'&&<path d="m66 9-6 7h4v12" fill="none" stroke="#c2acff" strokeWidth="3"/>}{a.id==='bubble-sort'&&<path d="M22 10h23m-5-5 5 5-5 5" stroke="#aa8eff" fill="none"/>}</>}
+ </svg>;
+}

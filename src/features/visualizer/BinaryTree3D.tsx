@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useEffect, type ReactNode } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text, Sphere, Cylinder, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
@@ -10,14 +10,18 @@ interface BinaryTree3DProps {
   variant?: string;
   dsState?: BinaryTreeStructure | null;
   baseColor?: string;
+  onNodeSelect?: (id: string) => void;
+  selectedId?: string | null;
+  reducedMotion?: boolean;
 }
 
-export default function BinaryTree3D({ activeIndex = null, visitedIndex = null, variant = 'Binary Search Tree', dsState, baseColor }: BinaryTree3DProps) {
+export default function BinaryTree3D({ activeIndex = null, visitedIndex = null, variant = 'Binary Search Tree', dsState, baseColor, onNodeSelect, selectedId, reducedMotion = false }: BinaryTree3DProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const previousPositions = useRef(new Map<string, [number, number]>());
 
   useFrame((state) => {
     if (groupRef.current) {
-      groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 0.8) * 0.15;
+      groupRef.current.position.y = reducedMotion ? 0 : Math.sin(state.clock.elapsedTime * 0.8) * 0.15;
     }
   });
 
@@ -27,14 +31,15 @@ export default function BinaryTree3D({ activeIndex = null, visitedIndex = null, 
   let nodes: any[] = [];
   let edges: any[] = [];
 
-  if (dsState && dsState.nodes.length > 0) {
+  if (dsState) {
     nodes = dsState.nodes.map((n, i) => ({
       id: n.id,
       val: n.value,
       x: n.position.x,
       y: n.position.y - 1.8, // adjust offset
       bf: n.balanceFactor ?? 0,
-      index: i
+      index: i,
+      operation: n.state
     }));
 
     // build edges from dsState
@@ -70,6 +75,10 @@ export default function BinaryTree3D({ activeIndex = null, visitedIndex = null, 
     ];
   }
 
+  useEffect(() => {
+    previousPositions.current = new Map(nodes.map(n => [String(n.val), [n.x, n.y] as [number, number]]));
+  });
+
   return (
     <group ref={groupRef} position={[0, -1, 0]}>
       {/* Edges */}
@@ -82,8 +91,8 @@ export default function BinaryTree3D({ activeIndex = null, visitedIndex = null, 
         const angle = Math.atan2(dy, dx);
 
         return (
-          <group 
-            key={`edge-${i}`} 
+          <group
+            key={`edge-${i}`}
             position={[fromNode.x + dx/2, fromNode.y + dy/2, -0.2]}
             rotation={[0, 0, angle + Math.PI/2]}
           >
@@ -98,13 +107,15 @@ export default function BinaryTree3D({ activeIndex = null, visitedIndex = null, 
       {nodes.map((node) => {
         const isActive = (Array.isArray(activeIndex) ? (activeIndex as any[]).includes(node.id) || (activeIndex as any[]).includes(node.val) : activeIndex === node.id || activeIndex === node.val);
         const isVisited = (Array.isArray(visitedIndex) ? (visitedIndex as any[]).includes(node.id) || (visitedIndex as any[]).includes(node.val) : false);
-        
-        let color = baseColor || '#8B5CF6'; // Purple base
-        if (isActive) color = '#3B82F6'; // Blue active
+
+        let color = node.index === 0 && isHeap ? '#22baff' : baseColor || '#8B5CF6'; // Purple base
+        if (node.operation?.color) color = node.operation.color;
+        else if (node.operation?.active) color = '#fbbf24';
+        else if (selectedId === node.id || node.operation?.highlighted || isActive) color = '#3B82F6'; // Blue active
         else if (isVisited) color = '#22C55E'; // Green visited
 
         return (
-          <group key={node.id} position={[node.x, node.y, 0]}>
+          <MovingTreeNode key={node.id} x={node.x} y={node.y} value={String(node.val)} from={previousPositions.current.get(String(node.val))} selected={selectedId === node.id} reducedMotion={reducedMotion} onSelect={() => onNodeSelect?.(String(node.id))}>
             <Sphere args={[0.6, 32, 32]}>
               <meshStandardMaterial
                 color={color}
@@ -113,11 +124,11 @@ export default function BinaryTree3D({ activeIndex = null, visitedIndex = null, 
                 envMapIntensity={3}
                 transparent
                 opacity={0.9}
-                emissive={isActive ? color : '#000000'}
+                emissive={color}
                 emissiveIntensity={0.5}
               />
             </Sphere>
-            
+
             <mesh rotation={[Math.PI / 2, 0, 0]}>
               <ringGeometry args={[0.8, 0.9, 32]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={isActive ? 2 : 0.5} side={THREE.DoubleSide} />
@@ -156,9 +167,26 @@ export default function BinaryTree3D({ activeIndex = null, visitedIndex = null, 
                 </Text>
               </Billboard>
             )}
-          </group>
+          </MovingTreeNode>
         );
       })}
     </group>
   );
+}
+
+function MovingTreeNode({x, y, value, from, selected, reducedMotion, onSelect, children}: {x:number;y:number;value:string;from?:[number,number];selected:boolean;reducedMotion:boolean;onSelect:()=>void;children:ReactNode}) {
+  const ref=useRef<THREE.Group>(null);
+  useEffect(()=>{
+    if(!ref.current) return;
+    ref.current.position.set(reducedMotion ? x : from?.[0] ?? x, reducedMotion ? y : from?.[1] ?? y + .6, 0);
+  },[value,x,y,reducedMotion]);
+  useFrame((_,delta)=>{
+    if(!ref.current) return;
+    const t=reducedMotion?1:1-Math.exp(-10*delta);
+    ref.current.position.x=THREE.MathUtils.lerp(ref.current.position.x,x,t);
+    ref.current.position.y=THREE.MathUtils.lerp(ref.current.position.y,y,t);
+    const scale=THREE.MathUtils.lerp(ref.current.scale.x,selected?1.12:1,t);
+    ref.current.scale.setScalar(scale);
+  });
+  return <group ref={ref} position={[x,y,0]} onClick={event=>{event.stopPropagation();onSelect();}}>{children}</group>;
 }

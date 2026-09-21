@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Environment, OrbitControls, ContactShadows, Stars, Sparkles, Text, Billboard } from '@react-three/drei';
+import { Canvas, useThree } from '@react-three/fiber';
+import { Environment, Lightformer, OrbitControls, ContactShadows, Stars, Sparkles } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
-import * as THREE from 'three';
+import { heapOperationFrames } from './heapOperationFrames';
 import Array3D from './Array3D';
 import Stack3D from './Stack3D';
 import Queue3D from './Queue3D';
@@ -13,43 +13,29 @@ import Graph3D from './Graph3D';
 import HashTable3D from './HashTable3D';
 import type { TutorialStep } from './TutorialOverlay';
 import Asteroids from './Asteroids';
-import TutorialOverlay from './TutorialOverlay';
-import VisualizerControls from './VisualizerControls';
-import VisualizerInfoPanel from './VisualizerInfoPanel';
+import StructureLayout from './StructureLayout';
 import VisualizerToolbar from './VisualizerToolbar';
 import CodeImplementationsModal from './CodeImplementationsModal';
-import { createDefaultStructure, insertValue, deleteValue, searchValue } from '../workspace/dataStructureOps';
+import { createDefaultStructure, insertValue, deleteValue } from '../workspace/dataStructureOps';
 import type { DataStructureType, DataStructure } from '../../types/dataStructures';
 
-function CinematicCamera({ isPlaying }: { isPlaying: boolean }) {
-  const { camera } = useThree();
-  const vec = new THREE.Vector3();
-
-  useFrame((state, delta) => {
-    if (isPlaying) {
-      const time = state.clock.getElapsedTime();
-      const radius = 12 + Math.sin(time * 0.2) * 2; // subtle zoom in/out
-      const height = 4 + Math.sin(time * 0.4) * 1.5;
-      
-      // The camera orbits slowly around the Y axis
-      const targetX = Math.sin(time * 0.15) * radius;
-      const targetZ = Math.cos(time * 0.15) * radius;
-      
-      vec.set(targetX, height, targetZ);
-      
-      // Smoothly glide towards the cinematic position
-      camera.position.lerp(vec, delta * 1.5);
-      
-      // Look at the center of the scene
-      camera.lookAt(0, 0, 0);
-    }
-  });
-
+function CameraReset({ revision, module, count }: { revision: number; module: string; count: number }) {
+  const { camera, controls, size } = useThree();
+  useEffect(() => {
+    const linear = ['Linked List', 'Array', 'Queue'].includes(module);
+    const width = module === 'Linked List' ? Math.max(6, count * 2.5 + 3) : Math.max(6, count * 1.5 + 3);
+    const aspect = size.width / Math.max(1, size.height);
+    const distance = linear ? Math.max(10, width / (2 * Math.tan(Math.PI / 8) * aspect) * 1.15) : 10;
+    camera.position.set(module === 'Linked List' ? 1 : 0, linear ? 1.4 : 1.4, distance);
+    const orbit = controls as any;
+    orbit?.target.set(module === 'Linked List' ? 1 : 0, linear ? -.4 : -1.2, 0);
+    orbit?.update();
+  }, [revision, camera, controls, module, count, size.width, size.height]);
   return null;
 }
 
 // --- Scripts & Data ---
-const dsList = ['Array', 'Stack', 'Queue', 'Linked List', 'Binary Tree', 'Graph', 'Hash Table', 'Heap'];
+const dsList = ['Array', 'Linked List', 'Stack', 'Queue', 'Hash Table', 'Binary Tree', 'BST', 'AVL Tree', 'Heap', 'Graph'];
 
 const tutorials: Record<string, TutorialStep[]> = {
   'Array-Dynamic Array': [
@@ -208,7 +194,7 @@ const tutorials: Record<string, TutorialStep[]> = {
     { index: null, title: 'Directed vs Undirected', text: 'In an Undirected graph (like Facebook friendships), the connection is mutual. In a Directed graph (like Twitter followers), A might point to B, but B doesn\'t point to A.' },
     { index: null, title: 'Weighted Edges', text: 'Edges can have "Weights" (costs). If modeling a map, the weight of an edge between two cities could be the driving distance or the toll cost.' },
     { index: null, title: 'Adjacency List', text: 'In code, graphs are often stored as an Adjacency List: a Hash Table where every Vertex maps to an array of its neighbors. This is very memory efficient.' },
-    { index: null, title: 'Adjacency Matrix', text: 'Alternatively, a 2D Array (Matrix) can be used where rows and columns represent vertices. A 1 or 0 indicates if an edge exists. Fast, but uses O(V²) memory.' },
+    { index: null, title: 'Adjacency Matrix', text: 'Alternatively, a 2D Array (Matrix) can be used where rows and columns represent vertices. A 1 or 0 indicates if an edge exists. Fast, but uses O(VÂ²) memory.' },
     { index: 'D', title: 'Pathfinding & BFS', text: 'Breadth-First Search (BFS) explores the graph in ripples, finding the absolute shortest path between two nodes in an unweighted graph.' },
     { index: null, title: 'Dijkstra\'s Algorithm', text: 'For weighted graphs, algorithms like Dijkstra\'s or A* are used to calculate the path of least resistance. This is exactly how GPS navigation works.' },
     { index: null, title: 'Summary', text: 'Graphs are complex but incredibly powerful. They run Google\'s Search ranking (PageRank), routing protocols on the internet, and AI recommendation engines.' }
@@ -221,7 +207,7 @@ const tutorials: Record<string, TutorialStep[]> = {
   ],
   'Hash Table-Concurrent Hash': [
     { index: null, title: 'Concurrent Hash Maps', text: 'In multi-threaded applications, if two threads try to write to the exact same bucket simultaneously, data corruption occurs.' },
-    { index: 2, title: 'Segment Locking', text: 'A Concurrent Hash Map solves this by locking the specific bucket (or segment of buckets) during a write. The 🔒 icon represents a locked bucket.' },
+    { index: 2, title: 'Segment Locking', text: 'A Concurrent Hash Map solves this by locking the specific bucket (or segment of buckets) during a write. The ðŸ”’ icon represents a locked bucket.' },
     { index: null, title: 'High Throughput', text: 'Unlike wrapping the entire table in a single global lock (which forces all threads to wait), segment locking allows thread A to write to bucket 1 while thread B safely writes to bucket 4.' },
     { index: null, title: 'Use Cases', text: 'Essential for high-traffic web servers and modern multi-threaded software architectures.' }
   ],
@@ -240,20 +226,40 @@ const tutorials: Record<string, TutorialStep[]> = {
 };
 
 export default function VisualizerPage({ initialDs, hideUI = false }: { initialDs?: string, hideUI?: boolean } = {}) {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const paramDs = searchParams.get('ds');
   const planetColor = location.state?.planetColor;
-  const [activeDs, setActiveDs] = useState(initialDs || paramDs || 'Array');
+  const [activeDs, setActiveDs] = useState(initialDs || (dsList.includes(paramDs || '') ? paramDs! : 'Heap'));
   const [activeVariant, setActiveVariant] = useState('Static Array');
   const [currentStep, setCurrentStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [dsState, setDsState] = useState<DataStructure | null>(null);
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [isUIHidden, setIsUIHidden] = useState(hideUI);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [cameraRevision, setCameraRevision] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const [status, setStatus] = useState('Select a node or an array cell to inspect it.');
+  const [busy, setBusy] = useState(false);
+  const operationToken = useRef(0);
+  useEffect(() => () => { operationToken.current++; }, []);
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReducedMotion(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => { if (paramDs && dsList.includes(paramDs)) setActiveDs(paramDs); }, [paramDs]);
 
   // Fallback to base tutorial if variant tutorial doesn't exist
-  const currentTutorials = tutorials[`${activeDs}-${activeVariant}`] || tutorials[activeDs] || [];
+  const currentTutorials: TutorialStep[] = activeDs === 'Heap' ? [
+    { index: null, title: activeVariant, text: `A complete binary tree where every parent is ${activeVariant === 'Min Heap' ? 'less' : 'greater'} than or equal to its children. The root holds the ${activeVariant === 'Min Heap' ? 'minimum' : 'maximum'} value.` },
+    { index: dsState?.type === 'heap' ? dsState.root : null, title: 'Root Property', text: 'Peek at the root in O(1). The array is in level order, not sorted order. Click a node to inspect its parent and children.' },
+    { index: null, title: 'Insert Operation', text: 'Append a value at the next available leaf. Compare it with its parent and sift upward until the heap property holds. Try Insert above.' },
+    { index: null, title: 'Delete Operation', text: 'Delete the selected node, a typed value, or the root when neither is specified. Move the last value into the gap, then restore heap order.' },
+    { index: null, title: 'Heapify', text: 'Compare parent and child values, swap when out of order, and continue along one path. Insertion and removal at a known index take O(log N).' },
+  ] : tutorials[`${activeDs}-${activeVariant}`] || tutorials[activeDs === 'BST' || activeDs === 'AVL Tree' ? 'Binary Tree' : activeDs] || [];
 
   const getDsType = (name: string): DataStructureType => {
     switch (name) {
@@ -261,7 +267,8 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
       case 'Stack': return 'stack';
       case 'Queue': return 'queue';
       case 'Linked List': return 'linked-list';
-      case 'Binary Tree': return 'binary-tree';
+      case 'Binary Tree': case 'BST': return 'binary-tree';
+      case 'AVL Tree': return 'avl-tree';
       case 'Graph': return 'graph';
       case 'Hash Table': return 'hash-table';
       case 'Heap': return 'heap';
@@ -269,49 +276,20 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
     }
   };
 
-  // Reset steps and variant when switching DS
+  const defaultVariant = (name: string) => ({Array: 'Static Array', Stack: 'Array Stack', Queue: 'Simple Queue', 'Linked List': 'Singly Linked', 'Binary Tree': 'Binary Search Tree', BST: 'Binary Search Tree', 'AVL Tree': 'AVL Tree', Graph: 'Directed Graph', 'Hash Table': 'Chaining', Heap: 'Max Heap'}[name] || 'Static Array');
+  useEffect(() => { setActiveVariant(defaultVariant(activeDs)); }, [activeDs]);
   useEffect(() => {
-    setCurrentStep(0);
-    setIsPlaying(false);
-    
-    // Set default variant based on DS
-    switch (activeDs) {
-      case 'Array': setActiveVariant('Static Array'); break;
-      case 'Stack': setActiveVariant('Array Stack'); break;
-      case 'Queue': setActiveVariant('Simple Queue'); break;
-      case 'Linked List': setActiveVariant('Singly Linked'); break;
-      case 'Binary Tree': setActiveVariant('Binary Search Tree'); break;
-      case 'Graph': setActiveVariant('Directed Graph'); break;
-      case 'Hash Table': setActiveVariant('Chaining'); break;
-      case 'Heap': setActiveVariant('Max Heap'); break;
+    operationToken.current++;
+    setBusy(false); setSelected(null); setCurrentStep(0); setIsPlaying(false);
+    setStatus('Select a node or an array cell to inspect it.');
+    const next = createDefaultStructure(activeVariant === 'AVL Tree' ? 'avl-tree' : getDsType(activeDs), activeVariant);
+    if (next.type === 'heap') {
+      next.heapType = activeVariant === 'Min Heap' ? 'min' : 'max';
+      const values = next.heapType === 'min' ? [10, 25, 15, 60, 45, 55, 70] : [90, 75, 80, 60, 45, 55, 70];
+      next.nodes.forEach((n, i) => { n.value = values[i]; });
     }
-    
-    setDsState(createDefaultStructure(getDsType(activeDs), activeVariant));
-  }, [activeDs]);
-
-  // Restart tutorial when variant changes
-  useEffect(() => {
-    setCurrentStep(0);
-    setIsPlaying(true); // Auto-play the variant explanation
-
-    // Swap heap implementation or trigger default structures
-    if (activeDs === 'Heap') {
-      const defaultHeap = createDefaultStructure('heap') as any;
-      defaultHeap.heapType = activeVariant === 'Min Heap' ? 'min' : 'max';
-      // Re-heapify default values based on min/max
-      const isMin = defaultHeap.heapType === 'min';
-      const values = isMin ? [10, 25, 15, 60, 45, 55, 70] : [90, 75, 80, 60, 45, 55, 70];
-      // Reset values
-      defaultHeap.nodes.forEach((n: any, idx: number) => {
-        n.value = values[idx];
-      });
-      setDsState(defaultHeap);
-    }
-
-    if (activeDs === 'Stack') {
-      setDsState(createDefaultStructure('stack', activeVariant));
-    }
-  }, [activeVariant]);
+    setDsState(next);
+  }, [activeDs, activeVariant]);
 
   // Auto-play logic
   useEffect(() => {
@@ -330,16 +308,6 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
     return () => clearInterval(interval);
   }, [isPlaying, currentTutorials.length]);
 
-  const handleNext = () => {
-    setCurrentStep((prev) => Math.min(prev + 1, currentTutorials.length - 1));
-    setIsPlaying(false);
-  };
-
-  const handlePrev = () => {
-    setCurrentStep((prev) => Math.max(prev - 1, 0));
-    setIsPlaying(false);
-  };
-
   const handleReset = () => {
     setCurrentStep(0);
     setIsPlaying(false);
@@ -353,7 +321,7 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
   };
 
   let activeIndex = currentTutorials[currentStep]?.index ?? null;
-  
+
   // Extract dynamic search highlights from dsState
   let searchHighlights: (string | number)[] = [];
   if (dsState) {
@@ -381,28 +349,40 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
     }
   }
 
-  const handleInsert = (val: string, idx?: number) => {
-    if (dsState) setDsState(insertValue(dsState, val, idx, activeVariant));
+  const applyOperation = async (kind: 'insert' | 'delete', val: string, idx?: number) => {
+    if (!dsState || busy) return;
+    if (dsState.type === 'heap' && val.trim() && !Number.isFinite(Number(val))) { setStatus('Enter a finite numeric value.'); return; }
+    if (dsState.type === 'heap' && kind === 'insert' && dsState.nodes.length >= 31) { setStatus('This interactive scene supports 31 nodes. Delete a value before inserting another.'); return; }
+    const before = structuredClone(dsState);
+    const deleteIndex = idx ?? (selected && 'nodes' in before && !val.trim() ? before.nodes.findIndex(n => n.id === selected) : undefined);
+    const next = kind === 'insert' ? insertValue(structuredClone(before), val, idx, activeVariant) : deleteValue(structuredClone(before), val, deleteIndex);
+    setIsPlaying(false); setSelected(null);
+    if (before.type === 'heap' && next.type === 'heap') {
+      const frames = heapOperationFrames(before, next, kind, val, deleteIndex);
+      const token = ++operationToken.current;
+      setBusy(true);
+      for (const frame of frames) {
+        if (token !== operationToken.current) return;
+        setDsState(frame.state); setStatus(frame.message);
+        if (!reducedMotion) await new Promise(resolve => setTimeout(resolve, 650));
+      }
+      if (token !== operationToken.current) return;
+      setBusy(false);
+    }
+    setDsState(next); setStatus(`${kind === 'insert' ? 'Insert' : 'Delete'} complete. ${next.type === 'heap' ? 'Heap order restored.' : 'Structure updated.'}`);
   };
-  const handleDelete = (val: string, idx?: number) => {
-    if (dsState) setDsState(deleteValue(dsState, val, idx));
-  };
-  const handleSearch = (val: string) => {
-    if (dsState) setDsState(searchValue(dsState, val));
-  };
-  
-  // Suppress unused warning since we might re-add search later
-  void handleSearch;
+  const handleInsert = (val: string, idx?: number) => { void applyOperation('insert', val, idx); };
+  const handleDelete = (val: string, idx?: number) => { void applyOperation('delete', val, idx); };
 
   // Render the correct 3D component
   const render3DComponent = () => {
     if (!dsState) return null;
-    
+
     // Extract data array for linear structures
-    const linearData = (dsState.type === 'array' || dsState.type === 'stack' || dsState.type === 'queue') 
-      ? dsState.elements.map(e => Number(e.value)) 
+    const linearData = (dsState.type === 'array' || dsState.type === 'stack' || dsState.type === 'queue')
+      ? dsState.elements.map(e => Number(e.value))
       : [];
-      
+
     // Extract for linked list
     const llData = dsState.type === 'linked-list' ? dsState.nodes.map(n => Number(n.value)) : [];
 
@@ -410,115 +390,44 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
       case 'Array': return <Array3D data={linearData} activeIndex={activeIndex as number} variant={activeVariant} capacity={dsState?.type === 'array' ? dsState.capacity : undefined} baseColor={planetColor} />;
       case 'Stack': return <Stack3D data={linearData} activeIndex={activeIndex as number} variant={activeVariant} baseColor={planetColor} />;
       case 'Queue': return <Queue3D data={linearData} activeIndex={activeIndex as number} variant={activeVariant} baseColor={planetColor} />;
-      case 'Linked List': return <LinkedList3D data={llData} activeIndex={activeIndex as number} variant={activeVariant} baseColor={planetColor} />;
-      case 'Binary Tree': return <BinaryTree3D activeIndex={activeIndex as number} variant={activeVariant} dsState={(dsState?.type === 'binary-tree' || dsState?.type === 'avl-tree') ? dsState as any : null} baseColor={planetColor} />;
+      case 'Linked List': return <LinkedList3D reducedMotion={reducedMotion} selectedIndex={dsState.type === 'linked-list' ? dsState.nodes.findIndex(n => n.id === selected) : -1} onNodeSelect={index => {if(dsState.type === 'linked-list') setSelected(dsState.nodes[index].id);}} data={llData} activeIndex={activeIndex as number} variant={activeVariant} baseColor={planetColor} />;
+      case 'BST': case 'AVL Tree': case 'Binary Tree': return <BinaryTree3D onNodeSelect={setSelected} selectedId={selected} reducedMotion={reducedMotion} activeIndex={activeIndex as number} variant={activeVariant} dsState={(dsState?.type === 'binary-tree' || dsState?.type === 'avl-tree') ? dsState as any : null} baseColor={planetColor} />;
       case 'Graph': return <Graph3D activeIndex={activeIndex as any} variant={activeVariant} dsState={dsState?.type === 'graph' ? dsState as any : null} baseColor={planetColor} />;
       case 'Hash Table': return <HashTable3D activeIndex={activeIndex as number} activeItem={currentStep === 2 ? 'Key' : null} variant={activeVariant} dsState={dsState?.type === 'hash-table' ? dsState as any : null} baseColor={planetColor} />;
-      case 'Heap': return <BinaryTree3D activeIndex={activeIndex as number} variant={activeVariant} dsState={dsState?.type === 'heap' ? dsState as any : null} baseColor={planetColor} />;
+      case 'Heap': return <BinaryTree3D onNodeSelect={setSelected} selectedId={selected} reducedMotion={reducedMotion} activeIndex={activeIndex as number} variant={activeVariant} dsState={dsState?.type === 'heap' ? dsState as any : null} baseColor={planetColor} />;
       default: return null;
     }
   };
 
-  return (
-    <div className="flex flex-col h-full w-full bg-[var(--color-bg-primary)] overflow-hidden relative">
-      
-      {/* Extracted Controls */}
-      {!hideUI && (<VisualizerControls 
-        title={`${activeDs} Learning Module`} 
-        isPlaying={isPlaying} 
-        currentStep={currentStep} 
-        totalSteps={currentTutorials.length} 
-        onPlayToggle={togglePlay} 
-        onNext={handleNext} 
-        onPrev={handlePrev} 
-        onReset={handleReset} 
-        dsList={dsList} 
-        activeDs={activeDs} 
-        onDsSelect={(ds) => setActiveDs(ds)} 
-        showUI={!isUIHidden} 
-        onToggleUI={() => setIsUIHidden(!isUIHidden)}
-      />)}
-
-      {/* Dynamic Operations Toolbar */}
-      <div className="absolute top-28 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-        <VisualizerToolbar onInsert={handleInsert} onDelete={handleDelete} activeDs={activeDs} />
-      </div>
-
-      {/* Static Info Panel */}
-      {!isUIHidden && (<VisualizerInfoPanel 
-        activeDs={activeDs} 
-        activeVariant={activeVariant} 
-        onVariantSelect={(variant) => setActiveVariant(variant)} 
-        onViewCode={() => setShowCodeModal(true)} 
-      />)}
-
-      {/* Auto-Play Tutorial Overlay */}
-      { !isUIHidden && <TutorialOverlay 
-        currentStep={currentStep}
-        totalSteps={currentTutorials.length}
-        tutorialSteps={currentTutorials}
-      /> }
-
-      {/* 3D Canvas */}
-      <div className="flex-1 w-full bg-gradient-to-b from-[#0f172a] to-[#1e293b]">
-        <Canvas camera={{ position: [0, 4, 12], fov: 45 }}>
-          <ambientLight intensity={0.5} />
-          <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
-          <pointLight position={[-10, 10, -10]} intensity={0.5} />
-          <Environment preset="city" />
-          
-          {/* Ambient Particles for Premium Feel */}
-          <Stars radius={50} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
-          <Asteroids count={100} />
-          <Sparkles count={50} scale={12} size={2} speed={0.4} opacity={0.2} color="#818cf8" />
-
-          <CinematicCamera isPlaying={isPlaying} />
-
-          {/* Global 3D Title Label */}
-          <Billboard position={[0, 4.2, -3]}>
-            <Text fontSize={0.6} color="#ffffff" outlineWidth={0.03} outlineColor="#000000" anchorX="center" anchorY="middle">
-              {activeDs}: {activeVariant}
-            </Text>
-          </Billboard>
-
-          {render3DComponent()}
-
-          <ContactShadows 
-            position={[0, -2, 0]} 
-            opacity={0.5} 
-            scale={20} 
-            blur={2} 
-            far={4} 
-            color="#000000"
-          />
-
-          <OrbitControls 
-            makeDefault
-            enabled={!isPlaying}
-            enablePan={false}
-            minDistance={5}
-            maxDistance={20}
-            maxPolarAngle={Math.PI / 2 + 0.1}
-          />
-
-          <EffectComposer>
-            <Bloom 
-              luminanceThreshold={0.2} 
-              luminanceSmoothing={0.9} 
-              intensity={1.5}
-              mipmapBlur
-            />
-            <Vignette eskil={false} offset={0.1} darkness={1.1} />
-          </EffectComposer>
-        </Canvas>
-      </div>
-
-      {/* Code Modal */}
-      <CodeImplementationsModal 
-        open={showCodeModal} 
-        onClose={() => setShowCodeModal(false)} 
-        activeDs={activeDs} 
-      />
-    </div>
-  );
+  const scene = <Canvas dpr={[1, 1.5]} camera={{ position: [0, 1.4, 10], fov: 45 }}>
+    <ambientLight intensity={0.5} />
+    <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
+    <pointLight position={[-10, 10, -10]} intensity={0.5} />
+    <Environment resolution={128} frames={1}>
+      <Lightformer position={[0, 5, -5]} scale={[12, 5, 1]} intensity={3} color="#b7cdff" />
+      <Lightformer position={[-5, 1, 3]} rotation={[0, Math.PI / 2, 0]} scale={[5, 8, 1]} intensity={4} color="#7257ff" />
+      <Lightformer position={[5, 2, 3]} rotation={[0, -Math.PI / 2, 0]} scale={[5, 8, 1]} intensity={3} color="#55cfff" />
+    </Environment>
+    <Stars radius={50} depth={50} count={1500} factor={4} saturation={0} fade speed={reducedMotion ? 0 : 1} />
+    <Asteroids count={60} reducedMotion={reducedMotion}/>
+    <Sparkles count={50} scale={12} size={2} speed={reducedMotion ? 0 : 0.4} opacity={0.2} color="#818cf8" />
+    {render3DComponent()}
+    <ContactShadows position={[0, -5, 0]} opacity={0.5} scale={20} blur={2} far={4} color="#000000" />
+    <OrbitControls makeDefault enablePan={false} minDistance={7} maxDistance={100} minPolarAngle={0.4} maxPolarAngle={Math.PI / 2 + 0.1} target={[0, -1.2, 0]} />
+    <CameraReset revision={cameraRevision} module={activeDs} count={dsState && 'nodes' in dsState ? dsState.nodes.length : dsState && 'elements' in dsState ? dsState.elements.length : 0}/>
+    <EffectComposer><Bloom luminanceThreshold={0.2} luminanceSmoothing={0.9} intensity={1.5} mipmapBlur/><Vignette eskil={false} offset={0.1} darkness={1.1}/></EffectComposer>
+  </Canvas>;
+  return <>
+    {hideUI ? <div style={{height:'100%',minHeight:400}}>{scene}</div> : <StructureLayout
+      activeDs={activeDs} activeVariant={activeVariant} modules={dsList} state={dsState}
+      onModule={name => { setActiveDs(name); setSearchParams({ds:name}, {replace:true}); }}
+      onVariant={setActiveVariant} onCode={() => setShowCodeModal(true)}
+      playing={isPlaying} onPlay={togglePlay} step={currentStep} steps={currentTutorials}
+      onStep={index => {setCurrentStep(index);setIsPlaying(false);}} onReset={handleReset}
+      onCameraReset={() => setCameraRevision(v => v + 1)} guideHidden={isUIHidden} onToggleGuide={() => setIsUIHidden(v => !v)}
+      selected={selected} onSelect={setSelected} reducedMotion={reducedMotion} onMotion={() => setReducedMotion(v => !v)} status={status}
+      toolbar={<VisualizerToolbar onInsert={handleInsert} onDelete={handleDelete} activeDs={activeDs} disabled={busy}/>}
+    ><Suspense fallback={<div role="status" style={{padding:24,color:"#a6b8dc"}}>Loading 3D scene…</div>}>{scene}</Suspense></StructureLayout>}
+    <CodeImplementationsModal open={showCodeModal} onClose={() => setShowCodeModal(false)} activeDs={activeDs}/>
+  </>;
 }

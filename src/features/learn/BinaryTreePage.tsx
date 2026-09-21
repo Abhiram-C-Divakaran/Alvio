@@ -16,10 +16,10 @@ export default function BinaryTreePage() {
         <section>
           <h2>What is a Binary Tree?</h2>
           <p>A tree whose elements have at most 2 children is called a binary tree. We typically name them the left and right child.</p>
-          
+
           <div className="not-prose bg-[var(--color-bg-tertiary)] rounded-2xl p-8 flex flex-col items-center shadow-inner my-10 overflow-x-auto w-full border border-[var(--color-border-subtle)]">
              <div className="flex flex-col items-center relative mt-4 w-[400px]">
-                
+
                 {/* Root */}
                 <div className="w-16 h-16 rounded-full bg-[var(--color-bg-primary)] border-2 border-indigo-500/80 shadow-lg flex items-center justify-center text-xl font-bold text-white z-10 relative">
                    1
@@ -67,14 +67,14 @@ export default function BinaryTreePage() {
         </section>
 
         <section>
-          <h2>Binary Search Tree (BST)</h2>
+          <h2 id="bst" tabIndex={-1}>Binary Search Tree (BST)</h2>
           <p>A special type of binary tree where the left child is always less than the root, and the right child is always greater.</p>
         </section>
-        
+
         <section className="mt-12 mb-20">
           <h2>Tree Traversals</h2>
           <p className="text-[var(--color-text-secondary)] mb-8">Traversing a tree means visiting every node in the tree. Because trees are non-linear, there are multiple ways to traverse them:</p>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="bg-[var(--color-surface-glass)] border border-[var(--color-border-subtle)] p-8 rounded-2xl hover:border-blue-500/50 transition-colors flex flex-col items-center text-center shadow-lg group relative overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -86,7 +86,7 @@ export default function BinaryTreePage() {
                 <ArrowRightLeft size={16} />
               </a>
             </div>
-            
+
             <div className="bg-[var(--color-surface-glass)] border border-[var(--color-border-subtle)] p-8 rounded-2xl hover:border-indigo-500/50 transition-colors flex flex-col items-center text-center shadow-lg group relative overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <h3 className="text-2xl font-bold mb-2 text-white">Preorder</h3>
@@ -97,7 +97,7 @@ export default function BinaryTreePage() {
                 <ArrowRightLeft size={16} />
               </a>
             </div>
-            
+
             <div className="bg-[var(--color-surface-glass)] border border-[var(--color-border-subtle)] p-8 rounded-2xl hover:border-rose-500/50 transition-colors flex flex-col items-center text-center shadow-lg group relative overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-br from-rose-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <h3 className="text-2xl font-bold mb-2 text-white">Postorder</h3>

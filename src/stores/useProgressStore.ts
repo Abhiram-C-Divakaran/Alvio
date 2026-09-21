@@ -3,7 +3,7 @@
 // ============================================================
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { LearningProgress, TopicProgress, DashboardStats, WeeklyActivity } from '../types/user';
+import type { LearningProgress, VideoLessonProgress, TopicProgress, DashboardStats, WeeklyActivity } from '../types/user';
 import { dbService } from '../services/db';
 import type { QuizCompletion } from '../features/quiz/quizModel';
 import { recordActivity, localDay } from '../services/progressActivity';
@@ -15,6 +15,7 @@ interface ProgressState {
 }
 
 interface ProgressActions {
+  saveVideoLesson:(id:string,patch:Partial<VideoLessonProgress>,owner:string,topicId:string)=>Promise<void>;
   recordQuiz: (result: QuizCompletion) => Promise<number>;
   setProgress: (progress: LearningProgress) => void;
   updateTopicProgress: (topicId: string, updates: Partial<TopicProgress>) => Promise<void>;
@@ -33,7 +34,7 @@ const getInitialWeeklyActivity = (): WeeklyActivity[] => {
 const calculateStats = (progress: LearningProgress): DashboardStats => {
   const completed = progress.topics.filter((t) => t.status === 'completed').length;
   const total = progress.topics.length;
-  
+
   // XP: 1000 XP per completed topic + quiz scores * 10
   const baseTopicXp = completed * 1000;
   const quizXp = progress.topics.reduce((acc, t) => acc + (t.quizScore || 0) * 10, 0);
@@ -121,6 +122,19 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
         return awardedXp;
       },
 
+      saveVideoLesson: async (id,patch,owner,topicId) => {
+        const current=get().progress;
+        if(current&&current.userId!==owner)return;
+        const base:LearningProgress=current||{userId:owner,topics:[],totalTimeSpentMinutes:0,overallScore:0,streak:0,badges:[],weakAreas:[],recommendedTopics:[]};
+        const old=base.videoLessons?.[id]||{position:0,duration:0,speed:1,watchedSeconds:[],completed:false,notes:[]};
+        const lesson={...old,...patch,completed:old.completed||!!patch.completed};
+        const firstCompletion=lesson.completed&&!old.completed;
+        const updated:LearningProgress={...base,videoLessons:{...base.videoLessons,[id]:lesson},topics:base.topics.map(t=>t.topicId===topicId&&t.status==='not-started'?{...t,status:'in-progress',lastAccessed:new Date().toISOString()}:t)};
+        if(firstCompletion)updated.dailyActivity=recordActivity(updated,0,1);
+        set({progress:updated,stats:calculateStats(updated)});
+        try{await dbService.saveProgress(updated)}catch{console.warn('Video lesson saved locally; database sync is pending.')}
+      },
+
       setProgress: (progress) => {
         const stats = calculateStats(progress);
         set({ progress, stats });
@@ -135,7 +149,7 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
           if (t.topicId === topicId) {
             const newStatus = updates.status || t.status;
             const newPercent = updates.completionPercent !== undefined ? updates.completionPercent : t.completionPercent;
-            
+
             return {
               ...t,
               ...updates,
@@ -175,7 +189,7 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
           if (t.topicId === topicId) {
             const currentScore = t.quizScore;
             const newScore = currentScore === null ? score : Math.max(currentScore, score);
-            
+
             return {
               ...t,
               status: 'completed' as const,
@@ -188,13 +202,13 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
         });
 
         const quizScores = updatedTopics.filter((t) => t.quizScore !== null).map((t) => t.quizScore as number);
-        const overallScore = quizScores.length > 0 
-          ? Math.round(quizScores.reduce((a, b) => a + b, 0) / quizScores.length) 
+        const overallScore = quizScores.length > 0
+          ? Math.round(quizScores.reduce((a, b) => a + b, 0) / quizScores.length)
           : 0;
 
         const badges = [...progress.badges];
         const completedCount = updatedTopics.filter((t) => t.status === 'completed').length;
-        
+
         if (completedCount >= 1 && !badges.some(b => b.id === 'first-steps')) {
           badges.push({
             id: 'first-steps',
@@ -245,10 +259,10 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
         const todayIndex = new Date().getDay();
         const todayName = daysOfWeek[todayIndex];
 
-        const weeklyActivity = (progress as any).weeklyActivity 
-          ? [...(progress as any).weeklyActivity] 
+        const weeklyActivity = (progress as any).weeklyActivity
+          ? [...(progress as any).weeklyActivity]
           : getInitialWeeklyActivity();
-          
+
         const updatedWeeklyActivity = weeklyActivity.map((act) => {
           if (act.day === todayName) {
             return { ...act, minutes: act.minutes + minutes };

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AuthGuard from './components/layout/AuthGuard';
 import LandingPage from './features/landing/LandingPage';
 
@@ -48,7 +48,7 @@ const DynamicProgrammingPage = lazy(() => import('./features/learn/DynamicProgra
 const GreedyPage = lazy(() => import('./features/learn/GreedyPage'));
 const GraphAlgorithmsPage = lazy(() => import('./features/learn/GraphAlgorithmsPage'));
 const TopicDetailsPage = lazy(() => import('./features/learn/TopicDetailsPage'));
-const AIVisualizerPage = lazy(() => import('./features/visualizer/AIVisualizerPage'));
+const AIVisualizerPage = lazy(() => import('./features/ai-visualizer/AIVisualizerPage'));
 const DataStructuresUniversePage = lazy(() => import('./features/learn/DataStructuresUniversePage'));
 
 function App() {
@@ -79,6 +79,7 @@ function App() {
 
             <Route path="/learn/data-structures" element={<DataStructuresHubPage />} />
             <Route path="/learn/ai-visualizer" element={<AIVisualizerPage />} />
+            <Route path="/ai-tools/visualizer" element={<Navigate to="/learn/ai-visualizer" replace />} />
             <Route path="/learn/array" element={<ArrayPage />} />
             <Route path="/learn/linked-list" element={<LinkedListPage />} />
             <Route path="/learn/stack" element={<StackPage />} />

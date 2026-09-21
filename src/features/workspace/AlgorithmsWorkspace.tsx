@@ -1,11 +1,12 @@
+import useReducedMotion from '../visualizer/useReducedMotion';
 // ============================================================
 // Algorithms Workspace Component
 // Step-by-step interactive animations for sorting & searching
 // ============================================================
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Environment, ContactShadows, Stars, Sparkles as DreiSparkles, Billboard, Text } from '@react-three/drei';
+import { OrbitControls, Environment, Lightformer, ContactShadows, Stars, Sparkles as DreiSparkles, Billboard, Text } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import Array3D from '../visualizer/Array3D';
 import Algorithms3D from './Algorithms3D';
@@ -28,33 +29,9 @@ import {
   BookOpen,
 } from 'lucide-react';
 
-export type AlgoType = 
-  | 'bubble-sort' 
-  | 'selection-sort' 
-  | 'insertion-sort' 
-  | 'merge-sort' 
-  | 'quick-sort' 
-  | 'linear-search' 
-  | 'binary-search'
-  | 'bfs'
-  | 'dfs'
-  | 'dijkstra'
-  | 'bellman-ford'
-  | 'floyd-warshall'
-  | 'kruskal'
-  | 'prim'
-  | 'topological-sort'
-  | 'knapsack'
-  | 'fibonacci'
-  | 'lcs'
-  | 'activity-selection'
-  | 'huffman-coding'
-  | 'hanoi'
-  | 'inorder-traversal'
-  | 'preorder-traversal'
-  | 'postorder-traversal'
-  | 'two-pointer'
-  | 'reverse-array';
+import {ALGO_META, type AlgoType} from '../learn/algorithms/metadata';
+export {ALGO_META};
+export type {AlgoType};
 
 interface Step {
   array: number[];
@@ -67,7 +44,7 @@ interface Step {
   high: number;
   description: string;
   codeLine: number;
-  
+
   // Graph-specific step tracking:
   activeNodes?: string[];
   visitedNodes?: string[];
@@ -79,195 +56,12 @@ interface Step {
   selectedItems?: number[];
   intervals?: { id: string; start: number; end: number; selected: boolean; color?: string }[];
   huffmanNodes?: { id: string; label: string; freq: number; code?: string; x?: number; y?: number; left?: string; right?: string }[];
-  
+
   // Recursion specific tracking:
   pegs?: number[][];
 }
 
-export const ALGO_META: Record<AlgoType, { name: string; description: string; type: 'sorting' | 'searching' | 'graph' | 'dp' | 'greedy' | 'recursion'; difficulty: 'Beginner' | 'Intermediate' | 'Advanced'; timeComplexities: { best: string; average: string; worst: string; space: string } }> = {
-  'bubble-sort': {
-    name: 'Bubble Sort',
-    description: 'Compares adjacent items and swaps them if they are in the wrong order.',
-    type: 'sorting',
-    difficulty: 'Beginner',
-    timeComplexities: { best: 'O(N)', average: 'O(N²)', worst: 'O(N²)', space: 'O(1)' }
-  },
-  'selection-sort': {
-    name: 'Selection Sort',
-    description: 'Finds the minimum item in the unsorted part and swaps it with the first unsorted item.',
-    type: 'sorting',
-    difficulty: 'Beginner',
-    timeComplexities: { best: 'O(N²)', average: 'O(N²)', worst: 'O(N²)', space: 'O(1)' }
-  },
-  'insertion-sort': {
-    name: 'Insertion Sort',
-    description: 'Builds a sorted array one element at a time by bubbling them down.',
-    type: 'sorting',
-    difficulty: 'Beginner',
-    timeComplexities: { best: 'O(N)', average: 'O(N²)', worst: 'O(N²)', space: 'O(1)' }
-  },
-  'merge-sort': {
-    name: 'Merge Sort',
-    description: 'Divides array into halves, sorts them recursively, and merges them.',
-    type: 'sorting',
-    difficulty: 'Intermediate',
-    timeComplexities: { best: 'O(N log N)', average: 'O(N log N)', worst: 'O(N log N)', space: 'O(N)' }
-  },
-  'quick-sort': {
-    name: 'Quick Sort',
-    description: 'Picks a pivot and partitions the array into smaller/larger elements.',
-    type: 'sorting',
-    difficulty: 'Intermediate',
-    timeComplexities: { best: 'O(N log N)', average: 'O(N log N)', worst: 'O(N²)', space: 'O(log N)' }
-  },
-  'linear-search': {
-    name: 'Linear Search',
-    description: 'Scans elements one by one sequentially to find the target element.',
-    type: 'searching',
-    difficulty: 'Beginner',
-    timeComplexities: { best: 'O(1)', average: 'O(N)', worst: 'O(N)', space: 'O(1)' }
-  },
-  'binary-search': {
-    name: 'Binary Search',
-    description: 'Searches a sorted array by repeatedly dividing the search space in half.',
-    type: 'searching',
-    difficulty: 'Beginner',
-    timeComplexities: { best: 'O(1)', average: 'O(log N)', worst: 'O(log N)', space: 'O(1)' }
-  },
-  'bfs': {
-    name: 'Breadth-First Search (BFS)',
-    description: 'Explores graph layer-by-layer (ripples outward) using a Queue.',
-    type: 'graph',
-    difficulty: 'Intermediate',
-    timeComplexities: { best: 'O(V + E)', average: 'O(V + E)', worst: 'O(V + E)', space: 'O(V)' }
-  },
-  'dfs': {
-    name: 'Depth-First Search (DFS)',
-    description: 'Explores graph paths as deep as possible before backtracking using a Stack.',
-    type: 'graph',
-    difficulty: 'Intermediate',
-    timeComplexities: { best: 'O(V + E)', average: 'O(V + E)', worst: 'O(V + E)', space: 'O(V)' }
-  },
-  'dijkstra': {
-    name: "Dijkstra's Algorithm",
-    description: 'Finds the shortest path from a source node to all other nodes in a weighted graph.',
-    type: 'graph',
-    difficulty: 'Advanced',
-    timeComplexities: { best: 'O((V + E) log V)', average: 'O((V + E) log V)', worst: 'O((V + E) log V)', space: 'O(V)' }
-  },
-  'bellman-ford': {
-    name: 'Bellman-Ford Algorithm',
-    description: 'Finds single-source shortest paths. Unlike Dijkstra, it supports negative edge weights.',
-    type: 'graph',
-    difficulty: 'Advanced',
-    timeComplexities: { best: 'O(VE)', average: 'O(VE)', worst: 'O(VE)', space: 'O(V)' }
-  },
-  'floyd-warshall': {
-    name: 'Floyd-Warshall Algorithm',
-    description: 'Dynamic programming approach that calculates all-pairs shortest paths.',
-    type: 'graph',
-    difficulty: 'Advanced',
-    timeComplexities: { best: 'O(V³)', average: 'O(V³)', worst: 'O(V³)', space: 'O(V²)' }
-  },
-  'kruskal': {
-    name: "Kruskal's MST",
-    description: 'Builds a Minimum Spanning Tree (MST) by sorting edges and avoiding cycles.',
-    type: 'graph',
-    difficulty: 'Advanced',
-    timeComplexities: { best: 'O(E log E)', average: 'O(E log E)', worst: 'O(E log E)', space: 'O(V)' }
-  },
-  'prim': {
-    name: "Prim's MST",
-    description: 'Builds a Minimum Spanning Tree (MST) by greedily connecting nearby cheap vertices.',
-    type: 'graph',
-    difficulty: 'Advanced',
-    timeComplexities: { best: 'O((V + E) log V)', average: 'O((V + E) log V)', worst: 'O((V + E) log V)', space: 'O(V)' }
-  },
-  'topological-sort': {
-    name: 'Topological Sort',
-    description: 'Orders vertices in a DAG such that for every directed edge U -> V, U comes before V.',
-    type: 'graph',
-    difficulty: 'Intermediate',
-    timeComplexities: { best: 'O(V + E)', average: 'O(V + E)', worst: 'O(V + E)', space: 'O(V)' }
-  },
-  'knapsack': {
-    name: '0/1 Knapsack Problem',
-    description: 'Computes maximum value using dynamic programming matrix values.',
-    type: 'dp',
-    difficulty: 'Intermediate',
-    timeComplexities: { best: 'O(NW)', average: 'O(NW)', worst: 'O(NW)', space: 'O(NW)' }
-  },
-  'fibonacci': {
-    name: 'Fibonacci (DP)',
-    description: 'Calculates Fibonacci sequence using dynamic programming memoization.',
-    type: 'dp',
-    difficulty: 'Beginner',
-    timeComplexities: { best: 'O(N)', average: 'O(N)', worst: 'O(N)', space: 'O(N)' }
-  },
-  'lcs': {
-    name: 'Longest Common Subsequence',
-    description: 'Finds the longest common subsequence of two strings using a grid matrix.',
-    type: 'dp',
-    difficulty: 'Intermediate',
-    timeComplexities: { best: 'O(MN)', average: 'O(MN)', worst: 'O(MN)', space: 'O(MN)' }
-  },
-  'activity-selection': {
-    name: 'Activity Selection (Greedy)',
-    description: 'Selects the maximum number of mutually compatible activities.',
-    type: 'greedy',
-    difficulty: 'Beginner',
-    timeComplexities: { best: 'O(N log N)', average: 'O(N log N)', worst: 'O(N log N)', space: 'O(N)' }
-  },
-  'huffman-coding': {
-    name: 'Huffman Coding',
-    description: 'Constructs optimal prefix codes for characters using a greedy tree.',
-    type: 'greedy',
-    difficulty: 'Advanced',
-    timeComplexities: { best: 'O(N log N)', average: 'O(N log N)', worst: 'O(N log N)', space: 'O(N)' }
-  },
-  'hanoi': {
-    name: 'Tower of Hanoi',
-    description: 'Solves the classic mathematical puzzle of moving disks across pegs recursively.',
-    type: 'recursion',
-    difficulty: 'Intermediate',
-    timeComplexities: { best: 'O(2^N)', average: 'O(2^N)', worst: 'O(2^N)', space: 'O(N)' }
-  },
-  'inorder-traversal': {
-    name: 'Inorder Traversal',
-    description: 'Visits left child, root, then right child. In a BST, it visits nodes in ascending order.',
-    type: 'traversal',
-    difficulty: 'Beginner',
-    timeComplexities: { best: 'O(N)', average: 'O(N)', worst: 'O(N)', space: 'O(log N)' }
-  },
-  'preorder-traversal': {
-    name: 'Preorder Traversal',
-    description: 'Visits root, left child, then right child. Often used to create a copy of the tree.',
-    type: 'traversal',
-    difficulty: 'Beginner',
-    timeComplexities: { best: 'O(N)', average: 'O(N)', worst: 'O(N)', space: 'O(log N)' }
-  },
-  'postorder-traversal': {
-    name: 'Postorder Traversal',
-    description: 'Visits left child, right child, then root. Often used to delete a tree.',
-    type: 'traversal',
-    difficulty: 'Beginner',
-    timeComplexities: { best: 'O(N)', average: 'O(N)', worst: 'O(N)', space: 'O(log N)' }
-  },
-  'two-pointer': {
-    name: 'Two-Pointer Target Sum',
-    description: 'Uses two moving index markers (left and right) on a sorted array to find a target sum in O(N) time.',
-    type: 'searching',
-    difficulty: 'Intermediate',
-    timeComplexities: { best: 'O(1)', average: 'O(N)', worst: 'O(N)', space: 'O(1)' }
-  },
-  'reverse-array': {
-    name: 'Reverse Array (Two-Pointer)',
-    description: 'Reverses the elements of an array (or linked list values) in-place using two pointers.',
-    type: 'searching',
-    difficulty: 'Beginner',
-    timeComplexities: { best: 'O(N)', average: 'O(N)', worst: 'O(N)', space: 'O(1)' }
-  },
-};
+
 
 const CODE_TEMPLATES: Record<AlgoType, string[]> = {
   'bubble-sort': [
@@ -559,7 +353,7 @@ const CODE_TEMPLATES: Record<AlgoType, string[]> = {
 
 import AlgorithmInfoPanel from '../visualizer/AlgorithmInfoPanel';
 import CodeImplementationsModal from '../visualizer/CodeImplementationsModal';
-import VisualizerControls from '../visualizer/VisualizerControls';
+import AlgorithmModuleLayout, {AlgorithmCamera} from '../visualizer/AlgorithmModuleLayout';
 export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', filterType, initialAlgo, hideSidebar = false, hideCode = false, immersive = false, hideViewModeToggle = false }: { viewMode?: '3d' | '2d', filterType?: 'sorting' | 'searching' | 'all', initialAlgo?: AlgoType, hideSidebar?: boolean, hideCode?: boolean, immersive?: boolean, hideViewModeToggle?: boolean }) {
   const normalizeAlgo = (algo?: string): AlgoType => {
     if (!algo) return 'bubble-sort';
@@ -568,10 +362,12 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
     return 'bubble-sort';
   };
 
+  const reducedMotion=useReducedMotion();
   const [viewMode, setViewMode] = useState<'3d' | '2d'>(initialViewMode);
   const [activeAlgo, setActiveAlgo] = useState<AlgoType>(() => normalizeAlgo(initialAlgo));
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [showUI, setShowUI] = useState(true);
+  const [cameraRevision,setCameraRevision] = useState(0);
   useEffect(() => {
     if (initialAlgo) setActiveAlgo(normalizeAlgo(initialAlgo));
     else if (filterType === 'searching') setActiveAlgo('linear-search');
@@ -583,7 +379,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
   const [currentStepIdx, setCurrentStepIdx] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [speed, setSpeed] = useState<number>(1); // 1 = 1000ms, 2 = 500ms, 0.5 = 2000ms
-  
+
   const timerRef = useRef<any>(null);
   const { addXp, addTimeSpent } = useProgressStore();
 
@@ -608,7 +404,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
     } else {
       for(let i=0; i<11; i++) newArr.push(getUniqueRandom(newArr));
       newArr.sort((a, b) => a - b);
-      
+
       if (Math.random() > 0.3 && newArr.length > 0) {
         setTarget(String(newArr[Math.floor(Math.random() * newArr.length)]));
       } else {
@@ -759,7 +555,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
       const temp = currentArray;
       addStep({ description: 'Start Insertion Sort. We assume the first element is already sorted.', codeLine: 1 });
       const sorted = [0];
-      
+
       for (let i = 1; i < temp.length; i++) {
         let key = temp[i];
         let j = i - 1;
@@ -769,7 +565,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
           sorted: [...sorted],
           codeLine: 3,
         });
-        
+
         while (j >= 0 && temp[j] > key) {
           addStep({
             description: `Compare ${key} with ${temp[j]}. ${temp[j]} is larger, shift it right.`,
@@ -799,12 +595,12 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
 
     } else if (activeAlgo === 'merge-sort') {
       const temp = currentArray;
-      
+
       const merge = (low: number, mid: number, high: number) => {
         let left = temp.slice(low, mid + 1);
         let right = temp.slice(mid + 1, high + 1);
         let i = 0, j = 0, k = low;
-        
+
         addStep({
           array: [...temp],
           description: `Merging subarrays: [${left.join(', ')}] and [${right.join(', ')}]`,
@@ -829,7 +625,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
           });
           k++;
         }
-        
+
         while (i < left.length) {
           temp[k] = left[i];
           addStep({ array: [...temp], comparing: [k], description: `Placed remaining ${temp[k]} from left subarray.`, low, high, currentIndex: mid, codeLine: 18 });
@@ -863,7 +659,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
       const partition = (low: number, high: number) => {
         const pivot = temp[high];
         let i = low - 1;
-        
+
         addStep({ array: [...temp], description: `Selected pivot ${pivot} at index ${high}`, low, high, foundIndex: high, sorted: [...sortedList], codeLine: 7 });
 
         for (let j = low; j < high; j++) {
@@ -881,7 +677,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
         const t = temp[i + 1];
         temp[i + 1] = temp[high];
         temp[high] = t;
-        
+
         sortedList.push(i + 1);
         addStep({ array: [...temp], swapping: [i + 1, high], description: `Moved pivot ${pivot} into its correct sorted position`, low, high, foundIndex: -1, sorted: [...sortedList], codeLine: 13 });
         return i + 1;
@@ -939,7 +735,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
       const sorted = [...array].sort((a, b) => a - b);
       let low = 0;
       let high = sorted.length - 1;
-      
+
       addStep({
         array: sorted,
         low,
@@ -1012,7 +808,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
       let left = 0;
       let right = arr.length - 1;
       const sortedList: number[] = [];
-      
+
       addStep({
         array: [...arr],
         comparing: [left, right],
@@ -1027,11 +823,11 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
           description: `Compare and swap elements at Left (${arr[left]}) and Right (${arr[right]}).`,
           codeLine: 4,
         });
-        
+
         const tempVal = arr[left];
         arr[left] = arr[right];
         arr[right] = tempVal;
-        
+
         addStep({
           array: [...arr],
           swapping: [left, right],
@@ -1039,16 +835,16 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
           description: `Swapped. Array is now partially reversed.`,
           codeLine: 6,
         });
-        
+
         sortedList.push(left);
         sortedList.push(right);
-        
+
         left++;
         right--;
       }
-      
+
       if (left === right) sortedList.push(left);
-      
+
       addStep({
         array: [...arr],
         sorted: sortedList,
@@ -1062,7 +858,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
       let right = sorted.length - 1;
       // Force a valid target if currentTarget is arbitrary, to make the animation meaningful
       const tSum = sorted[1] + sorted[sorted.length - 2];
-      
+
       addStep({
         array: sorted,
         comparing: [left, right],
@@ -1111,7 +907,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
           });
         }
       }
-      
+
       if (!found) {
         addStep({
           array: sorted,
@@ -1227,25 +1023,25 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
     } else if (activeAlgo === 'knapsack') {
       const emptyGrid = Array(4).fill(null).map(() => Array(6).fill(0));
       addStep({ description: 'Initialize Knapsack DP grid. Rows = Items, Cols = Weight Capacity.', dpTable: emptyGrid, codeLine: 2 });
-      
+
       const grid1 = emptyGrid.map((r, ri) => ri === 1 ? r.map((c, ci) => ci >= 2 ? 3 : 0) : [...r]);
       addStep({ description: 'Process Item 1 (Wt: 2, Val: 3). If capacity >= 2, we can select it.', dpTable: grid1, codeLine: 6 });
-      
+
       const grid2 = grid1.map((r, ri) => ri === 2 ? r.map((c, ci) => ci === 3 ? 4 : ci === 4 ? 4 : ci === 5 ? 7 : grid1[1][ci]) : [...r]);
       addStep({ description: 'Process Item 2 (Wt: 3, Val: 4). At cap 5, combining Item 1 & 2 yields 3+4=7.', dpTable: grid2, codeLine: 6 });
-      
+
       const grid3 = grid2.map((r, ri) => ri === 3 ? r.map((c, ci) => ci === 4 ? 5 : grid2[2][ci]) : [...r]);
       addStep({ description: 'Process Item 3 (Wt: 4, Val: 5). Optimal Knapsack value remains 7.', dpTable: grid3, codeLine: 9 });
     } else if (activeAlgo === 'lcs') {
       const emptyGrid = Array(4).fill(null).map(() => Array(4).fill(0));
       addStep({ description: 'Initialize LCS grid comparing X="BAT" and Y="CAT".', dpTable: emptyGrid, codeLine: 2 });
-      
+
       const grid1 = emptyGrid.map((r, ri) => ri === 1 ? r.map(() => 0) : [...r]);
       addStep({ description: 'Compare X[0] ("B") with Y ("C", "A", "T"). No matches found.', dpTable: grid1, codeLine: 6 });
-      
+
       const grid2 = grid1.map((r, ri) => ri === 2 ? r.map((c, ci) => ci >= 2 ? 1 : 0) : [...r]);
       addStep({ description: 'Compare X[1] ("A") with Y[1] ("A"). Match found! Set cell to 1.', dpTable: grid2, codeLine: 5 });
-      
+
       const grid3 = grid2.map((r, ri) => ri === 3 ? r.map((c, ci) => ci === 3 ? 2 : grid2[2][ci]) : [...r]);
       addStep({ description: 'Compare X[2] ("T") with Y[2] ("T"). Match found! Set cell to 2. LCS length is 2.', dpTable: grid3, codeLine: 5 });
     } else if (activeAlgo === 'activity-selection') {
@@ -1256,16 +1052,16 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
         { id: 'Act D', start: 5, end: 7, selected: false, color: 'rgba(59, 130, 246, 0.4)' }
       ];
       addStep({ description: 'Sort activities by finish times.', intervals: items, codeLine: 1 });
-      
+
       const s1 = items.map(t => t.id === 'Act A' ? { ...t, selected: true, color: 'rgba(34, 197, 94, 0.8)' } : t);
       addStep({ description: 'Select first activity A (1-3) greedily.', intervals: s1, codeLine: 3 });
-      
+
       const s2 = s1.map(t => t.id === 'Act B' ? { ...t, color: 'rgba(239, 68, 68, 0.5)' } : t);
       addStep({ description: 'Evaluate B (2-5). Overlaps with A (start 2 < finish 3). Reject B.', intervals: s2, codeLine: 5 });
-      
+
       const s3 = s2.map(t => t.id === 'Act C' ? { ...t, selected: true, color: 'rgba(34, 197, 94, 0.8)' } : t);
       addStep({ description: 'Evaluate C (4-6). Compatible (start 4 >= finish 3). Select C.', intervals: s3, codeLine: 5 });
-      
+
       const s4 = s3.map(t => t.id === 'Act D' ? { ...t, color: 'rgba(239, 68, 68, 0.5)' } : t);
       addStep({ description: 'Evaluate D (5-7). Overlaps with C. Greedy selection complete!', intervals: s4, codeLine: 7 });
     } else if (activeAlgo === 'huffman-coding') {
@@ -1277,7 +1073,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
         { id: 'E', label: 'E', freq: 16, x: 2, y: -1 }
       ];
       addStep({ description: 'Initialize priority queue with leaf nodes.', huffmanNodes: nodes, codeLine: 1 });
-      
+
       const s1 = [
         ...nodes.filter(n => n.id !== 'A' && n.id !== 'B'),
         { id: 'AB', label: 'AB', freq: 14, x: -1.5, y: 0, left: 'A', right: 'B' },
@@ -1285,7 +1081,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
         { id: 'B', label: 'B', freq: 9, x: -1, y: -1, code: '1' }
       ];
       addStep({ description: 'Combine lowest frequencies A(5) and B(9) to AB(14).', huffmanNodes: s1, codeLine: 5 });
-      
+
       const s2 = [
         ...s1.filter(n => n.id !== 'C' && n.id !== 'D'),
         { id: 'CD', label: 'CD', freq: 25, x: 0.5, y: 0.5, left: 'C', right: 'D' },
@@ -1293,14 +1089,14 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
         { id: 'D', label: 'D', freq: 13, x: 1, y: -1, code: '1' }
       ];
       addStep({ description: 'Combine next lowest C(12) and D(13) to CD(25).', huffmanNodes: s2, codeLine: 5 });
-      
+
       const s3 = [
         ...s2.filter(n => n.id !== 'AB' && n.id !== 'E'),
         { id: 'ABE', label: 'ABE', freq: 30, x: -1, y: 1, left: 'AB', right: 'E' },
         { id: 'E', label: 'E', freq: 16, x: 2, y: -1, code: '1' }
       ];
       addStep({ description: 'Combine AB(14) and E(16) to ABE(30).', huffmanNodes: s3, codeLine: 5 });
-      
+
       const s4 = [
         ...s3.filter(n => n.id !== 'CD' && n.id !== 'ABE'),
         { id: 'ROOT', label: 'ROOT', freq: 55, x: 0, y: 2, left: 'ABE', right: 'CD' }
@@ -1377,158 +1173,80 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
 
 
   if (immersive) {
-    const dsList = (Object.keys(ALGO_META) as AlgoType[])
-      .filter(key => !filterType || filterType === 'all' || ALGO_META[key].type === filterType)
-      .map(key => ALGO_META[key].name);
-
-    return (
-      <div className="flex flex-col h-full w-full bg-[var(--color-bg-primary)] overflow-hidden relative">
-        <VisualizerControls 
-          title="Algorithm Learning Module"
-          isPlaying={isPlaying}
-          currentStep={currentStepIdx}
-          totalSteps={steps.length}
-          onPlayToggle={() => setIsPlaying(!isPlaying)}
-          onNext={handleNext}
-          onPrev={handlePrev}
-          onReset={handleReset}
-          dsList={dsList}
-          activeDs={ALGO_META[activeAlgo].name}
-          onDsSelect={(dsName) => {
-            const key = (Object.keys(ALGO_META) as AlgoType[]).find(k => ALGO_META[k].name === dsName);
-            if (key) setActiveAlgo(key);
-          }}
-          showUI={showUI}
-          onToggleUI={() => setShowUI(!showUI)}
-        />
-        
-        {showUI && (
-          <AlgorithmInfoPanel 
-            activeAlgo={activeAlgo} 
-            onViewCode={() => setShowCodeModal(true)}
-          />
-        )}
-
-        {/* Dynamic Toolbar overrides */}
-        <div className="absolute top-28 left-1/2 -translate-x-1/2 z-10 pointer-events-auto flex items-center gap-2">
-          {ALGO_META[activeAlgo].type === 'searching' && (
-            <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md border border-[var(--color-border-subtle)] rounded-xl p-2 px-4 shadow-xl">
-              <span className="text-xs text-white/70">Search Target:</span>
-              <input
-                type="number"
-                value={target}
-                onChange={(e) => {
-                  setTarget(e.target.value);
-                  setIsPlaying(false);
-                  setCurrentStepIdx(0);
-                }}
-                className="w-16 bg-white/10 text-white rounded px-2 py-1 text-sm text-center border border-white/20"
-              />
-            </div>
-          )}
-          <button 
-            onClick={generateNewData}
-            className="bg-black/40 backdrop-blur-md border border-[var(--color-border-subtle)] rounded-xl p-2 px-4 shadow-xl text-white/70 hover:text-white transition-colors text-sm font-medium flex items-center gap-2"
-          >
-            <RotateCcw size={14} /> Shuffle Array
-          </button>
-        </div>
-
-        {/* Explanation Overlay Box at bottom */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-auto max-w-3xl w-full px-4">
-          <div className="bg-[#0B1120]/95 backdrop-blur-xl border border-[var(--color-border-subtle)] rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center">
-            <h3 className="text-2xl font-bold text-white mb-2">Step {currentStepIdx + 1} of {steps.length}</h3>
-            <p className="text-[var(--color-text-secondary)] text-lg h-[60px] flex items-center justify-center">
-              {step?.description || 'Loading...'}
-            </p>
-            <div className="w-full flex justify-center gap-2 mt-4">
-              {steps.map((_, i) => (
-                <div 
-                  key={i} 
-                  className={`h-1.5 rounded-full transition-all ${i === currentStepIdx ? 'w-6 bg-blue-500' : 'w-1.5 bg-white/20'}`} 
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* 3D Canvas */}
-        <div className="flex-1 w-full bg-gradient-to-b from-[#0f172a] to-[#1e293b]">
-          <Canvas camera={{ position: [0, 4, 12], fov: 45 }}>
+    return <AlgorithmModuleLayout activeAlgo={activeAlgo} onAlgorithm={setActiveAlgo} playing={isPlaying} onPlay={handlePlayToggle}
+      current={currentStepIdx} total={steps.length} onPrevious={handlePrev} onNext={handleNext} onReset={handleReset}
+      onSeek={value=>{setCurrentStepIdx(value);setIsPlaying(false);}} speed={speed} onSpeed={setSpeed}
+      showGuide={showUI} onGuide={()=>setShowUI(v=>!v)} onCamera={()=>setCameraRevision(v=>v+1)}
+      target={target} onTarget={value=>{setTarget(value);setCurrentStepIdx(0);setIsPlaying(false);}}
+      onShuffle={generateNewData} description={step?.description || 'Preparing algorithm steps…'}
+      values={step?.array || []} active={step?.comparing || []} sorted={step?.sorted || []}
+      code={CODE_TEMPLATES[activeAlgo]} codeLine={step?.codeLine}>
+      <Suspense fallback={<p className="am-loading" role="status">Loading 3D scene…</p>}>
+<Canvas dpr={[1,1.5]} camera={{ position: [0, 4, 16], fov: 45 }}>
             <ambientLight intensity={0.5} />
             <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
             <pointLight position={[-10, 10, -10]} intensity={0.5} />
-            <Environment preset="city" />
-            <Stars radius={50} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
-            <DreiSparkles count={50} scale={12} size={2} speed={0.4} opacity={0.2} color="#818cf8" />
-            
-            <Billboard position={[0, 4.2, -3]}>
-              <Text fontSize={0.6} color="#ffffff" outlineWidth={0.03} outlineColor="#000000" anchorX="center" anchorY="middle">
-                {ALGO_META[activeAlgo].name}
-              </Text>
-            </Billboard>
+            <Environment resolution={128} frames={1}><Lightformer position={[0,5,-5]} scale={[12,5,1]} intensity={3} color="#b7cdff"/><Lightformer position={[-5,1,3]} rotation={[0,Math.PI/2,0]} scale={[5,8,1]} intensity={4} color="#7257ff"/></Environment>
+            <Stars radius={50} depth={50} count={2000} factor={4} saturation={0} fade speed={reducedMotion ? 0 : 1} />
+            <DreiSparkles count={50} scale={12} size={2} speed={reducedMotion ? 0 : 0.4} opacity={0.2} color="#818cf8" />
 
             {step && (
               ALGO_META[activeAlgo].type === 'traversal' ? (
-                <BinaryTree3D 
+                <BinaryTree3D reducedMotion={reducedMotion}
                   activeIndex={step.activeNodes}
                   visitedIndex={step.visitedNodes}
                 />
               ) : ALGO_META[activeAlgo].type === 'graph' ? (
-                <GraphAlgorithms3D 
+                <GraphAlgorithms3D
                   algoType={activeAlgo}
-                  activeNodes={step.activeNodes as string[]} 
-                  visitedNodes={step.visitedNodes as string[]} 
-                  activeEdges={step.activeEdges} 
+                  activeNodes={step.activeNodes as string[]}
+                  visitedNodes={step.visitedNodes as string[]}
+                  activeEdges={step.activeEdges}
                 />
               ) : (ALGO_META[activeAlgo].type === 'dp' || ALGO_META[activeAlgo].type === 'greedy' || ALGO_META[activeAlgo].type === 'recursion') ? (
-                <DpGreedyAlgorithms3D 
-                  algoType={activeAlgo} 
-                  dpTable={step.dpTable} 
-                  dpArray={step.dpArray} 
-                  intervals={step.intervals} 
-                  huffmanNodes={step.huffmanNodes} 
+                <DpGreedyAlgorithms3D
+                  algoType={activeAlgo}
+                  dpTable={step.dpTable}
+                  dpArray={step.dpArray}
+                  intervals={step.intervals}
+                  huffmanNodes={step.huffmanNodes}
                   pegs={step.pegs}
                 />
               ) : (
                 <Algorithms3D step={step} algoType={activeAlgo} />
               )
             )}
-            
-            <ContactShadows 
-              position={[0, -2, 0]} 
-              opacity={0.5} 
-              scale={20} 
-              blur={2} 
-              far={4} 
+
+            <ContactShadows
+              position={[0, -2, 0]}
+              opacity={0.5}
+              scale={20}
+              blur={2}
+              far={4}
               color="#000000"
             />
-            <OrbitControls 
+            <OrbitControls
               makeDefault
-              enabled={!isPlaying}
+              enabled={true}
               enablePan={false}
               minDistance={5}
-              maxDistance={20}
+              maxDistance={65}
+              minPolarAngle={0.35}
               maxPolarAngle={Math.PI / 2 + 0.1}
             />
             <EffectComposer>
-              <Bloom 
-                luminanceThreshold={0.2} 
-                luminanceSmoothing={0.9} 
+              <Bloom
+                luminanceThreshold={0.2}
+                luminanceSmoothing={0.9}
                 intensity={1.5}
                 mipmapBlur
               />
               <Vignette eskil={false} offset={0.1} darkness={1.1} />
             </EffectComposer>
+            <AlgorithmCamera revision={cameraRevision} algorithm={activeAlgo}/>
           </Canvas>
-        </div>
-        <CodeImplementationsModal
-          open={showCodeModal}
-          onClose={() => setShowCodeModal(false)}
-          activeDs={ALGO_META[activeAlgo].name}
-        />
-      </div>
-    );
+      </Suspense>
+    </AlgorithmModuleLayout>;
   }
 
   return (
@@ -1683,43 +1401,43 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
                     <pointLight position={[-10, 10, -10]} intensity={0.5} />
                     <OrbitControls makeDefault enablePan={false} minDistance={5} maxDistance={20} maxPolarAngle={Math.PI / 2 + 0.1} />
                     <Environment preset="city" />
-                    
-                    <Stars radius={50} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
-                    <DreiSparkles count={50} scale={12} size={2} speed={0.4} opacity={0.2} color="#818cf8" />
-                    
+
+                    <Stars radius={50} depth={50} count={2000} factor={4} saturation={0} fade speed={reducedMotion ? 0 : 1} />
+                    <DreiSparkles count={50} scale={12} size={2} speed={reducedMotion ? 0 : 0.4} opacity={0.2} color="#818cf8" />
+
                     {step && (
                       ALGO_META[activeAlgo].type === 'traversal' ? (
-                        <BinaryTree3D 
+                        <BinaryTree3D reducedMotion={reducedMotion}
                           activeIndex={step.activeNodes}
                           visitedIndex={step.visitedNodes}
                         />
                       ) : ALGO_META[activeAlgo].type === 'graph' ? (
-                        <GraphAlgorithms3D 
+                        <GraphAlgorithms3D
                           algoType={activeAlgo}
-                          activeNodes={step.activeNodes as string[]} 
-                          visitedNodes={step.visitedNodes as string[]} 
-                          activeEdges={step.activeEdges} 
+                          activeNodes={step.activeNodes as string[]}
+                          visitedNodes={step.visitedNodes as string[]}
+                          activeEdges={step.activeEdges}
                         />
                       ) : (ALGO_META[activeAlgo].type === 'dp' || ALGO_META[activeAlgo].type === 'greedy' || ALGO_META[activeAlgo].type === 'recursion') ? (
-                        <DpGreedyAlgorithms3D 
-                          algoType={activeAlgo} 
-                          dpTable={step.dpTable} 
-                          dpArray={step.dpArray} 
-                          intervals={step.intervals} 
-                          huffmanNodes={step.huffmanNodes} 
+                        <DpGreedyAlgorithms3D
+                          algoType={activeAlgo}
+                          dpTable={step.dpTable}
+                          dpArray={step.dpArray}
+                          intervals={step.intervals}
+                          huffmanNodes={step.huffmanNodes}
                           pegs={step.pegs}
                         />
                       ) : (
                         <Algorithms3D step={step} algoType={activeAlgo} />
                       )
                     )}
-                    
-                    <ContactShadows 
-                      position={[0, -2, 0]} 
-                      opacity={0.5} 
-                      scale={20} 
-                      blur={2} 
-                      far={4} 
+
+                    <ContactShadows
+                      position={[0, -2, 0]}
+                      opacity={0.5}
+                      scale={20}
+                      blur={2}
+                      far={4}
                       color="#000000"
                     />
                     <EffectComposer>
@@ -1914,10 +1632,10 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
                         <div className="flex items-center gap-3">
                           {step.dpArray.map((val, idx) => (
                             <div key={idx} className="flex flex-col items-center gap-1">
-                              <div 
+                              <div
                                 className={`w-14 h-14 rounded-xl border flex flex-col items-center justify-center transition-all ${
-                                  (val > 0 || idx === 0) 
-                                    ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold shadow-lg shadow-emerald-500/10' 
+                                  (val > 0 || idx === 0)
+                                    ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold shadow-lg shadow-emerald-500/10'
                                     : 'bg-[var(--color-bg-tertiary)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
                                 }`}
                               >
@@ -1938,10 +1656,10 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
                                 <tr key={ri}>
                                   {row.map((val, ci) => (
                                     <td key={ci} className="p-1">
-                                      <div 
+                                      <div
                                         className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-mono font-bold border transition-colors ${
-                                          val > 0 
-                                            ? 'bg-blue-500/20 border-blue-500 text-blue-300' 
+                                          val > 0
+                                            ? 'bg-blue-500/20 border-blue-500 text-blue-300'
                                             : 'bg-white/5 border-white/10 text-white/40'
                                         }`}
                                       >
@@ -1960,20 +1678,20 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
                       {activeAlgo === 'activity-selection' && step.intervals && (
                         <div className="flex flex-col gap-2 w-full max-w-md">
                           {step.intervals.map((act) => (
-                            <div 
-                              key={act.id} 
+                            <div
+                              key={act.id}
                               className="flex items-center gap-3 p-3 rounded-xl border transition-colors"
-                              style={{ 
+                              style={{
                                 background: act.selected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.02)',
-                                borderColor: act.selected ? '#22c55e' : 'var(--color-border-subtle)' 
+                                borderColor: act.selected ? '#22c55e' : 'var(--color-border-subtle)'
                               }}
                             >
                               <span className="font-bold text-xs w-16 text-white">{act.id}</span>
                               <div className="flex-1 bg-white/5 h-2 rounded-full relative overflow-hidden">
-                                <div 
+                                <div
                                   className="absolute h-full rounded-full"
-                                  style={{ 
-                                    left: `${(act.start / 8) * 100}%`, 
+                                  style={{
+                                    left: `${(act.start / 8) * 100}%`,
                                     width: `${((act.end - act.start) / 8) * 100}%`,
                                     background: act.selected ? '#22c55e' : act.color?.includes('239') ? '#ef4444' : '#3b82f6'
                                   }}
@@ -2012,19 +1730,19 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
                               <div key={pIdx} className="flex flex-col items-center relative w-32 h-full justify-end">
                                 {/* Peg Shaft - Rounded Top Cap */}
                                 <div className="w-3.5 h-44 bg-slate-500/80 rounded-t-full absolute bottom-0 shadow-inner" />
-                                
+
                                 {/* Disks stacked on this peg */}
                                 <div className="flex flex-col-reverse items-center z-10 w-full mb-0 gap-0.5">
                                   {pegDisks.map((diskSize) => {
                                     const colors = ['#eab308', '#3b82f6', '#f43f5e'];
                                     const diskWidth = diskSize * 28 + 32;
                                     return (
-                                      <div 
-                                        key={diskSize} 
+                                      <div
+                                        key={diskSize}
                                         className="h-7 rounded-full shadow-lg border border-black/40 font-bold text-xs flex items-center justify-center text-white transition-all transform hover:scale-105"
-                                        style={{ 
-                                          width: `${diskWidth}px`, 
-                                          background: colors[diskSize - 1] || '#a855f7' 
+                                        style={{
+                                          width: `${diskWidth}px`,
+                                          background: colors[diskSize - 1] || '#a855f7'
                                         }}
                                       >
                                         {diskSize === 1 ? 'Smallest' : diskSize === 3 ? 'Largest' : diskSize}
@@ -2039,7 +1757,7 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
                               </div>
                             ))}
                           </div>
-                          
+
                           {/* One single unified Base Board spanning across all 3 pegs */}
                           <div className="w-full h-4 bg-slate-600 rounded-full shadow-md border-b-2 border-slate-700/60 z-0" />
                         </div>
@@ -2075,23 +1793,23 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
               </h3>
               <Badge variant="success">Python</Badge>
             </div>
-            
+
             <div className="flex-1 p-4 font-mono text-xs leading-6 overflow-x-auto select-none bg-[rgba(0,0,0,0.2)]">
               {CODE_TEMPLATES[activeAlgo].map((line, idx) => {
                 const lineNum = idx + 1;
                 const isCurrentLine = step?.codeLine === lineNum;
-                
+
                 return (
                   <div
                     key={idx}
                     className={`flex items-center px-2 py-0.5 rounded transition-all ${
-                      isCurrentLine 
-                        ? 'bg-[var(--color-surface-glass-active)] text-white font-bold border-l-2 border-[var(--color-accent-primary)]' 
+                      isCurrentLine
+                        ? 'bg-[var(--color-surface-glass-active)] text-white font-bold border-l-2 border-[var(--color-accent-primary)]'
                         : 'text-[var(--color-text-secondary)]'
                     }`}
                   >
-                    <span 
-                      className="w-6 text-right mr-4 select-none font-mono font-medium" 
+                    <span
+                      className="w-6 text-right mr-4 select-none font-mono font-medium"
                       style={{ color: isCurrentLine ? 'var(--color-accent-primary-light)' : 'var(--color-text-muted)' }}
                     >
                       {lineNum}

@@ -1,6 +1,6 @@
 // Auto-generated 400 problems with enriched constraints
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
-export type DataType = 'integer' | 'string' | 'boolean' | 'integer[]' | 'string[]' | 'integer[][]' | 'char[]';
+export type DataType = 'integer' | 'string' | 'boolean' | 'integer[]' | 'string[]' | 'integer[][]' | 'char[]' | 'char' | 'string[][]' | 'boolean[]' | 'float[]' | 'integer[][][]';
 
 export interface ProblemSignature {
   name: string;
@@ -14,6 +14,7 @@ export interface TestCase {
 }
 
 export interface CodingProblem {
+  stats?: {accepted:number;submissions:number};
   id: string;
   title: string;
   difficulty: Difficulty;

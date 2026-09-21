@@ -13,7 +13,13 @@ export interface ExecutionResult {
   executionTimeMs: number;
 }
 
-export async function executeJavaScript(userCode: string, testCases: TestCase[], functionName: string): Promise<ExecutionResult> {
+export async function executeJavaScript(userCode:string,testCases:TestCase[],functionName:string):Promise<ExecutionResult>{
+ const source=`const run = ${executeJavaScriptInline.toString()}; self.onmessage=async(e)=>self.postMessage(await run(...e.data));`;
+ const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
+ return new Promise(resolve=>{const worker=new Worker(url);const finish=(result:ExecutionResult)=>{clearTimeout(timer);worker.terminate();URL.revokeObjectURL(url);resolve(result)};const timer=setTimeout(()=>finish({status:'Error',message:'Time Limit Exceeded (3 seconds)',passedCount:0,totalCount:testCases.length,stdout:[],executionTimeMs:3000}),3000);worker.onmessage=e=>finish(e.data);worker.onerror=e=>finish({status:'Error',message:e.message||'Runtime Error',passedCount:0,totalCount:testCases.length,stdout:[],executionTimeMs:0});worker.postMessage([userCode,testCases,functionName]);});
+}
+
+async function executeJavaScriptInline(userCode: string, testCases: TestCase[], functionName: string): Promise<ExecutionResult> {
   const stdout: string[] = [];
   let passedCount = 0;
   const originalLog = console.log;
@@ -90,7 +96,7 @@ try:
             func = getattr(obj, '${functionName}')
     if not func:
         func = globals().get('${functionName}')
-    
+
     if not func:
         sys.stdout = sys.__stdout__
         print(json.dumps({"status": "Error", "message": f"Function ${functionName} not found. Please ensure it's defined at the top level or inside 'class Solution:'.", "passedCount": 0}))
@@ -155,23 +161,23 @@ function getCppVal(type: DataType, val: any): string {
 function generateCppRunner(userCode: string, problem: CodingProblem): string {
     const sig = problem.signature;
     if (!sig) return '#error "Missing signature"';
-    
+
     let runner = `#include <iostream>\n#include <vector>\n#include <string>\nusing namespace std;\n\n${userCode}\n\nint main() {\n    Solution sol;\n    int passed = 0;\n`;
-    
+
     problem.testCases.forEach((tc, i) => {
         const inputArr = Array.isArray(tc?.input) ? tc.input : (tc?.input !== undefined && tc?.input !== null ? [tc.input] : []);
         runner += `    {\n`;
         sig.params.forEach((param, j) => {
             runner += `        ${getCppType(param.type)} ${param.name} = ${getCppVal(param.type, inputArr[j])};\n`;
         });
-        
+
         const callArgs = sig.params.map(p => p.name).join(', ');
         runner += `        auto res = sol.${sig.name}(${callArgs});\n`;
         runner += `        ${getCppType(sig.returns)} exp = ${getCppVal(sig.returns, tc.expected)};\n`;
         runner += `        if (res == exp) passed++;\n`;
         runner += `        else { cout << "Failed|" << ${i} << endl; return 0; }\n    }\n`;
     });
-    
+
     runner += `    cout << "Passed|" << passed << endl;\n    return 0;\n}\n`;
     return runner;
 }
@@ -185,13 +191,13 @@ export async function executeCpp(userCode: string, problem: CodingProblem): Prom
 function generateCRunner(userCode: string, problem: CodingProblem): string {
     const sig = problem.signature;
     if (!sig) return '#error "Missing signature"';
-    
+
     let runner = `#include <stdio.h>\n#include <stdlib.h>\n#include <stdbool.h>\n#include <string.h>\n\n${userCode}\n\nint main() {\n    int passed = 0;\n`;
-    
+
     problem.testCases.forEach((tc, i) => {
         const inputArr = Array.isArray(tc?.input) ? tc.input : (tc?.input !== undefined && tc?.input !== null ? [tc.input] : []);
         runner += `    {\n`;
-        
+
         let callArgs = [];
         sig.params.forEach((param, j) => {
             const val = inputArr[j];
@@ -216,7 +222,7 @@ function generateCRunner(userCode: string, problem: CodingProblem): string {
                 callArgs.push(arr.length);
             }
         });
-        
+
         if (sig.returns === 'integer[]' || sig.returns === 'char[]' || sig.name === 'twoSum') {
             callArgs.push('&returnSize');
             runner += `        int returnSize = 0;\n`;
@@ -225,15 +231,15 @@ function generateCRunner(userCode: string, problem: CodingProblem): string {
             callArgs.push('&returnColSizes');
             runner += `        int* returnColSizes = NULL;\n`;
         }
-        
+
         let retType = 'int';
         if (sig.returns === 'boolean') retType = 'bool';
         if (sig.returns === 'integer[]') retType = 'int*';
         if (sig.returns === 'char[]') retType = 'char*';
         if (sig.returns === 'integer[][]') retType = 'int**';
-        
+
         runner += `        ${retType} res = ${sig.name}(${callArgs.join(', ')});\n`;
-        
+
         if (sig.returns === 'integer' || sig.returns === 'boolean') {
             runner += `        ${retType} exp = ${tc.expected};\n`;
             runner += `        if (res == exp) passed++;\n`;
@@ -251,7 +257,7 @@ function generateCRunner(userCode: string, problem: CodingProblem): string {
         }
         runner += `        else { printf("Failed|%d\\n", ${i}); return 0; }\n    }\n`;
     });
-    
+
     runner += `    printf("Passed|%d\\n", passed);\n    return 0;\n}\n`;
     return runner;
 }
@@ -348,7 +354,7 @@ async function executeOnPaiza(language: PaizaLanguage, code: string, testCasesLe
 
 export async function executeTypescript(userCode: string, testCases: any[], functionName: string): Promise<ExecutionResult> {
   const escapedTestCases = JSON.stringify(JSON.stringify(testCases));
-  
+
   const runner = `
 const testCases = JSON.parse(${escapedTestCases});
 ${userCode}
@@ -365,7 +371,7 @@ try {
     if (typeof userFunc !== 'function') {
         throw new Error('Function ${functionName} not found.');
     }
-    
+
     for (let i = 0; i < testCases.length; i++) {
         const tc = testCases[i];
         const tcInput = Array.isArray(tc.input) ? tc.input : (tc.input !== undefined && tc.input !== null ? [tc.input] : []);
@@ -387,7 +393,7 @@ try {
     originalLog(JSON.stringify({status: 'Error', message: String(e), passedCount: passed, stdout}));
 }
 `;
-  
+
   const startTime = performance.now();
   return await executeOnPaiza('typescript', runner, testCases.length, startTime);
 }
@@ -415,20 +421,20 @@ function getJavaVal(type: DataType, val: any): string {
 function generateJavaRunner(userCode: string, problem: CodingProblem): string {
     const sig = problem.signature;
     if (!sig) return '#error "Missing signature"';
-    
+
     let runner = `import java.util.*;\nimport java.util.stream.*;\n\n${userCode}\n\npublic class Main {\n    public static void main(String[] args) {\n        Solution sol = new Solution();\n        int passed = 0;\n`;
-    
+
     problem.testCases.forEach((tc, i) => {
         const inputArr = Array.isArray(tc?.input) ? tc.input : (tc?.input !== undefined && tc?.input !== null ? [tc.input] : []);
         runner += `        {\n`;
         sig.params.forEach((param, j) => {
             runner += `            ${getJavaType(param.type)} ${param.name} = ${getJavaVal(param.type, inputArr[j])};\n`;
         });
-        
+
         const callArgs = sig.params.map(p => p.name).join(', ');
         runner += `            ${getJavaType(sig.returns)} res = sol.${sig.name}(${callArgs});\n`;
         runner += `            ${getJavaType(sig.returns)} exp = ${getJavaVal(sig.returns, tc.expected)};\n`;
-        
+
         if (sig.returns.endsWith('[]')) {
             if (sig.returns === 'integer[][]') {
                 runner += `            if (Arrays.deepEquals(res, exp)) passed++;\n`;
@@ -444,7 +450,7 @@ function generateJavaRunner(userCode: string, problem: CodingProblem): string {
         }
         runner += `            else { System.out.println("Failed|" + ${i}); return; }\n        }\n`;
     });
-    
+
     runner += `        System.out.println("Passed|" + passed);\n    }\n}\n`;
     return runner;
 }
@@ -478,20 +484,20 @@ function getCsharpVal(type: DataType, val: any): string {
 function generateCsharpRunner(userCode: string, problem: CodingProblem): string {
     const sig = problem.signature;
     if (!sig) return '#error "Missing signature"';
-    
+
     let runner = `using System;\nusing System.Linq;\nusing System.Collections.Generic;\n\n${userCode}\n\npublic class Program {\n    public static void Main(string[] args) {\n        Solution sol = new Solution();\n        int passed = 0;\n`;
-    
+
     problem.testCases.forEach((tc, i) => {
         const inputArr = Array.isArray(tc?.input) ? tc.input : (tc?.input !== undefined && tc?.input !== null ? [tc.input] : []);
         runner += `        {\n`;
         sig.params.forEach((param, j) => {
             runner += `            ${getCsharpType(param.type)} ${param.name} = ${getCsharpVal(param.type, inputArr[j])};\n`;
         });
-        
+
         const callArgs = sig.params.map(p => p.name).join(', ');
         runner += `            ${getCsharpType(sig.returns)} res = sol.${sig.name}(${callArgs});\n`;
         runner += `            ${getCsharpType(sig.returns)} exp = ${getCsharpVal(sig.returns, tc.expected)};\n`;
-        
+
         if (sig.returns.endsWith('[]')) {
             if (sig.returns === 'integer[][]') {
                 runner += `            bool ok = true;\n`;
@@ -506,7 +512,7 @@ function generateCsharpRunner(userCode: string, problem: CodingProblem): string 
         }
         runner += `            else { Console.WriteLine("Failed|" + ${i}); return; }\n        }\n`;
     });
-    
+
     runner += `        Console.WriteLine("Passed|" + passed);\n    }\n}\n`;
     return runner;
 }

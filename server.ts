@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import db from "./server/db";
+import { registerVisualizer } from './server/visualizer';
 
 dotenv.config();
 
@@ -33,7 +34,9 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
   app.use(cors());
+  app.use('/api/visualizer',express.json({limit:'768kb'}));
   app.use(express.json());
+  registerVisualizer(app);
 
   // API routes FIRST
   app.post("/api/chat", async (req, res) => {
@@ -47,7 +50,7 @@ async function startServer() {
       };
       const tutorInstruction = typeof tutorMode === 'string' ? tutorModes[tutorMode] || '' : '';
       const apiKey = process.env.GROQ_API_KEY;
-      
+
       if (!apiKey) {
         res.status(500).json({ error: "GROQ_API_KEY is not set in environment variables. Please create a .env file in the root directory and add GROQ_API_KEY=your_key" });
         return;
@@ -302,7 +305,7 @@ RULES
 
       const user = { id: result.lastInsertRowid, name, email, xp: 0, level: "Apprentice" };
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "7d" });
-      
+
       // Add a welcome activity
       db.prepare("INSERT INTO user_activity (user_id, activity_type, points) VALUES (?, ?, ?)").run(user.id, "Joined Alvio", 100);
 
@@ -356,23 +359,23 @@ RULES
       }
 
       const activity = db.prepare("SELECT * FROM user_activity WHERE user_id = ? ORDER BY created_at DESC LIMIT 10").all(decoded.id);
-      
+
       const allDates = db.prepare("SELECT DISTINCT date(created_at) as d FROM user_activity WHERE user_id = ? ORDER BY d DESC").all(decoded.id) as {d: string}[];
       let dayStreak = 0;
       const today = new Date();
       let currentDate = new Date(today);
       let foundTodayOrYesterday = false;
-      
+
       if (allDates.length > 0) {
         const firstDate = new Date(allDates[0].d);
         const timeDiff = Math.abs(today.getTime() - firstDate.getTime());
-        const diffDays = Math.ceil(timeDiff / (1000 * 3600 * 24)); 
+        const diffDays = Math.ceil(timeDiff / (1000 * 3600 * 24));
         if (diffDays <= 2) {
             foundTodayOrYesterday = true;
             currentDate = firstDate;
         }
       }
-      
+
       if (foundTodayOrYesterday) {
         let i = 0;
         while(i < allDates.length) {
@@ -389,7 +392,7 @@ RULES
       }
 
       const timeSpentMins = allDates.length * 45 + activity.length * 10;
-      
+
       const realLevel = getEpicLevel(user.xp);
 
       const onlineUsers = 1200 + Math.floor(Math.random() * 50);
@@ -428,11 +431,11 @@ RULES
       }
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, JWT_SECRET) as any;
-      
+
       const { activity_type, points } = req.body;
-      
+
       db.prepare("INSERT INTO user_activity (user_id, activity_type, points) VALUES (?, ?, ?)").run(decoded.id, activity_type, points || 0);
-      
+
       // Upsert into course_progress
       const existing = db.prepare("SELECT id FROM course_progress WHERE user_id = ? AND course_name = ?").get(decoded.id, activity_type);
       if (!existing) {
@@ -440,11 +443,11 @@ RULES
       } else {
         db.prepare("UPDATE course_progress SET progress = 100, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run((existing as any).id);
       }
-      
+
       if (points > 0) {
         db.prepare("UPDATE users SET xp = xp + ? WHERE id = ?").run(points, decoded.id);
       }
-      
+
       res.json({ success: true });
     } catch (error) {
       console.error(error);
@@ -518,10 +521,10 @@ RULES
       if (!problem) {
         return res.status(404).json({ error: "Problem not found" });
       }
-      
+
       // Clean title
       problem.title = problem.title.replace(/^Problem\s+\d+:\s*/i, '');
-      
+
       // Parse the JSON fields back to objects for the frontend
       problem.examples = JSON.parse(problem.examples);
       problem.constraints = JSON.parse(problem.constraints);
@@ -542,7 +545,7 @@ RULES
         db.prepare("INSERT INTO problem_stats (problem_id, accepted, submissions) VALUES (?, ?, ?)").run(req.params.problemId, initialStats.accepted, initialStats.submissions);
         problem.stats = initialStats;
       }
-      
+
       res.json(problem);
     } catch (error) {
       console.error(error);
@@ -555,7 +558,7 @@ RULES
     try {
       const { problemId } = req.params;
       const { issues, additionalFeedback, rating } = req.body;
-      
+
       const authHeader = req.headers.authorization;
       let userId = null;
       if (authHeader) {
@@ -595,14 +598,14 @@ RULES
       const problemId = req.params.problemId;
 
       const interactions = db.prepare("SELECT interaction_type FROM user_problem_interactions WHERE user_id = ? AND problem_id = ?").all(decoded.id, problemId) as any[];
-      
+
       const state = { liked: false, disliked: false, starred: false };
       interactions.forEach(i => {
         if (i.interaction_type === 'like') state.liked = true;
         if (i.interaction_type === 'dislike') state.disliked = true;
         if (i.interaction_type === 'star') state.starred = true;
       });
-      
+
       // Also get total likes for the problem
       const totalLikesQuery = db.prepare("SELECT COUNT(*) as c FROM user_problem_interactions WHERE problem_id = ? AND interaction_type = 'like'").get(problemId) as {c: number};
       const totalLikes = totalLikesQuery ? totalLikesQuery.c : 0;
@@ -624,7 +627,7 @@ RULES
       const decoded = jwt.verify(token, JWT_SECRET) as any;
       const problemId = req.params.problemId;
       const { status, language, code, runtimeMs, memoryMb, passedTestcases, totalTestcases } = req.body;
-      
+
       const stats = db.prepare("SELECT accepted, submissions FROM problem_stats WHERE problem_id = ?").get(problemId) as any;
       if (stats) {
         db.prepare("UPDATE problem_stats SET submissions = submissions + 1, accepted = accepted + ? WHERE problem_id = ?")
@@ -638,14 +641,14 @@ RULES
         INSERT INTO user_submissions (user_id, problem_id, status, language, code, runtime_ms, memory_mb, passed_testcases, total_testcases)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        decoded.id, 
-        problemId, 
-        status || 'Unknown', 
-        language || 'javascript', 
-        code || '', 
-        runtimeMs || 0, 
-        memoryMb || 0, 
-        passedTestcases || 0, 
+        decoded.id,
+        problemId,
+        status || 'Unknown',
+        language || 'javascript',
+        code || '',
+        runtimeMs || 0,
+        memoryMb || 0,
+        passedTestcases || 0,
         totalTestcases || 0
       );
 
@@ -667,16 +670,16 @@ RULES
       const problemId = req.params.problemId;
 
       const submission = db.prepare(`
-        SELECT us.*, u.name as user_name 
-        FROM user_submissions us 
-        JOIN users u ON us.user_id = u.id 
-        WHERE us.problem_id = ? AND us.user_id = ? 
-        ORDER BY us.created_at DESC 
+        SELECT us.*, u.name as user_name
+        FROM user_submissions us
+        JOIN users u ON us.user_id = u.id
+        WHERE us.problem_id = ? AND us.user_id = ?
+        ORDER BY us.created_at DESC
         LIMIT 1
       `).get(problemId, decoded.id);
 
       if (submission) {
-        res.json({ submission });
+        res.json({ submission, submissions: db.prepare("SELECT * FROM user_submissions WHERE user_id = ? AND problem_id = ? ORDER BY created_at DESC, id DESC LIMIT 50").all(decoded.id,problemId) });
       } else {
         res.json({ submission: null });
       }
@@ -704,13 +707,13 @@ RULES
         } else if (type === 'dislike') {
           db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'like'").run(decoded.id, problemId);
         }
-        
+
         // Insert new interaction (ignore if exists due to unique constraint)
         db.prepare("INSERT OR IGNORE INTO user_problem_interactions (user_id, problem_id, interaction_type) VALUES (?, ?, ?)").run(decoded.id, problemId, type);
       } else if (action === 'remove') {
         db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = ?").run(decoded.id, problemId, type);
       }
-      
+
       res.json({ success: true });
     } catch (error) {
       console.error(error);
@@ -755,12 +758,12 @@ RULES
       }
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, JWT_SECRET);
-      
+
       const user = db.prepare("SELECT * FROM users WHERE id = ?").get(decoded.id);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-      
+
       const activity = db.prepare("SELECT * FROM user_activity WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").all(decoded.id);
       const courses = db.prepare("SELECT * FROM course_progress WHERE user_id = ? ORDER BY updated_at DESC").all(decoded.id);
       const solvedProblems = db.prepare(`
@@ -771,7 +774,7 @@ RULES
         GROUP BY p.id, p.title, p.difficulty
         ORDER BY solved_at DESC
       `).all(decoded.id);
-      
+
       const attemptedProblems = db.prepare("SELECT DISTINCT problem_id as id FROM user_submissions WHERE user_id = ?").all(decoded.id);
       const practiceActivity = db.prepare(`
         SELECT strftime('%Y-%m-%dT%H:00:00Z', created_at) as recordedAt, COUNT(*) as attempts
@@ -793,12 +796,12 @@ RULES
       }
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, JWT_SECRET);
-      
+
       const { location, university, github, linkedin, avatar_url } = req.body;
-      
+
       db.prepare("UPDATE users SET location = ?, university = ?, github = ?, linkedin = ?, avatar_url = ? WHERE id = ?")
         .run(location, university, github, linkedin, avatar_url, decoded.id);
-        
+
       res.json({ success: true });
     } catch (error) {
       res.status(401).json({ error: "Invalid token" });

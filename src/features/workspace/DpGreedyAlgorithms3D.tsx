@@ -1,3 +1,4 @@
+import useReducedMotion from '../visualizer/useReducedMotion';
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text, Billboard } from '@react-three/drei';
@@ -21,11 +22,12 @@ export default function DpGreedyAlgorithms3D({
   pegs
 }: DpGreedyAlgorithms3DProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const reducedMotion=useReducedMotion();
 
   // Slow rotation for visual dynamic effect
   useFrame((state) => {
     if (groupRef.current) {
-      groupRef.current.rotation.y = Math.sin(state.clock.getElapsedTime() * 0.15) * 0.15;
+      groupRef.current.rotation.y = reducedMotion ? 0 : Math.sin(state.clock.getElapsedTime() * 0.15) * 0.15;
     }
   });
 
@@ -40,8 +42,8 @@ export default function DpGreedyAlgorithms3D({
             <group key={idx} position={[(idx - 3) * 1.5, idx * 0.3, 0]}>
               <mesh castShadow receiveShadow>
                 <boxGeometry args={[1.2, height, 1.2]} />
-                <meshStandardMaterial 
-                  color={isCalculated ? '#10b981' : '#1e293b'} 
+                <meshStandardMaterial
+                  color={isCalculated ? '#10b981' : '#1e293b'}
                   roughness={0.2}
                   metalness={0.8}
                   emissive={isCalculated ? '#047857' : '#000000'}
@@ -67,10 +69,10 @@ export default function DpGreedyAlgorithms3D({
   if ((algoType === 'knapsack' || algoType === 'lcs') && dpTable) {
     const rows = dpTable.length;
     const cols = dpTable[0]?.length || 0;
-    
+
     return (
       <group ref={groupRef} position={[-cols / 2 + 0.5, -rows / 2 + 0.5, 0]}>
-        {dpTable.map((row, ri) => 
+        {dpTable.map((row, ri) =>
           row.map((val, ci) => {
             const hasValue = val > 0;
             const depth = hasValue ? 1 + val * 0.2 : 0.4;
@@ -83,8 +85,8 @@ export default function DpGreedyAlgorithms3D({
               <group key={`${ri}-${ci}`} position={[ci * 1.5, ri * 1.5, 0]}>
                 <mesh castShadow receiveShadow>
                   <boxGeometry args={[1.1, 1.1, depth]} />
-                  <meshStandardMaterial 
-                    color={color} 
+                  <meshStandardMaterial
+                    color={color}
                     roughness={0.3}
                     metalness={0.7}
                     emissive={emissive}
@@ -113,13 +115,13 @@ export default function DpGreedyAlgorithms3D({
           const xPos = (act.start + act.end) / 2 - 4; // center alignment offset
           const yPos = idx * 1.2 - 2;
           const color = act.selected ? '#10b981' : act.color?.includes('239') ? '#ef4444' : '#3b82f6';
-          
+
           return (
             <group key={act.id} position={[xPos, yPos, 0]}>
               <mesh castShadow receiveShadow rotation={[0, 0, 0]}>
                 <boxGeometry args={[width, 0.6, 0.6]} />
-                <meshStandardMaterial 
-                  color={color} 
+                <meshStandardMaterial
+                  color={color}
                   roughness={0.2}
                   metalness={0.8}
                   emissive={color}
@@ -145,13 +147,13 @@ export default function DpGreedyAlgorithms3D({
         {huffmanNodes.map((node) => {
           const isCombine = node.id.length > 1;
           const color = isCombine ? '#eab308' : '#3b82f6';
-          
+
           return (
             <group key={node.id} position={[node.x || 0, node.y || 0, 0]}>
               {/* Node Sphere */}
               <mesh castShadow>
                 <sphereGeometry args={[0.4, 32, 32]} />
-                <meshStandardMaterial 
+                <meshStandardMaterial
                   color={color}
                   roughness={0.1}
                   metalness={0.9}
@@ -159,7 +161,7 @@ export default function DpGreedyAlgorithms3D({
                   emissiveIntensity={0.2}
                 />
               </mesh>
-              
+
               <Billboard position={[0, 0.7, 0]}>
                 <Text fontSize={0.25} color="#ffffff" fontWeight="bold">
                   {node.label}
@@ -206,18 +208,18 @@ export default function DpGreedyAlgorithms3D({
                 {pIdx === 0 ? 'Peg A' : pIdx === 1 ? 'Peg B' : 'Peg C'}
               </Text>
             </Billboard>
-            
+
             {/* Render Disks on this Peg */}
             {(pegs[pIdx] || []).map((diskSize, dIdx) => {
               const radius = diskSize * 0.45;
               const yPos = -1.6 + dIdx * 0.35 + 0.15;
               const color = pegColors[diskSize - 1] || '#a855f7';
-              
+
               return (
                 <mesh key={diskSize} position={[0, yPos, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
                   <torusGeometry args={[radius * 0.45, 0.18, 16, 32]} />
-                  <meshStandardMaterial 
-                    color={color} 
+                  <meshStandardMaterial
+                    color={color}
                     roughness={0.15}
                     metalness={0.85}
                     emissive={color}

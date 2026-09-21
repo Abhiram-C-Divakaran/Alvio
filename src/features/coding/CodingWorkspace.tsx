@@ -1,9 +1,19 @@
+import LanguagePicker from './LanguagePicker';
+import './workspace.css';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
-import Editor from '@monaco-editor/react';
+import Editor,{loader} from '@monaco-editor/react';
+import * as monaco from 'monaco-editor/editor/editor.api';
+import 'monaco-editor/languages/definitions/javascript/register';
+import 'monaco-editor/languages/definitions/python/register';
+import 'monaco-editor/languages/definitions/cpp/register';
+import 'monaco-editor/languages/definitions/java/register';
+import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
+(self as unknown as {MonacoEnvironment:{getWorker:()=>Worker}}).MonacoEnvironment={getWorker:()=>new EditorWorker()};
+loader.config({monaco});
 import {
-  Play,
+  Play, Sun, Send,
   CheckCircle2,
   XCircle,
   AlertCircle,
@@ -161,8 +171,18 @@ interface CodingWorkspaceProps {
 }
 
 export default function CodingWorkspace({ problem, problemNumber, isSolved, onBack, onNext, onPrev, onShuffle }: CodingWorkspaceProps) {
-  const [code, setCode] = useState(problem.starterCode.javascript);
   const [language, setLanguage] = useState<'javascript' | 'python' | 'python3' | 'cpp' | 'c' | 'java' | 'typescript' | 'csharp'>('javascript');
+  const [code, setCode] = useState(()=>localStorage.getItem(`alvio-code:${problem.id}:javascript`) ?? problem.starterCode.javascript);
+  const [autoSave,setAutoSave]=useState(()=>localStorage.getItem('alvio-autosave')!=='false');
+  const [expanded,setExpanded]=useState(false);
+  const [saved,setSaved]=useState('');
+  const [editorLight,setEditorLight]=useState(false);
+  const draftOwner=useRef(problem.id);
+  const saveDraft=()=>{localStorage.setItem(`alvio-code:${problem.id}:${language}`,code);setSaved('Saved locally');};
+  useEffect(()=>{localStorage.setItem('alvio-autosave',String(autoSave));if(autoSave&&draftOwner.current===problem.id)localStorage.setItem(`alvio-code:${problem.id}:${language}`,code);},[code,language,autoSave,problem.id]);
+  useEffect(()=>{draftOwner.current=problem.id;setCode(localStorage.getItem(`alvio-code:${problem.id}:${language}`)??generateStarterCode(problem,language));setResult(null);setSubmitSuccess(false);},[problem.id]);
+
+
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -172,7 +192,8 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const isDraggingVertical = useRef(false);
-  const [rightSplitPercent, setRightSplitPercent] = useState(60);
+  const [rightSplitPercent, setRightSplitPercent] = useState(()=>Number(localStorage.getItem('alvio-editor-split'))||60);
+  useEffect(()=>localStorage.setItem('alvio-editor-split',String(rightSplitPercent)),[rightSplitPercent]);
 
   const handleVerticalDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -192,13 +213,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  const toggleFullScreen = () => {
-    if (!document.fullscreenElement) {
-      editorContainerRef.current?.requestFullscreen().catch(err => console.error(err));
-    } else {
-      document.exitFullscreen().catch(err => console.error(err));
-    }
-  };
+  const toggleFullScreen = () => setExpanded(v=>!v);
 
   // Feedback Modal State
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -208,13 +223,15 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   const token = useAuthStore(s => s.token);
+  const [executedCases,setExecutedCases]=useState(problem.testCases);
   const [result, setResult] = useState<ExecutionResult | null>(null);
 
   // Tabs state
-  const [leftTab, setLeftTab] = useState<'description' | 'submissions'>('description');
-  const [rightBottomTab, setRightBottomTab] = useState<'testcases' | 'results'>('testcases');
+  const [leftTab, setLeftTab] = useState<'description' | 'submissions' | 'hints'>('description');
+  const [rightBottomTab, setRightBottomTab] = useState<'testcases' | 'results' | 'console'>('testcases');
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [submissionHistory,setSubmissionHistory]=useState<any[]>([]);
   const [latestSubmission, setLatestSubmission] = useState<any>(null);
   const [loadingSubmission, setLoadingSubmission] = useState(false);
   const [localTestCases, setLocalTestCases] = useState(() => getLocalTestCasesFromProblem(problem));
@@ -257,7 +274,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
         });
         if (res.ok) {
           const data = await res.json();
-          setLatestSubmission(data.submission);
+          setLatestSubmission(data.submission);setSubmissionHistory(data.submissions||[]);
         }
       } catch (e) {
         console.error(e);
@@ -309,13 +326,15 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
 
 
   const handleLanguageChange = (newLang: 'javascript' | 'python' | 'python3' | 'cpp' | 'c' | 'java' | 'typescript' | 'csharp') => {
+    saveDraft();
     setLanguage(newLang);
     const key = newLang === 'python3' ? 'python' : newLang;
-    setCode(generateStarterCode(problem, key));
+    setCode(localStorage.getItem(`alvio-code:${problem.id}:${newLang}`)??generateStarterCode(problem, key));
     setResult(null);
   };
 
-  const handleRun = async () => {
+  const handleRun = async (onlySelected = false) => {
+    if(isExecuting||isSubmitting)return;
     setIsExecuting(true);
     setResult(null);
     setRightBottomTab('results');
@@ -327,7 +346,8 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     const functionName = extractFunctionName(code, problem.signature?.name);
     let execResult: ExecutionResult;
 
-    const parsedTestCases = parseEditableTestCases(localTestCases);
+    const parsedTestCases = parseEditableTestCases(onlySelected?[localTestCases[selectedCaseIdx]]:localTestCases);
+    setExecutedCases(parsedTestCases);
 
     if (language === 'javascript') {
       execResult = await executeJavaScript(code, parsedTestCases, functionName);
@@ -355,6 +375,8 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
   };
 
   const handleSubmit = async () => {
+    if(isExecuting||isSubmitting)return;
+    saveDraft();
     setIsSubmitting(true);
     setResult(null);
     setRightBottomTab('results');
@@ -366,7 +388,8 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     const functionName = extractFunctionName(code, problem.signature?.name);
     let execResult: ExecutionResult;
 
-    const parsedTestCases = parseEditableTestCases(localTestCases);
+    const parsedTestCases = problem.testCases;
+    setExecutedCases(parsedTestCases);
 
     if (language === 'javascript') {
       execResult = await executeJavaScript(code, parsedTestCases, functionName);
@@ -390,7 +413,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     if (execResult.status === 'Passed') {
       if (token) {
         try {
-          await fetch(`/api/problems/${problem.id}/submit`, {
+          const submissionResponse = await fetch(`/api/problems/${problem.id}/submit`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -401,28 +424,27 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
               language: language,
               code: code,
               runtimeMs: execResult.executionTimeMs,
-              memoryMb: (Math.random() * 20 + 10).toFixed(2),
-              passed_testcases: execResult.passedCount,
-              total_testcases: execResult.totalCount
+              memoryMb: null,
+              passedTestcases: execResult.passedCount,
+              totalTestcases: execResult.totalCount
             })
           });
 
+          if(!submissionResponse.ok){setSaved('Submission could not be saved. Please retry.');return;}
           // Refresh submission data
           const resSub = await fetch(`/api/problems/${problem.id}/submissions`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (resSub.ok) {
             const dataSub = await resSub.json();
-            setLatestSubmission(dataSub.submission);
+            setLatestSubmission(dataSub.submission);setSubmissionHistory(dataSub.submissions||[]);
           }
         } catch (e) {
           console.error(e);
         }
       }
       setSubmitSuccess(true);
-      setTimeout(() => {
-        onBack();
-      }, 1000);
+
     }
   };
 
@@ -432,33 +454,34 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     setResult(null);
   };
 
+  useEffect(()=>{const fn=(e:KeyboardEvent)=>{if(e.key==='Escape')setExpanded(false);if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();saveDraft();}if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();if(e.shiftKey)void handleSubmit();else void handleRun();}};window.addEventListener('keydown',fn);return()=>window.removeEventListener('keydown',fn);});
   return (
-    <div className="flex h-[calc(100vh-4rem)] w-full overflow-hidden bg-transparent text-gray-200 p-2 gap-2">
-      <PanelGroup direction="horizontal" className="w-full h-full">
+    <div className={`cw-root ${expanded?"cw-expanded":""} flex h-[calc(100vh-4rem)] w-full overflow-hidden text-gray-200 p-2 gap-2`}>
+      <nav className="cw-mobile-nav"><button onClick={()=>document.getElementById('problem')?.scrollIntoView()}>Problem</button><button onClick={()=>document.getElementById('editor')?.scrollIntoView()}>Code</button></nav><PanelGroup orientation="horizontal" onLayoutChanged={layout=>localStorage.setItem('alvio-workspace-layout',JSON.stringify(layout))} defaultLayout={JSON.parse(localStorage.getItem('alvio-workspace-layout')||'null')??undefined} className="w-full h-full">
 
         {/* ── LEFT PANEL: Description / Submissions ── */}
-        <Panel defaultSize={45} minSize={28} className="flex flex-col bg-black/20 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden shadow-2xl">
+        <Panel id="problem" defaultSize="47%" minSize="28%" className="flex flex-col bg-black/20 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden shadow-2xl">
 
           {/* Left Tab Bar */}
           <div className="flex items-center justify-between px-4 border-b border-white/5 bg-black/20 backdrop-blur-sm shrink-0">
             <div className="flex items-center gap-1.5 h-12">
               <div className="flex items-center mr-2 bg-white/5 rounded-lg border border-white/10 overflow-hidden">
                 <button
-                  onClick={onBack}
+                  onClick={()=>{saveDraft();onBack();}}
                   className="px-2 py-1.5 hover:bg-white/10 transition-colors text-gray-300 font-medium text-xs flex items-center gap-1 border-r border-white/10"
                 >
                   <List size={14} />
                   Problem List
                 </button>
                 <button
-                  onClick={onPrev}
+                  onClick={()=>{saveDraft();onPrev();}}
                   className="px-1.5 py-1.5 hover:bg-white/10 transition-colors text-gray-400 hover:text-white border-r border-white/10"
                   title="Previous Problem"
                 >
                   <ChevronLeft size={16} />
                 </button>
                 <button
-                  onClick={onNext}
+                  onClick={()=>{saveDraft();onNext();}}
                   className="px-1.5 py-1.5 hover:bg-white/10 transition-colors text-gray-400 hover:text-white"
                   title="Next Problem"
                 >
@@ -468,7 +491,8 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
 
               {[
                 { id: 'description', label: 'Description', icon: <FileText size={14} /> },
-                { id: 'submissions', label: 'Submissions', icon: <History size={14} /> }
+                { id: 'submissions', label: 'Submissions', icon: <History size={14} /> },
+                { id: 'hints', label: 'Hints', icon: <Lightbulb size={14}/> }
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -506,23 +530,23 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                     } catch (e) { console.error(e); }
                   }
                 }}
-                className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${starred ? 'text-yellow-400' : 'text-gray-400 hover:text-white'}`}
+                data-workspace-extra="true" className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors ${starred ? 'text-yellow-400' : 'text-gray-400 hover:text-white'}`}
               >
                 <Star size={16} fill={starred ? 'currentColor' : 'none'} />
               </button>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(window.location.href);
-                  alert("Link copied to clipboard!");
+                  setSaved('Link copied');
                 }}
-                className="p-1.5 rounded-lg hover:bg-white/5 transition-colors text-gray-400 hover:text-white"
+                className="cw-share p-1.5 rounded-lg hover:bg-white/5 transition-colors text-gray-400 hover:text-white"
               >
-                <Share2 size={16} />
+                <Share2 size={14} /> Share
               </button>
               <button
                 onClick={() => setShowFeedbackModal(true)}
                 className="p-1.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
-                title="Provide Feedback"
+                title="Provide Feedback" data-workspace-extra="true"
               >
                 <HelpCircle size={16} />
               </button>
@@ -532,6 +556,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
           {/* Left Scrollable Content */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             <AnimatePresence mode="wait">
+              {leftTab === 'hints' && <div className="cw-hints"><h2>Progressive hints</h2>{(problem.id==='number-of-digit-one'?['Think about counting contributions digit by digit.','Count how often 1 appears at each decimal position.','Split n into the digits above, at, and below the current position.']:['Work through the smallest valid input by hand.','Identify repeated work in a straightforward solution.','Use the constraints to decide which operations must be more efficient.']).map((h,i)=><details key={h}><summary>Hint {i+1}</summary><p>{h}</p></details>)}</div>}
               {leftTab === 'description' && (
                 <motion.div
                   initial={{ opacity: 0, y: 5 }}
@@ -544,7 +569,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                       <h1 className="text-[24px] font-bold text-white mb-4">
                         {problemNumber}. {problem.title}
                       </h1>
-                      {isSolved ? (
+                      {(isSolved || (submitSuccess&&!!token)) ? (
                         <div className="flex items-center gap-1.5 text-sm text-[#2cbb5d] font-semibold mt-1">
                           Solved <CheckCircle2 size={16} />
                         </div>
@@ -591,28 +616,10 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
 
                   <div className="space-y-4">
                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Examples</h3>
-                    {problem.examples.map((ex, i) => (
-                      <div key={i} className="bg-white/5 border border-[#242428] rounded-xl p-5 text-sm font-mono space-y-3 shadow-inner">
-                        <div className="text-xs font-extrabold text-blue-400">Example {i + 1}</div>
-                        <div className="flex items-start">
-                          <span className="text-gray-500 w-16 shrink-0 font-bold text-xs mt-0.5">Input:</span>
-                          <span className="text-gray-300 bg-black/40 px-2 py-0.5 rounded border border-white/5 font-medium">{ex.input}</span>
-                        </div>
-                        <div className="flex items-start">
-                          <span className="text-gray-500 w-16 shrink-0 font-bold text-xs mt-0.5">Output:</span>
-                          <span className="text-gray-300 bg-black/40 px-2 py-0.5 rounded border border-white/5 font-medium">{ex.output}</span>
-                        </div>
-                        {ex.explanation && (
-                          <div className="flex pt-3 border-t border-white/5 mt-3">
-                            <span className="text-gray-500 w-16 shrink-0 font-bold text-xs mt-0.5">Explain:</span>
-                            <span className="text-gray-400 font-sans text-sm">{ex.explanation}</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                    {problem.examples.map((ex,i)=><article className="cw-example" key={i}><header><strong>❯ Example {i+1}</strong><button aria-label={`Copy example ${i+1}`} onClick={()=>navigator.clipboard.writeText(`Input: ${ex.input}\nOutput: ${ex.output}`)}><Copy size={14}/></button></header><div><section><small>Input</small><code>{ex.input}</code></section><section><small>Output</small><code>{ex.output}</code></section></div></article>)}
                   </div>
 
-                  <div className="space-y-2 pt-4">
+                  <div className="cw-note"><h3>Note</h3><p>Try to solve this problem efficiently. A naive approach may exceed the time limit.</p></div><div className="space-y-2 pt-4">
                     <div className="text-[15px] font-bold text-white">Constraints:</div>
                     <ul className="list-disc pl-5 space-y-2 text-[#bfc6ce]">
                       {problem.constraints.map((c, i) => {
@@ -794,7 +801,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                       <span className="mx-2.5 text-gray-700">|</span>
                       <span>
                         Acceptance Rate <strong className="text-gray-200">
-                          {problem.stats?.submissions ? ((problem.stats.accepted / problem.stats.submissions) * 100).toFixed(1) : '0.0'}%
+                          {problem.stats?.submissions ? (((problem.stats?.accepted || 0) / (problem.stats?.submissions || 1)) * 100).toFixed(1) : '0.0'}%
                         </strong>
                       </span>
                     </div>
@@ -802,6 +809,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                 </motion.div>
               )}
 
+              {leftTab==='submissions'&&submissionHistory.length>0&&<div className="cw-history">{submissionHistory.map(sub=><button key={sub.id} onClick={()=>setLatestSubmission(sub)}>{sub.status==='Passed'?'Accepted':sub.status} · {sub.language} · {sub.runtime_ms} ms · {sub.created_at}</button>)}</div>}
               {leftTab === 'submissions' && (
                 <motion.div
                   initial={{ opacity: 0, y: 5 }}
@@ -833,7 +841,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#3a2e5d] text-[#a48ee6] font-semibold text-[13px] hover:bg-[#4b3c78] transition-colors disabled:opacity-50"
                           >
                             {loadingAnalysis ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Analysis
-                          </button>
+                          </button><button onClick={()=>{saveDraft();setLanguage(latestSubmission.language);setCode(latestSubmission.code);}}>Reopen code</button>
                         </div>
                       </div>
 
@@ -848,7 +856,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                               {latestSubmission.runtime_ms} <span className="text-[14px] font-normal text-gray-400">ms</span>
                             </div>
                             <div className="text-[12px] text-amber-400 mt-1 font-semibold">
-                              Beats 100.00% 🔥
+                              Percentile unavailable
                             </div>
                           </div>
                           <div className="flex-1 bg-white/5 rounded-lg p-4">
@@ -856,10 +864,10 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                               <Cpu size={14} /> Memory
                             </div>
                             <div className="text-[26px] font-bold text-white">
-                              {latestSubmission.memory_mb} <span className="text-[14px] font-normal text-gray-400">MB</span>
+                              {latestSubmission.memory_mb || 'Not measured'} <span className="text-[14px] font-normal text-gray-400">MB</span>
                             </div>
                             <div className="text-[12px] text-amber-400 mt-1 font-semibold">
-                              Beats {(Math.random() * 40 + 40).toFixed(2)}% 🔥
+                              Memory is not measured by this runner
                             </div>
                           </div>
                         </div>
@@ -882,7 +890,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
 
                         <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-white/5">
                           <span>Test cases passed: {latestSubmission.passed_testcases}/{latestSubmission.total_testcases}</span>
-                          <span>Acceptance: {problem.stats?.submissions > 0 ? ((problem.stats.accepted / problem.stats.submissions) * 100).toFixed(1) : '0.0'}%</span>
+                          <span>Acceptance: {(problem.stats?.submissions || 0) > 0 ? (((problem.stats?.accepted || 0) / (problem.stats?.submissions || 1)) * 100).toFixed(1) : '0.0'}%</span>
                         </div>
                       </div>
                     </>
@@ -899,7 +907,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
         </PanelResizeHandle>
 
         {/* ── RIGHT PANEL: Code editor (top) + Console (bottom) ── */}
-        <Panel defaultSize={55} minSize={30}>
+        <Panel id="editor" defaultSize="53%" minSize="30%">
           <div ref={rightPanelRef} className="h-full flex flex-col gap-0.5">
 
             {/* ── TOP: Code Editor ── */}
@@ -915,23 +923,23 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
 
                   <div className="flex items-center justify-center gap-3 w-1/3">
                     <button
-                      onClick={handleRun}
+                      title="Run (Ctrl/Cmd+Enter)" onClick={()=>handleRun()}
                       disabled={isExecuting || isSubmitting}
                       className="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-[#3F3F46] border border-white/10 text-gray-200 text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5"
                     >
                       <Play size={12} className={isExecuting ? "text-gray-400 animate-pulse" : "text-gray-400"} /> Run
                     </button>
                     <button
-                      onClick={handleSubmit}
+                      title="Submit (Ctrl/Cmd+Shift+Enter)" onClick={()=>handleSubmit()}
                       disabled={isExecuting || isSubmitting}
                       className="px-5 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5"
                     >
-                      {isSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Code size={12} />} Submit
+                      {isSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Send size={14} />} Submit
                     </button>
                   </div>
 
                   <div className="flex items-center justify-end gap-3 text-gray-400 w-1/3">
-                    <button onClick={toggleFullScreen} className="hover:text-gray-200 transition-colors">
+                    <button aria-label="Toggle editor theme" onClick={()=>setEditorLight(v=>!v)}><Sun size={16}/></button><button aria-label="Fullscreen workspace" onClick={toggleFullScreen} className="hover:text-gray-200 transition-colors">
                       <Maximize2 size={14} />
                     </button>
                   </div>
@@ -940,23 +948,10 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                 {/* Editor Toolbar */}
                 <div className="h-9 bg-black/20 backdrop-blur-sm flex items-center justify-between px-3 border-b border-[#363636] shrink-0">
                   <div className="flex items-center gap-4">
-                    <select
-                      value={language}
-                      onChange={(e) => handleLanguageChange(e.target.value as any)}
-                      className="bg-transparent text-xs text-gray-300 font-medium outline-none cursor-pointer hover:text-white transition-colors border-none"
-                    >
-                      <option value="cpp" className="bg-white/5 text-gray-300">C++</option>
-                      <option value="java" className="bg-white/5 text-gray-300">Java</option>
-                      <option value="python3" className="bg-white/5 text-gray-300">Python 3</option>
-                      <option value="python" className="bg-white/5 text-gray-300">Python</option>
-                      <option value="c" className="bg-white/5 text-gray-300">C</option>
-                      <option value="csharp" className="bg-white/5 text-gray-300">C#</option>
-                      <option value="javascript" className="bg-white/5 text-gray-300">JavaScript</option>
-                      <option value="typescript" className="bg-white/5 text-gray-300">TypeScript</option>
-                    </select>
+                    <LanguagePicker value={language} onChange={value=>handleLanguageChange(value as typeof language)}/>
                   </div>
                   <div className="flex items-center gap-3.5 text-gray-400">
-                    <button className="hover:text-white transition-colors" title="Bookmark"><Bookmark size={14} /></button>
+                    <label className="cw-autosave">Auto Save <input type="checkbox" role="switch" checked={autoSave} onChange={e=>setAutoSave(e.target.checked)}/></label>
                     <button onClick={resetCode} className="hover:text-white transition-colors" title="Reset"><RotateCcw size={14} /></button>
                     <button onClick={toggleFullScreen} className="hover:text-white transition-colors" title="Full Screen"><Expand size={14} /></button>
                   </div>
@@ -967,14 +962,14 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                   <Editor
                     height="100%"
                     language={language}
-                    theme="transparent-dark"
+                    theme={editorLight?"vs":"alvio-workspace"}
                     beforeMount={(monaco) => {
-                      monaco.editor.defineTheme('transparent-dark', {
+                      monaco.editor.defineTheme('alvio-workspace', {
                         base: 'vs-dark',
                         inherit: true,
-                        rules: [],
+                        rules: [{token:'keyword',foreground:'55A7FF'},{token:'string',foreground:'7DD3FC'},{token:'comment',foreground:'6F829C'},{token:'delimiter.bracket',foreground:'F4D35E'}],
                         colors: {
-                          'editor.background': '#00000000',
+                          'editor.background': '#050b15','editorLineNumber.foreground':'#77849a','editor.foreground':'#e6edf7','editor.lineHighlightBorder':'#17263b',
                         }
                       });
                     }}
@@ -995,7 +990,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                 {/* Editor Footer */}
                 <div className="h-8 bg-black/20 backdrop-blur-sm flex items-center justify-between px-4 text-[11px] text-gray-500 font-medium shrink-0">
                   <div></div>
-                  <div>Ln 1, Col 1</div>
+                  <div>{saved || (autoSave?"Auto Save on":"Auto Save off")} · Ctrl/Cmd+S to save</div>
                 </div>
               </div>
             </div>
@@ -1015,8 +1010,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
               <div className="h-10 bg-white/5 flex items-center justify-between px-4 border-b border-white/5 shrink-0">
                 <div className="flex items-center gap-4 h-full">
                   {[
-                    { id: 'results', label: 'Test Result', icon: <span className="font-bold text-emerald-500 font-mono text-[14px] leading-none">{'>_'}</span> },
-                    { id: 'testcases', label: 'Testcase', icon: <CheckSquare size={14} className="text-emerald-600/70" /> }
+                    {id:'testcases',label:'Testcase',icon:<Terminal size={14}/>},{id:'results',label:'Test Result',icon:<CheckSquare size={14}/>},{id:'console',label:'Console',icon:<Terminal size={14}/>}
                   ].map((tab, idx) => (
                     <div key={tab.id} className="flex items-center gap-4 h-full">
                       <button
@@ -1037,13 +1031,13 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                     size={13}
                     className="hover:text-gray-300 cursor-pointer transition-colors"
                     onClick={() => setRightSplitPercent(prev => prev < 20 ? 60 : 5)}
-                    title={rightSplitPercent < 20 ? "Restore" : "Maximize Console"}
+                    aria-label={rightSplitPercent < 20 ? "Restore" : "Maximize Console"}
                   />
                   <ChevronUp
                     size={16}
                     className={`hover:text-gray-300 cursor-pointer transition-colors transform ${rightSplitPercent > 85 ? 'rotate-0' : 'rotate-180'}`}
                     onClick={() => setRightSplitPercent(prev => prev > 85 ? 60 : 92)}
-                    title={rightSplitPercent > 85 ? "Restore Console" : "Minimize Console"}
+                    aria-label={rightSplitPercent > 85 ? "Restore Console" : "Minimize Console"}
                   />
                 </div>
               </div>
@@ -1051,6 +1045,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
               {/* Console Content */}
               <div className="flex-1 p-5 overflow-y-auto font-mono text-xs min-h-0">
 
+                {rightBottomTab==='console'&&<pre>{result?.stdout?.join('\n')||'No console output. Run your code to view logs.'}</pre>}
                 {rightBottomTab === 'testcases' && (
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
@@ -1066,7 +1061,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                         </button>
                       ))}
                       <button
-                        onClick={() => {
+                        aria-label="Add Custom Testcase" onClick={() => {
                           if (localTestCases.length >= 8) return;
                           const lastCase = localTestCases[localTestCases.length - 1] || { input: problem.signature?.params.map(() => '') || [], expected: '' };
                           const lastInput = formatInputAsArray(lastCase.input);
@@ -1089,7 +1084,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                             <div key={p.name} className="space-y-2">
                               <div className="text-gray-400 text-[12px] ml-1">{p.name} =</div>
                               <input
-                                type="text"
+                                type="text" aria-label={`Testcase ${p.name}`}
                                 value={currentVal}
                                 onChange={(e) => {
                                   const newTestCases = [...localTestCases];
@@ -1111,6 +1106,9 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                   </div>
                 )}
 
+                {rightBottomTab==='testcases'&&localTestCases[selectedCaseIdx]&&<label className="cw-expected">Expected output (JSON)<input aria-label="Expected output" value={typeof localTestCases[selectedCaseIdx].expected==='string'?localTestCases[selectedCaseIdx].expected:JSON.stringify(localTestCases[selectedCaseIdx].expected)} onChange={e=>setLocalTestCases(prev=>prev.map((tc,i)=>i===selectedCaseIdx?{...tc,expected:e.target.value}:tc))}/></label>}
+                {rightBottomTab==='testcases'&&<div className="cw-run-case"><a href="/ai-tutor">✦ Ask Alvio</a> <a href="/learn/complexity">Visualize Complexity →</a><button disabled={isExecuting||isSubmitting} onClick={()=>handleRun(true)}><Play size={14}/>Run Testcase</button><p>Use Run to see output for this testcase</p></div>}
+                <p className="cw-judge-note">Submit checks the problem’s provided tests. Hidden-test judging and measured memory/percentiles are not available.</p>{submitSuccess&&<p role="status">All provided testcases passed. {token?'Submission saved.':'Sign in to save your submission.'}</p>}
                 {rightBottomTab === 'results' && (
                   <div className="h-full">
                     {!result && !isExecuting && (
@@ -1131,7 +1129,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                             result.status === 'Passed' ? 'text-emerald-500' :
                             result.status === 'Failed' ? 'text-rose-500' : 'text-amber-500'
                           }`}>
-                            {result.status === 'Passed' ? 'Accepted' : result.status === 'Failed' ? 'Wrong Answer' : 'Runtime Error'}
+                            {result.status === 'Passed' ? 'Accepted' : result.status === 'Failed' ? 'Wrong Answer' : result.message?.includes('Time Limit')?'Time Limit Exceeded':result.message?.includes('Syntax')?'Compilation Error':'Runtime Error'}
                           </span>
                           <span className="text-gray-400 text-[13px] font-medium">
                             Runtime: {result.executionTimeMs} ms
@@ -1140,7 +1138,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
 
                         {result.status !== 'Error' && (
                           <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin">
-                            {problem.testCases.map((_, idx) => {
+                            {executedCases.map((_, idx) => {
                               const isSelected = selectedCaseIdx === idx;
                               const isPassed = result.status === 'Passed' || idx < result.passedCount;
                               const isFailed = result.status === 'Failed' && idx >= result.passedCount;
@@ -1160,13 +1158,13 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                           </div>
                         )}
 
-                        {result.status !== 'Error' && problem.testCases[selectedCaseIdx] && (
+                        {result.status !== 'Error' && executedCases[selectedCaseIdx] && (
                           <div className="space-y-4">
                             <div className="space-y-2">
                               <div className="text-[12px] text-gray-400 font-medium ml-1">Input</div>
                               <div className="space-y-2">
                                 {problem.signature?.params.map((p, idx) => {
-                                  const rawTc = problem.testCases?.[selectedCaseIdx];
+                                  const rawTc = executedCases?.[selectedCaseIdx];
                                   const tcInputArr = formatInputAsArray(rawTc?.input);
                                   const val = tcInputArr[idx];
                                   return (
@@ -1182,7 +1180,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                               <div className="text-[12px] text-gray-400 font-medium ml-1">Output</div>
                               <div className="bg-white/5 rounded-xl p-3.5 text-gray-200 text-[13px] font-mono">
                                 {result.status === 'Passed' || selectedCaseIdx < result.passedCount
-                                  ? JSON.stringify(problem.testCases[selectedCaseIdx].expected)
+                                  ? JSON.stringify(executedCases[selectedCaseIdx].expected)
                                   : result.status === 'Failed' && selectedCaseIdx === result.passedCount && result.message?.includes('Output: ')
                                     ? result.message.split('Output: ')[1]?.split('\n')[0] || '...'
                                     : '...'}
@@ -1191,7 +1189,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                             <div className="space-y-2">
                               <div className="text-[12px] text-gray-400 font-medium ml-1">Expected</div>
                               <div className="bg-white/5 rounded-xl p-3.5 text-gray-200 text-[13px] font-mono">
-                                {JSON.stringify(problem.testCases[selectedCaseIdx].expected)}
+                                {JSON.stringify(executedCases[selectedCaseIdx].expected)}
                               </div>
                             </div>
                           </div>
@@ -1358,3 +1356,5 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     </div>
   );
 }
+
+

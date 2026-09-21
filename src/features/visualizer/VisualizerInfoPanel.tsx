@@ -9,7 +9,7 @@ interface InfoPanelProps {
   onViewCode: () => void;
 }
 
-const dsInfo: Record<string, { desc: string, time: { access: string, search: string, insert: string, delete: string }, pros: string[], cons: string[], types: { name: string, desc: string }[] }> = {
+export const dsInfo: Record<string, { desc: string, time: { access: string, search: string, insert: string, delete: string }, pros: string[], cons: string[], types: { name: string, desc: string }[] }> = {
   'Array': {
     desc: 'An array stores elements in a single contiguous block of memory. The index acts as a mathematical offset, allowing instantaneous random access to any element.',
     time: { access: 'O(1)', search: 'O(N)', insert: 'O(N)', delete: 'O(N)' },
@@ -119,7 +119,7 @@ export default function VisualizerInfoPanel({ activeDs, activeVariant, onVariant
             <Info className="text-blue-400" size={20} />
             <h2 className="text-xl font-bold">{activeDs} Details</h2>
           </div>
-          
+
           <p className="text-sm text-gray-300 mb-5 leading-relaxed">
             {info.desc}
           </p>
@@ -157,7 +157,7 @@ export default function VisualizerInfoPanel({ activeDs, activeVariant, onVariant
                 {info.pros.map((pro, i) => <li key={i}>{pro}</li>)}
               </ul>
             </div>
-            
+
             <div>
               <h3 className="text-xs font-bold text-red-400 uppercase tracking-wider mb-2 flex items-center gap-1">
                 <XCircle size={12} /> Disadvantages
@@ -172,20 +172,20 @@ export default function VisualizerInfoPanel({ activeDs, activeVariant, onVariant
               </h3>
               <div className="flex flex-col gap-2 mt-1">
                 {info.types.map((type, i) => (
-                  <motion.button 
-                    key={i} 
+                  <motion.button
+                    key={i}
                     onClick={() => onVariantSelect(type.name)}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     className={`text-left border rounded-lg p-2 transition-colors relative overflow-hidden group ${
-                      activeVariant === type.name 
-                        ? 'bg-blue-500/20 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.4)]' 
+                      activeVariant === type.name
+                        ? 'bg-blue-500/20 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.4)]'
                         : 'bg-white/5 border-white/5 hover:border-blue-500/30'
                     }`}
                   >
                     {/* Subtle hover gradient background */}
                     <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                    
+
                     <div className={`relative z-10 text-[11px] font-bold mb-0.5 ${activeVariant === type.name ? 'text-blue-200' : 'text-blue-400 group-hover:text-blue-300'}`}>
                       {type.name}
                     </div>
@@ -196,7 +196,7 @@ export default function VisualizerInfoPanel({ activeDs, activeVariant, onVariant
                 ))}
               </div>
             </div>
-            
+
             <motion.button
               onClick={onViewCode}
               whileHover={{ scale: 1.02 }}

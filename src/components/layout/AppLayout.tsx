@@ -14,7 +14,7 @@ export default function AppLayout() {
 
   if (['/coding', '/workspace/pvp', '/quiz'].includes(location.pathname)) return <PracticeShell><Outlet /></PracticeShell>;
 
-  if (['/dashboard', '/progress', '/profile', '/mock-interview', '/ai-tutor', '/learn/ai-visualizer'].includes(location.pathname)) return <DashboardShell><Outlet /></DashboardShell>;
+  if (['/dashboard', '/progress', '/profile', '/mock-interview', '/ai-tutor', '/learn/ai-visualizer', '/learn/data-structures', '/learn/complexity', '/learn/algorithms', '/video-learning', '/3d-visualizer', '/algorithms-visualizer'].includes(location.pathname)) return <DashboardShell><Outlet /></DashboardShell>;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[var(--color-bg-primary)] text-white font-sans relative">
