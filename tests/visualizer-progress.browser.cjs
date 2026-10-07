@@ -1,0 +1,45 @@
+const assert=require('node:assert/strict');
+const {chromium}=require('C:/Users/Abhiram/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const switchModule=async(p,name)=>{await p.getByLabel('Data structure',{exact:true}).selectOption(name);await p.waitForFunction(n=>document.querySelector('h1')?.textContent===`${n} Learning Module`,name);};
+const read=p=>p.evaluate(()=>JSON.parse(localStorage.getItem('alvio-progress-storage')).state.progress);
+(async()=>{
+ const b=await chromium.launch({channel:'msedge',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+ try {
+  const p=await b.newPage({viewport:{width:1400,height:1000},reducedMotion:'reduce'});const errors=[];p.on('pageerror',e=>errors.push(e.message));
+  await p.goto('http://localhost:3001/3d-visualizer?ds=Heap');await p.locator('.st-array button').first().waitFor();
+  let saved=await read(p);assert.equal(saved.visualizerModules['heap:Max Heap'].currentStep,0);
+  for(let i=1;i<5;i++)await p.getByRole('button',{name:'Next step',exact:true}).click();
+  assert.equal((await read(p)).visualizerModules['heap:Max Heap'].completed,false);
+  await p.getByLabel('Operation value').fill('999');await p.getByRole('button',{name:'Delete',exact:true}).click();
+  assert.equal((await read(p)).visualizerModules['heap:Max Heap'].completed,false,'missing value does not count');
+  await p.getByLabel('Operation value').fill('100');await p.getByRole('button',{name:'Insert',exact:true}).click();
+  await p.getByText('Visualization complete',{exact:true}).waitFor();saved=await read(p);
+  const xp=saved.totalXp||0;const sessions=Object.values(saved.dailyActivity).reduce((n,a)=>n+a.sessions,0);
+  assert.equal(saved.topics.find(t=>t.topicId==='heap').completionPercent,0);
+  await p.reload();await p.locator('.st-array button').first().waitFor();assert.equal(await p.locator('.st-guide strong').innerText(),'Heapify');
+  assert.equal((await read(p)).totalXp||0,xp);assert.equal(Object.values((await read(p)).dailyActivity).reduce((n,a)=>n+a.sessions,0),sessions);
+  await p.getByRole('button',{name:/^Min Heap Parent/}).click();await p.getByRole('button',{name:'Next step',exact:true}).click();
+  await switchModule(p,'Array');await p.getByRole('button',{name:'Next step',exact:true}).click();
+  await p.getByRole('button',{name:'Accessible data view',exact:true}).click();await p.locator('.st-cell-inspection button').first().click();
+  assert.equal((await read(p)).visualizerModules['array:Static Array'].exploredNodeIds.length,1);
+  await switchModule(p,'Heap');assert.match(await p.locator('.st-scene-heading').innerText(),/Min Heap/);assert.equal(await p.locator('.st-guide strong').innerText(),'Root Property');
+  await p.emulateMedia({reducedMotion:'no-preference'});await p.getByRole('button',{name:'Reduced motion: off',exact:true}).waitFor();
+  await p.getByLabel('Operation value').fill('-100');await p.getByRole('button',{name:'Insert',exact:true}).click();
+  await switchModule(p,'Stack');await p.waitForTimeout(1800);
+  assert.equal((await read(p)).visualizerModules['heap:Min Heap'].operationsPerformed.insert,0,'cancelled operation is not credited');
+  await p.getByRole('button',{name:'Play',exact:true}).click();await switchModule(p,'Queue');await p.waitForTimeout(4300);
+  assert.equal((await read(p)).visualizerModules['queue:Simple Queue'].currentStep,0,'previous playback cancelled');
+  for(const name of ['BST','AVL Tree'])await switchModule(p,name);
+  assert.equal((await read(p)).topics.filter(t=>t.topicId==='binary-tree').length,1);
+  await p.getByRole('button',{name:'Reduced motion: off',exact:true}).click();await p.reload();await p.getByRole('button',{name:'Reduced motion: on',exact:true}).waitFor();
+  await p.goto('http://localhost:3001/learn');await p.getByRole('complementary',{name:'Continue where you left off'}).waitFor();
+  assert.match(await p.locator('.visualizer-resume').innerText(),/AVL Tree/);
+  await p.goto('http://localhost:3001/learn/data-structures');await p.locator('.visualizer-resume a').click();await p.getByLabel('Data structure',{exact:true}).waitFor();
+  assert.equal(await p.getByLabel('Data structure',{exact:true}).inputValue(),'AVL Tree');
+  assert.equal(await p.getByRole('link',{name:'Read AVL Tree Lesson',exact:true}).getAttribute('href'),'/learn/avl-tree');
+  await p.setViewportSize({width:390,height:844});await p.getByRole('button',{name:'Info',exact:true}).click();assert(await p.locator('.st-info').isVisible());
+  await p.getByRole('button',{name:'Code',exact:true}).click();await p.getByRole('button',{name:'Close modal',exact:true}).click();
+  await p.getByRole('button',{name:'Visualizer',exact:true}).click();assert(await p.locator('.st-scene').isVisible());assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert.deepEqual(errors,[]);console.log('PASS progress reload, completion/no-op/idempotency, variant/module isolation, cancellation, reduced motion, resume links, mobile.');
+ }finally{await b.close()}
+})().catch(e=>{console.error(e);process.exit(1)});

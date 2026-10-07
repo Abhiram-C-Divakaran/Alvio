@@ -8,6 +8,7 @@ interface Stack3DProps {
   activeIndex?: number | number[] | null;
   variant?: string;
   baseColor?: string;
+  reducedMotion?: boolean;
 }
 
 // Sub-component to handle the fly-out animation of popped items
@@ -47,13 +48,13 @@ function PoppedItem({ value, index, isLinked }: { value: number; index: number; 
   );
 }
 
-export default function Stack3D({ data = [], activeIndex = null, variant = 'Array Stack', baseColor }: Stack3DProps) {
+export default function Stack3D({ data = [], activeIndex = null, variant = 'Array Stack', baseColor, reducedMotion = false }: Stack3DProps) {
   const groupRef = useRef<THREE.Group>(null);
   const [poppingItems, setPoppingItems] = useState<{ id: string; value: number; index: number }[]>([]);
   const prevDataRef = useRef<number[]>(data);
 
   useEffect(() => {
-    if (data.length < prevDataRef.current.length) {
+    if (!reducedMotion && data.length < prevDataRef.current.length) {
       // An item was removed (popped)
       const prevTop = prevDataRef.current[prevDataRef.current.length - 1];
       const prevTopIndex = prevDataRef.current.length - 1;
@@ -71,8 +72,8 @@ export default function Stack3D({ data = [], activeIndex = null, variant = 'Arra
   // Animation for the entire stack
   useFrame((state) => {
     if (groupRef.current) {
-      groupRef.current.position.y = Math.sin(state.clock.elapsedTime) * 0.1 - (data.length * 0.6); // keep centered
-      groupRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.5) * 0.1;
+      groupRef.current.position.y = (reducedMotion ? 0 : Math.sin(state.clock.elapsedTime) * 0.1) - (data.length * 0.6); // keep centered
+      groupRef.current.rotation.y = reducedMotion ? 0 : Math.sin(state.clock.elapsedTime * 0.5) * 0.1;
     }
   });
 

@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.app.json",
+  "compilerOptions": { "noUnusedLocals": false, "noUnusedParameters": false },
+  "include": [
+    "../src/features/visualizer/VisualizerPage.tsx",
+    "../src/features/learn/DataStructuresHubPage.tsx",
+    "../src/features/learn/DataStructuresUniversePage.tsx",
+    "../src/services/sessionProgress.ts"
+  ]
+}

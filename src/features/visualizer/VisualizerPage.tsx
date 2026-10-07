@@ -1,9 +1,16 @@
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Environment, Lightformer, OrbitControls, ContactShadows, Stars, Sparkles } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import { heapOperationFrames } from './heapOperationFrames';
+import useAuthStore from '../../stores/useAuthStore';
+import useProgressStore from '../../stores/useProgressStore';
+import { latestVisualizer, visualizerKey, visualizerTopics } from '../../services/visualizerProgress';
+import { dsInfo } from './VisualizerInfoPanel';
+import { useVisualizerLearning } from './useVisualizerLearning';
+import DemandScene from './DemandScene';
+import VisualizerNextSteps from './VisualizerNextSteps';
 import Array3D from './Array3D';
 import Stack3D from './Stack3D';
 import Queue3D from './Queue3D';
@@ -226,20 +233,36 @@ const tutorials: Record<string, TutorialStep[]> = {
 };
 
 export default function VisualizerPage({ initialDs, hideUI = false }: { initialDs?: string, hideUI?: boolean } = {}) {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const owner = useAuthStore(s => s.user?.id || 'guest');
+  const profileReady = useProgressStore(s => !s.progress || s.progress.userId === owner);
+  const name = initialDs || (dsList.includes(params.get('ds') || '') ? params.get('ds')! : 'Heap');
+  return <VisualizerSelection key={`${owner}:${name}:${profileReady}`} name={name} owner={owner} hideUI={hideUI} onModule={ds => setParams(previous => {const next = new URLSearchParams(previous); next.set('ds', ds); return next;}, {replace:true})}/>;
+}
+function VisualizerSelection({name, owner, hideUI, onModule}: {name:string;owner:string;hideUI:boolean;onModule:(name:string)=>void}) {
+  const [variant, setVariant] = useState(() => {
+    const progress = useProgressStore.getState().progress;
+    const saved = progress?.userId === owner ? latestVisualizer(progress, name)?.variant : undefined;
+    const info = dsInfo[name === 'BST' || name === 'AVL Tree' ? 'Binary Tree' : name];
+    return saved && info.types.some(t => t.name === saved) ? saved : visualizerTopics[name].variant;
+  });
+  return <VisualizerSession key={variant} activeDs={name} activeVariant={variant} owner={owner} hideUI={hideUI} onModule={onModule} onVariant={setVariant}/>;
+}
+function VisualizerSession({ activeDs, activeVariant, owner, hideUI, onModule, onVariant }: {activeDs:string;activeVariant:string;owner:string;hideUI:boolean;onModule:(name:string)=>void;onVariant:(name:string)=>void}) {
   const location = useLocation();
-  const paramDs = searchParams.get('ds');
   const planetColor = location.state?.planetColor;
-  const [activeDs, setActiveDs] = useState(initialDs || (dsList.includes(paramDs || '') ? paramDs! : 'Heap'));
-  const [activeVariant, setActiveVariant] = useState('Static Array');
-  const [currentStep, setCurrentStep] = useState(0);
+  const [saved] = useState(() => {
+    const progress = useProgressStore.getState().progress;
+    return progress?.userId === owner ? progress.visualizerModules?.[visualizerKey(activeDs, activeVariant)] : undefined;
+  });
+  const [currentStep, setCurrentStep] = useState(saved?.currentStep || 0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [dsState, setDsState] = useState<DataStructure | null>(null);
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [isUIHidden, setIsUIHidden] = useState(hideUI);
   const [selected, setSelected] = useState<string | null>(null);
   const [cameraRevision, setCameraRevision] = useState(0);
-  const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches || (useProgressStore.getState().progress?.userId === owner && !!useProgressStore.getState().progress?.visualizerReducedMotion));
   const [status, setStatus] = useState('Select a node or an array cell to inspect it.');
   const [busy, setBusy] = useState(false);
   const operationToken = useRef(0);
@@ -250,7 +273,7 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
   }, []);
-  useEffect(() => { if (paramDs && dsList.includes(paramDs)) setActiveDs(paramDs); }, [paramDs]);
+
 
   // Fallback to base tutorial if variant tutorial doesn't exist
   const currentTutorials: TutorialStep[] = activeDs === 'Heap' ? [
@@ -259,7 +282,7 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
     { index: null, title: 'Insert Operation', text: 'Append a value at the next available leaf. Compare it with its parent and sift upward until the heap property holds. Try Insert above.' },
     { index: null, title: 'Delete Operation', text: 'Delete the selected node, a typed value, or the root when neither is specified. Move the last value into the gap, then restore heap order.' },
     { index: null, title: 'Heapify', text: 'Compare parent and child values, swap when out of order, and continue along one path. Insertion and removal at a known index take O(log N).' },
-  ] : tutorials[`${activeDs}-${activeVariant}`] || tutorials[activeDs === 'BST' || activeDs === 'AVL Tree' ? 'Binary Tree' : activeDs] || [];
+  ] : tutorials[`${activeDs === 'BST' || activeDs === 'AVL Tree' ? 'Binary Tree' : activeDs}-${activeVariant}`] || tutorials[activeDs === 'BST' || activeDs === 'AVL Tree' ? 'Binary Tree' : activeDs] || [];
 
   const getDsType = (name: string): DataStructureType => {
     switch (name) {
@@ -276,11 +299,9 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
     }
   };
 
-  const defaultVariant = (name: string) => ({Array: 'Static Array', Stack: 'Array Stack', Queue: 'Simple Queue', 'Linked List': 'Singly Linked', 'Binary Tree': 'Binary Search Tree', BST: 'Binary Search Tree', 'AVL Tree': 'AVL Tree', Graph: 'Directed Graph', 'Hash Table': 'Chaining', Heap: 'Max Heap'}[name] || 'Static Array');
-  useEffect(() => { setActiveVariant(defaultVariant(activeDs)); }, [activeDs]);
   useEffect(() => {
     operationToken.current++;
-    setBusy(false); setSelected(null); setCurrentStep(0); setIsPlaying(false);
+    setBusy(false); setSelected(null); setIsPlaying(false);
     setStatus('Select a node or an array cell to inspect it.');
     const next = createDefaultStructure(activeVariant === 'AVL Tree' ? 'avl-tree' : getDsType(activeDs), activeVariant);
     if (next.type === 'heap') {
@@ -290,6 +311,14 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
     }
     setDsState(next);
   }, [activeDs, activeVariant]);
+
+  const { module: learning, record } = useVisualizerLearning(owner, activeDs, activeVariant, currentTutorials.length, Math.min(currentStep, currentTutorials.length - 1), !hideUI);
+  const inspect = (id: string | null) => { setSelected(id); if (id) record({inspected:id}); };
+  useEffect(() => {
+    const pause = () => { if (document.hidden) setIsPlaying(false); };
+    document.addEventListener('visibilitychange', pause);
+    return () => document.removeEventListener('visibilitychange', pause);
+  }, []);
 
   // Auto-play logic
   useEffect(() => {
@@ -309,6 +338,7 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
   }, [isPlaying, currentTutorials.length]);
 
   const handleReset = () => {
+    record({operation: 'reset'});
     setCurrentStep(0);
     setIsPlaying(false);
   };
@@ -369,6 +399,7 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
       if (token !== operationToken.current) return;
       setBusy(false);
     }
+    if (JSON.stringify(before) !== JSON.stringify(next)) record({operation:kind});
     setDsState(next); setStatus(`${kind === 'insert' ? 'Insert' : 'Delete'} complete. ${next.type === 'heap' ? 'Heap order restored.' : 'Structure updated.'}`);
   };
   const handleInsert = (val: string, idx?: number) => { void applyOperation('insert', val, idx); };
@@ -387,19 +418,21 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
     const llData = dsState.type === 'linked-list' ? dsState.nodes.map(n => Number(n.value)) : [];
 
     switch (activeDs) {
-      case 'Array': return <Array3D data={linearData} activeIndex={activeIndex as number} variant={activeVariant} capacity={dsState?.type === 'array' ? dsState.capacity : undefined} baseColor={planetColor} />;
-      case 'Stack': return <Stack3D data={linearData} activeIndex={activeIndex as number} variant={activeVariant} baseColor={planetColor} />;
-      case 'Queue': return <Queue3D data={linearData} activeIndex={activeIndex as number} variant={activeVariant} baseColor={planetColor} />;
-      case 'Linked List': return <LinkedList3D reducedMotion={reducedMotion} selectedIndex={dsState.type === 'linked-list' ? dsState.nodes.findIndex(n => n.id === selected) : -1} onNodeSelect={index => {if(dsState.type === 'linked-list') setSelected(dsState.nodes[index].id);}} data={llData} activeIndex={activeIndex as number} variant={activeVariant} baseColor={planetColor} />;
-      case 'BST': case 'AVL Tree': case 'Binary Tree': return <BinaryTree3D onNodeSelect={setSelected} selectedId={selected} reducedMotion={reducedMotion} activeIndex={activeIndex as number} variant={activeVariant} dsState={(dsState?.type === 'binary-tree' || dsState?.type === 'avl-tree') ? dsState as any : null} baseColor={planetColor} />;
+      case 'Array': return <Array3D reducedMotion={reducedMotion} data={linearData} activeIndex={activeIndex as number} variant={activeVariant} capacity={dsState?.type === 'array' ? dsState.capacity : undefined} baseColor={planetColor} />;
+      case 'Stack': return <Stack3D reducedMotion={reducedMotion} data={linearData} activeIndex={activeIndex as number} variant={activeVariant} baseColor={planetColor} />;
+      case 'Queue': return <Queue3D reducedMotion={reducedMotion} data={linearData} activeIndex={activeIndex as number} variant={activeVariant} baseColor={planetColor} />;
+      case 'Linked List': return <LinkedList3D reducedMotion={reducedMotion} selectedIndex={dsState.type === 'linked-list' ? dsState.nodes.findIndex(n => n.id === selected) : -1} onNodeSelect={index => {if(dsState.type === 'linked-list') inspect(dsState.nodes[index].id);}} data={llData} activeIndex={activeIndex as number} variant={activeVariant} baseColor={planetColor} />;
+      case 'BST': case 'AVL Tree': case 'Binary Tree': return <BinaryTree3D onNodeSelect={inspect} selectedId={selected} reducedMotion={reducedMotion} activeIndex={activeIndex as number} variant={activeVariant} dsState={(dsState?.type === 'binary-tree' || dsState?.type === 'avl-tree') ? dsState as any : null} baseColor={planetColor} />;
       case 'Graph': return <Graph3D activeIndex={activeIndex as any} variant={activeVariant} dsState={dsState?.type === 'graph' ? dsState as any : null} baseColor={planetColor} />;
-      case 'Hash Table': return <HashTable3D activeIndex={activeIndex as number} activeItem={currentStep === 2 ? 'Key' : null} variant={activeVariant} dsState={dsState?.type === 'hash-table' ? dsState as any : null} baseColor={planetColor} />;
-      case 'Heap': return <BinaryTree3D onNodeSelect={setSelected} selectedId={selected} reducedMotion={reducedMotion} activeIndex={activeIndex as number} variant={activeVariant} dsState={dsState?.type === 'heap' ? dsState as any : null} baseColor={planetColor} />;
+      case 'Hash Table': return <HashTable3D reducedMotion={reducedMotion} activeIndex={activeIndex as number} activeItem={currentStep === 2 ? 'Key' : null} variant={activeVariant} dsState={dsState?.type === 'hash-table' ? dsState as any : null} baseColor={planetColor} />;
+      case 'Heap': return <BinaryTree3D onNodeSelect={inspect} selectedId={selected} reducedMotion={reducedMotion} activeIndex={activeIndex as number} variant={activeVariant} dsState={dsState?.type === 'heap' ? dsState as any : null} baseColor={planetColor} />;
       default: return null;
     }
   };
 
-  const scene = <Canvas dpr={[1, 1.5]} camera={{ position: [0, 1.4, 10], fov: 45 }}>
+  const sceneRevision = useMemo(() => ({dsState, currentStep, selected, cameraRevision}), [dsState, currentStep, selected, cameraRevision]);
+  const scene = <Canvas frameloop="demand" dpr={[1, 1.5]} camera={{ position: [0, 1.4, 10], fov: 45 }}>
+    <DemandScene revision={sceneRevision} moving={isPlaying || busy} reduced={reducedMotion}/>
     <ambientLight intensity={0.5} />
     <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
     <pointLight position={[-10, 10, -10]} intensity={0.5} />
@@ -420,12 +453,13 @@ export default function VisualizerPage({ initialDs, hideUI = false }: { initialD
   return <>
     {hideUI ? <div style={{height:'100%',minHeight:400}}>{scene}</div> : <StructureLayout
       activeDs={activeDs} activeVariant={activeVariant} modules={dsList} state={dsState}
-      onModule={name => { setActiveDs(name); setSearchParams({ds:name}, {replace:true}); }}
-      onVariant={setActiveVariant} onCode={() => setShowCodeModal(true)}
+      onModule={onModule}
+      onVariant={onVariant} onCode={() => setShowCodeModal(true)}
       playing={isPlaying} onPlay={togglePlay} step={currentStep} steps={currentTutorials}
       onStep={index => {setCurrentStep(index);setIsPlaying(false);}} onReset={handleReset}
       onCameraReset={() => setCameraRevision(v => v + 1)} guideHidden={isUIHidden} onToggleGuide={() => setIsUIHidden(v => !v)}
-      selected={selected} onSelect={setSelected} reducedMotion={reducedMotion} onMotion={() => setReducedMotion(v => !v)} status={status}
+      selected={selected} onSelect={inspect} reducedMotion={reducedMotion} onMotion={() => { const next = !reducedMotion; setReducedMotion(next); record({reducedMotion:next}); }} status={status}
+      nextSteps={<VisualizerNextSteps name={activeDs} module={learning} onCode={() => setShowCodeModal(true)}/>}
       toolbar={<VisualizerToolbar onInsert={handleInsert} onDelete={handleDelete} activeDs={activeDs} disabled={busy}/>}
     ><Suspense fallback={<div role="status" style={{padding:24,color:"#a6b8dc"}}>Loading 3D scene…</div>}>{scene}</Suspense></StructureLayout>}
     <CodeImplementationsModal open={showCodeModal} onClose={() => setShowCodeModal(false)} activeDs={activeDs}/>

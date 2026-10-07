@@ -8,9 +8,10 @@ interface Queue3DProps {
   activeIndex?: number | number[] | null;
   variant?: string;
   baseColor?: string;
+  reducedMotion?: boolean;
 }
 
-export default function Queue3D({ data = [], activeIndex = null, variant = 'Linear Queue', baseColor }: Queue3DProps) {
+export default function Queue3D({ data = [], activeIndex = null, variant = 'Linear Queue', baseColor, reducedMotion = false }: Queue3DProps) {
   const groupRef = useRef<THREE.Group>(null);
   const spacing = 1.5;
   const totalWidth = (data.length - 1) * spacing;
@@ -18,9 +19,9 @@ export default function Queue3D({ data = [], activeIndex = null, variant = 'Line
 
   useFrame((state) => {
     if (groupRef.current) {
-      groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 1.2) * 0.1;
+      groupRef.current.position.y = reducedMotion ? 0 : Math.sin(state.clock.elapsedTime * 1.2) * 0.1;
       if (variant === 'Circular Queue') {
-        groupRef.current.rotation.z = state.clock.elapsedTime * 0.2;
+        groupRef.current.rotation.z = reducedMotion ? 0 : state.clock.elapsedTime * 0.2;
       }
     }
   });

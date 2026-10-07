@@ -61,7 +61,22 @@ export interface VideoLessonProgress {
   notes:{id:string;time:number;text:string;createdAt:string}[];
 }
 
+export interface VisualizerModuleProgress {
+  moduleId: string;
+  variant: string;
+  currentStep: number;
+  completedSteps: number[];
+  totalSteps: number;
+  operationsPerformed: { insert: number; delete: number; reset: number };
+  exploredNodeIds: string[];
+  timeSpentSeconds: number;
+  lastAccessed: string;
+  completed: boolean;
+}
+
 export interface LearningProgress {
+  visualizerModules?: Record<string, VisualizerModuleProgress>;
+  visualizerReducedMotion?: boolean;
   videoLessons?:Record<string,VideoLessonProgress>;
   userId: string;
   topics: TopicProgress[];

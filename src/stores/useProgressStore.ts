@@ -7,14 +7,17 @@ import type { LearningProgress, VideoLessonProgress, TopicProgress, DashboardSta
 import { dbService } from '../services/db';
 import type { QuizCompletion } from '../features/quiz/quizModel';
 import { recordActivity, localDay } from '../services/progressActivity';
+import { applyVisualizerProgress, type VisualizerUpdate } from '../services/visualizerProgress';
 
 interface ProgressState {
   progress: LearningProgress | null;
   stats: DashboardStats | null;
   isLoading: boolean;
+  visualizerSyncPending?: boolean;
 }
 
 interface ProgressActions {
+  saveVisualizerProgress: (owner: string, update: VisualizerUpdate) => Promise<void>;
   saveVideoLesson:(id:string,patch:Partial<VideoLessonProgress>,owner:string,topicId:string)=>Promise<void>;
   recordQuiz: (result: QuizCompletion) => Promise<number>;
   setProgress: (progress: LearningProgress) => void;
@@ -77,6 +80,19 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
       stats: null,
       isLoading: false,
 
+      saveVisualizerProgress: async (owner, update) => {
+        const current = get().progress;
+        if (current && current.userId !== owner) return;
+        const base: LearningProgress = current || { userId: owner, topics: [], totalTimeSpentMinutes: 0, overallScore: 0, streak: 0, badges: [], weakAreas: [], recommendedTopics: [] };
+        const progress = applyVisualizerProgress(base, update);
+        set({ progress, stats: calculateStats(progress), visualizerSyncPending: true });
+        try {
+          await dbService.saveProgress(progress);
+          if (get().progress === progress) set({ visualizerSyncPending: false });
+        }
+        catch { console.warn('Visualizer progress saved locally; database sync is pending.'); }
+      },
+
       // Commit one complete attempt atomically. Review/reload must never award XP twice.
       recordQuiz: async (result) => {
         const { progress } = get();
@@ -137,7 +153,7 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
 
       setProgress: (progress) => {
         const stats = calculateStats(progress);
-        set({ progress, stats });
+        set({ progress, stats, visualizerSyncPending: false });
       },
 
       updateTopicProgress: async (topicId, updates) => {

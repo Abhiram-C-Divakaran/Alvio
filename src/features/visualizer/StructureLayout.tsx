@@ -13,7 +13,7 @@ export interface StructureLayoutProps {
   onStep: (index: number) => void; onReset: () => void; onCameraReset: () => void;
   guideHidden: boolean; onToggleGuide: () => void; selected: string | null;
   onSelect: (id: string | null) => void; reducedMotion: boolean; onMotion: () => void;
-  status: string; children: ReactNode; toolbar: ReactNode;
+  status: string; children: ReactNode; toolbar: ReactNode; nextSteps?: ReactNode;
 }
 
 export default function StructureLayout(p: StructureLayoutProps) {
@@ -64,7 +64,8 @@ export default function StructureLayout(p: StructureLayoutProps) {
         <div className="st-scene-options"><span className="st-live">3D Active · Real-time updates</span><button aria-pressed={p.reducedMotion} onClick={p.onMotion}>Reduced motion: {p.reducedMotion ? 'on' : 'off'}</button><button aria-expanded={treeView} onClick={() => setTreeView(v => !v)}>Accessible data view</button></div>
         <p className="st-status" role="status">{p.status}</p>
         {p.state?.type === 'heap' && <div className="st-array" aria-label="Heap array, click to inspect">{nodes.map((n, i) => <button key={n.id} aria-label={`Index ${i}, value ${n.value}`} aria-pressed={p.selected === n.id} onClick={() => p.onSelect(n.id)}><strong>{String(n.value)}</strong><small>{i}</small></button>)}{!nodes.length && <span>Empty heap. Insert a value to begin.</span>}</div>}
-        {treeView && <div className="st-data st-panel"><h2>Current {p.activeDs}</h2>{nodes.length ? <table><thead><tr><th>Index</th><th>Value</th><th>Children</th><th>Inspect</th></tr></thead><tbody>{nodes.map((n, i) => <tr key={n.id}><td>{i}</td><td>{String(n.value)}</td><td>{'left' in n && 'right' in n ? nodes.filter(c => c.id === n.left || c.id === n.right).map(c => c.value).join(', ') || 'None' : '—'}</td><td><button onClick={() => p.onSelect(n.id)}>Inspect {String(n.value)}</button></td></tr>)}</tbody></table> : <p>{p.state && 'elements' in p.state ? p.state.elements.map(n => n.value).join(', ') || 'Empty' : p.state?.type === 'hash-table' ? p.state.buckets.map((b, i) => `${i}: ${b.entries.map(e => `${e.value}`).join(', ') || 'empty'}`).join(' | ') : 'Empty structure'}</p>}</div>}
+        {treeView && <div className="st-data st-panel"><h2>Current {p.activeDs}</h2>{nodes.length ? <table><thead><tr><th>Index</th><th>Value</th><th>Children</th><th>Inspect</th></tr></thead><tbody>{nodes.map((n, i) => <tr key={n.id}><td>{i}</td><td>{String(n.value)}</td><td>{'left' in n && 'right' in n ? nodes.filter(c => c.id === n.left || c.id === n.right).map(c => c.value).join(', ') || 'None' : '—'}</td><td><button onClick={() => p.onSelect(n.id)}>Inspect {String(n.value)}</button></td></tr>)}</tbody></table> : <div className="st-cell-inspection">{p.state && 'elements' in p.state ? p.state.elements.map((n, i) => <button key={n.id} aria-pressed={p.selected === `cell:${i}`} onClick={() => p.onSelect(`cell:${i}`)}>Inspect cell {i}: {String(n.value)}</button>) : p.state?.type === 'hash-table' ? p.state.buckets.map((b, i) => <button key={i} aria-pressed={p.selected === `bucket:${i}`} onClick={() => p.onSelect(`bucket:${i}`)}>Inspect bucket {i}: {b.entries.map(e => String(e.value)).join(', ') || 'empty'}</button>) : <p>Empty structure</p>}</div>}</div>}
+        {p.nextSteps}
       </div>
     </div>
   </section>;

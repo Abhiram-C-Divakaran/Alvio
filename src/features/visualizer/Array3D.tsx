@@ -11,9 +11,10 @@ interface Array3DProps {
   variant?: string;
   capacity?: number;
   baseColor?: string;
+  reducedMotion?: boolean;
 }
 
-export default function Array3D({ data = [], activeIndex = null, variant = 'Static Array', capacity, baseColor }: Array3DProps) {
+export default function Array3D({ data = [], activeIndex = null, variant = 'Static Array', capacity, baseColor, reducedMotion = false }: Array3DProps) {
   const groupRef = useRef<THREE.Group>(null);
   const spacing = 1.5;
 
@@ -40,7 +41,7 @@ export default function Array3D({ data = [], activeIndex = null, variant = 'Stat
   // Slowly animate the entire array group for a dynamic effect
   useFrame((state) => {
     if (groupRef.current) {
-      groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 1.5) * 0.1;
+      groupRef.current.position.y = reducedMotion ? 0 : Math.sin(state.clock.elapsedTime * 1.5) * 0.1;
     }
   });
 
@@ -103,7 +104,7 @@ export default function Array3D({ data = [], activeIndex = null, variant = 'Stat
             const yPos = isActive ? 0.4 : 0; // Lift active item slightly
 
             return (
-              <AnimatedArrayItem 
+              <AnimatedArrayItem reducedMotion={reducedMotion}
                 key={`${index}-${value}`}
                 index={index}
                 value={value}
@@ -136,10 +137,11 @@ export default function Array3D({ data = [], activeIndex = null, variant = 'Stat
   );
 }
 
-function AnimatedArrayItem({ index, value, xPos, yPos, color, isActive, isGhost, isDynamic, baseColor }: any) {
+function AnimatedArrayItem({ index, value, xPos, yPos, color, isActive, isGhost, isDynamic, baseColor, reducedMotion }: any) {
   const speed = useVisualizationStore((s) => s.timeline.speed);
   const { position } = useSpring({
     position: [xPos, yPos, 0],
+    immediate: reducedMotion,
     config: { tension: 120 * speed, friction: 14 / speed }
   });
 

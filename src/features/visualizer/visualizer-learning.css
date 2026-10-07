@@ -1,0 +1,6 @@
+.visualizer-learning{margin:16px 0;padding:18px;border:1px solid #233960;border-radius:16px;background:linear-gradient(120deg,#0a1730,#0c1026);color:#e8edff;min-width:0}
+.visualizer-learning h2{font-size:17px;margin:4px 0 8px}.visualizer-learning p{color:#afc0e4;font-size:14px;margin:4px 0}.visualizer-learning small{color:#9cadcf;line-height:1.5}
+.visualizer-learning nav{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.visualizer-learning a,.visualizer-learning button{display:inline-flex;align-items:center;padding:10px 14px;border:1px solid #3e3c88;border-radius:10px;background:#181b47;color:#d7dbff;font-size:13px;text-decoration:none}
+.visualizer-learning a:focus-visible,.visualizer-learning button:focus-visible{outline:2px solid #8cb5ff;outline-offset:3px}.visualizer-resume{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.st-data .st-cell-inspection{display:flex;flex-wrap:wrap;gap:8px}.st-cell-inspection button{padding:10px;border:1px solid #384d7e;border-radius:8px}.st-cell-inspection button[aria-pressed=true]{background:#362275}
+@media(max-width:600px){.visualizer-resume{align-items:flex-start;flex-direction:column}}

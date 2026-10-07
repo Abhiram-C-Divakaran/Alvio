@@ -103,14 +103,8 @@ function App() {
             <Route path="/learn/topic/:topicId" element={<TopicDetailsPage />} />
 
 
-            <Route path="/workspace/pvp" element={<PvPShowdown />} />
-            <Route path="/coding" element={<CodingPage />} />
-            <Route path="/3d-visualizer" element={<VisualizerPage />} />
-            <Route path="/video-learning" element={<VideoLearningPage />} />
 
 
-            <Route path="/quiz" element={<QuizPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
 
           </Route>
         </Route>

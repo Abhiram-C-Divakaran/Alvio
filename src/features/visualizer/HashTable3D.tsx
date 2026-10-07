@@ -10,9 +10,10 @@ interface HashTable3DProps {
   variant?: string;
   dsState?: HashTableStructure | null;
   baseColor?: string;
+  reducedMotion?: boolean;
 }
 
-export default function HashTable3D({ activeIndex = null, activeItem = null, variant = 'Chaining', dsState, baseColor }: HashTable3DProps) {
+export default function HashTable3D({ activeIndex = null, activeItem = null, variant = 'Chaining', dsState, baseColor, reducedMotion = false }: HashTable3DProps) {
   const groupRef = useRef<THREE.Group>(null);
   const buckets = dsState ? dsState.size : 5;
   const spacing = 1.8;
@@ -20,7 +21,7 @@ export default function HashTable3D({ activeIndex = null, activeItem = null, var
 
   useFrame((state) => {
     if (groupRef.current) {
-      groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 1.5) * 0.1 - 1;
+      groupRef.current.position.y = (reducedMotion ? 0 : Math.sin(state.clock.elapsedTime * 1.5) * 0.1) - 1;
     }
   });
 
