@@ -1,0 +1,1 @@
+{"extends":"../tsconfig.app.json","compilerOptions":{"noUnusedLocals":false,"noUnusedParameters":false},"include":["../src/components/layout/AppShell.tsx","../src/navigation/TopicOrientation.tsx"]}

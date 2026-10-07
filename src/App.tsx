@@ -60,8 +60,8 @@ function App() {
 
         {/* Protected/App Routes wrapped in Layout & Auth Guard */}
         <Route element={<AuthGuard />}>
-          <Route path="/learn" element={<DataStructuresUniversePage />} />
           <Route element={<AppLayout />}>
+            <Route path="/learn" element={<DataStructuresUniversePage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/skill-tree" element={<SkillTreeMap />} />
             <Route path="/catalog" element={<CatalogPage />} />

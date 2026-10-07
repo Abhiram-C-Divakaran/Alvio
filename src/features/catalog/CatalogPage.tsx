@@ -331,7 +331,7 @@ export default function CatalogPage() {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto relative">
+    <div className="relative">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -346,8 +346,8 @@ export default function CatalogPage() {
       {/* Filters */}
       <div className="flex gap-3 mb-8 overflow-x-auto pb-2">
         {['All', 'Python', 'JavaScript', 'C++', 'SQL', 'React'].map((f) => (
-          <button 
-            key={f} 
+          <button
+            key={f}
             onClick={() => setFilter(f)}
             className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${filter === f ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' : 'bg-transparent border-gray-700 hover:bg-gray-800'}`}
           >
@@ -370,9 +370,9 @@ export default function CatalogPage() {
                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                   <Code2 size={80} style={{ color: course.color }} />
                 </div>
-                
+
                 <div className="flex items-start justify-between mb-4 relative z-10">
-                  <div 
+                  <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 shadow-sm"
                     style={{ background: `${course.color}20`, color: course.color }}
                   >
@@ -382,12 +382,12 @@ export default function CatalogPage() {
                     {course.level}
                   </Badge>
                 </div>
-                
+
                 <h3 className="text-xl font-semibold mb-2 group-hover:text-indigo-300 transition-colors relative z-10">{course.title}</h3>
                 <p className="text-sm mb-6 flex-1 relative z-10" style={{ color: 'var(--color-text-secondary)' }}>
                   {course.description}
                 </p>
-                
+
                 <div className="flex flex-col gap-3 pt-4 border-t relative z-10" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-1.5"><Users size={14}/> {(course.studentsEnrolled / 1000).toFixed(1)}k students</span>
@@ -410,14 +410,14 @@ export default function CatalogPage() {
       <AnimatePresence>
         {selectedCourse && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => setSelectedCourse(null)}
             />
-            
+
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -425,22 +425,22 @@ export default function CatalogPage() {
               className="relative w-full max-w-3xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
               {/* Modal Header */}
-              <div 
+              <div
                 className="p-8 flex items-end relative overflow-hidden shrink-0"
                 style={{ background: `linear-gradient(135deg, ${selectedCourse.color}15, ${selectedCourse.color}05)` }}
               >
                 <div className="absolute -top-12 -right-12 opacity-10">
                   <Code2 size={200} style={{ color: selectedCourse.color }} />
                 </div>
-                
-                <button 
+
+                <button
                   onClick={() => setSelectedCourse(null)}
                   className="absolute top-4 right-4 p-2 bg-black/20 hover:bg-black/40 rounded-full transition-colors text-white/70 hover:text-white z-20"
                 >
                   <X size={20} />
                 </button>
                 <div className="flex items-start gap-6 relative z-10 w-full">
-                  <div 
+                  <div
                     className="w-20 h-20 rounded-2xl flex items-center justify-center shadow-lg bg-[var(--color-surface)] border border-white/5 shrink-0"
                     style={{ color: selectedCourse.color }}
                   >
@@ -465,7 +465,7 @@ export default function CatalogPage() {
 
               {/* Modal Body */}
               <div className="p-8 overflow-y-auto flex-1 grid md:grid-cols-3 gap-8">
-                
+
                 <div className="md:col-span-2 space-y-8">
                   <div>
                     <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -485,8 +485,8 @@ export default function CatalogPage() {
                     <h3 className="text-lg font-semibold mb-4">Course Syllabus</h3>
                     <div className="space-y-3">
                       {selectedCourse.syllabus?.map((topic, idx) => (
-                        <div 
-                          key={idx} 
+                        <div
+                          key={idx}
                           onClick={() => setExpandedSyllabusIdx(expandedSyllabusIdx === idx ? null : idx)}
                           className="flex flex-col p-4 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-glass)] hover:border-indigo-500/50 transition-colors cursor-pointer select-none"
                         >
@@ -497,12 +497,12 @@ export default function CatalogPage() {
                             <div className="flex-1">
                               <p className="font-medium">{topic.title}</p>
                             </div>
-                            <ChevronDown 
-                              size={18} 
-                              className={`text-[var(--color-text-muted)] transition-transform duration-300 ${expandedSyllabusIdx === idx ? 'rotate-180' : ''}`} 
+                            <ChevronDown
+                              size={18}
+                              className={`text-[var(--color-text-muted)] transition-transform duration-300 ${expandedSyllabusIdx === idx ? 'rotate-180' : ''}`}
                             />
                           </div>
-                          
+
                           <AnimatePresence>
                             {expandedSyllabusIdx === idx && (
                               <motion.div
@@ -536,7 +536,7 @@ export default function CatalogPage() {
                         <p className="font-medium text-sm">{selectedCourse.instructor}</p>
                       </div>
                     </div>
-                    
+
                     <div className="border-t border-[var(--color-border-subtle)] pt-4 space-y-3">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-[var(--color-text-secondary)] flex items-center gap-2"><Users size={14}/> Enrolled</span>
@@ -566,13 +566,13 @@ export default function CatalogPage() {
 
               {/* Modal Footer */}
               <div className="p-6 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface)] flex justify-end gap-4 shrink-0 shadow-[0_-10px_20px_rgba(0,0,0,0.2)] relative z-10">
-                <button 
+                <button
                   onClick={() => setSelectedCourse(null)}
                   className="px-6 py-3 rounded-xl font-medium border border-[var(--color-border-strong)] hover:bg-[var(--color-surface-hover)] transition-colors"
                 >
                   Close Preview
                 </button>
-                <button 
+                <button
                   onClick={() => navigate('/coding')}
                   className="px-8 py-3 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-lg shadow-indigo-500/25 flex items-center gap-2 hover:scale-105 active:scale-95"
                 >

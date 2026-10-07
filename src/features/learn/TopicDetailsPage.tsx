@@ -1,5 +1,5 @@
 import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { BookOpen, ArrowLeft, ArrowRight, Code } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -18,17 +18,17 @@ export default function TopicDetailsPage() {
   const title = topicId ? formatTitle(topicId) : 'Topic Details';
 
   return (
-    <div className="w-full min-h-full bg-[var(--color-bg-primary)] p-4 md:p-8 lg:p-12 text-white overflow-y-auto">
-      <div className="max-w-[1200px] mx-auto space-y-12 pb-20">
-        <header className="space-y-6">
-          <button 
+    <div className="app-lesson text-white">
+      <div className="app-lesson-body">
+        <nav className="app-breadcrumb" aria-label="Breadcrumb"><Link to="/learn">Learn</Link><span>›</span><Link to="/learn/data-structures">Data Structures</Link><span>›</span><span aria-current="page">{title}</span></nav><header className="space-y-6">
+          <button
             onClick={() => navigate(-1)}
             className="px-4 py-2 bg-[var(--color-surface-glass)] text-[var(--color-text-secondary)] hover:text-white rounded-xl text-sm font-semibold border border-[var(--color-border-subtle)] hover:border-[var(--color-border-hover)] transition-all flex items-center gap-2 w-fit"
           >
             <ArrowLeft size={16} />
             Back
           </button>
-          
+
           <h1 className="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent flex items-center gap-4">
             <BookOpen size={40} className="text-indigo-400" />
             {title}
@@ -39,7 +39,7 @@ export default function TopicDetailsPage() {
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-12">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
@@ -52,7 +52,7 @@ export default function TopicDetailsPage() {
             <p className="text-[var(--color-text-secondary)] mb-8 max-w-md relative z-10">
               Ready to write some code? Head over to the interactive coding workspace to try implementing this on your own.
             </p>
-            <button 
+            <button
               onClick={() => navigate('/coding')}
               className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all"
             >
@@ -60,7 +60,7 @@ export default function TopicDetailsPage() {
             </button>
           </motion.div>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}

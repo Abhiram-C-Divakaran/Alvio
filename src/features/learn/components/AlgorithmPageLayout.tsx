@@ -1,5 +1,6 @@
+import { TopicOrientation, TopicNextStep, topicNavigation } from '../../../navigation/TopicOrientation';
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import AlgorithmsWorkspace from '../../workspace/AlgorithmsWorkspace';
 import Editor from '@monaco-editor/react';
 import { Code2, Clock, Maximize2, Minimize2, HelpCircle, Terminal, Activity, ArrowLeft } from 'lucide-react';
@@ -158,9 +159,10 @@ export default function AlgorithmPageLayout({
   content,
 }: AlgorithmPageLayoutProps) {
   const navigate = useNavigate();
+  const topicLinks=topicNavigation(useLocation().pathname);
   const [language, setLanguage] = useState<'python' | 'javascript' | 'java' | 'cpp'>('python');
   const [isVisualizerExpanded, setIsVisualizerExpanded] = useState(false);
-  
+
   const currentCode = algoSnippets[type]?.[language] || '// Code snippet coming soon';
 
   const getDifficultyColor = (diff: string) => {
@@ -192,18 +194,19 @@ export default function AlgorithmPageLayout({
   };
 
   return (
-    <div className="w-full min-h-full bg-[var(--color-bg-primary)] p-4 md:p-8 lg:p-12 text-white overflow-y-auto">
-      <div className="max-w-[1200px] mx-auto space-y-12 pb-32">
+    <div className="app-lesson text-white">
+      <div className="app-lesson-body">
+        <TopicOrientation/>
         {/* Header Section */}
         <header className="space-y-6">
           <div className="flex items-center gap-4 mb-4 flex-wrap">
-            <button 
+            <button
               onClick={() => navigate('/learn/algorithms')}
               className="px-4 py-2 bg-[var(--color-surface-glass)] text-[var(--color-text-secondary)] hover:text-white rounded-xl text-sm font-semibold border border-[var(--color-border-subtle)] hover:border-[var(--color-border-hover)] transition-all flex items-center gap-2"
             >
               <ArrowLeft size={16} /> Back to Algorithms
             </button>
-            
+
             <button
               onClick={() => navigate(`/algorithms-visualizer?algo=${type}`)}
               className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/25 transition-all hover:scale-105 flex items-center gap-2"
@@ -212,16 +215,16 @@ export default function AlgorithmPageLayout({
               Open in 3D Workspace
             </button>
           </div>
-          
+
           <div className="flex items-center gap-3">
-            <h1 className="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-extrabold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
               {title}
             </h1>
             <span className={`px-3 py-1 text-xs font-bold rounded-full border ${getDifficultyColor(difficulty)}`}>
               {difficulty}
             </span>
           </div>
-          <p className="text-[var(--color-text-secondary)] text-xl max-w-3xl leading-relaxed">
+          <p className="text-[var(--color-text-secondary)] text-sm max-w-3xl leading-relaxed">
             {description}
           </p>
         </header>
@@ -239,12 +242,12 @@ export default function AlgorithmPageLayout({
 
             <div className="flex-1 flex items-center justify-center overflow-hidden relative min-h-[500px]">
                 <div className="w-full h-full">
-                  <AlgorithmsWorkspace 
-                    initialAlgo={type} 
-                    hideSidebar 
-                    hideCode 
+                  <AlgorithmsWorkspace
+                    initialAlgo={type}
+                    hideSidebar
+                    hideCode
                     viewMode="3d"
-                    hideViewModeToggle={true} 
+                    hideViewModeToggle={true}
                   />
                 </div>
             </div>
@@ -260,28 +263,28 @@ export default function AlgorithmPageLayout({
             </h2>
           </div>
           <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div 
+            <div
               onClick={() => navigateToComplexity(timeComplexities.best)}
               className="flex flex-col p-4 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] hover:border-blue-500 hover:scale-[1.03] transition-all cursor-pointer shadow-sm group"
             >
               <span className="font-semibold text-[var(--color-text-secondary)] mb-2 text-center text-sm uppercase tracking-wider group-hover:text-blue-300">Best</span>
               <span className="font-mono font-bold text-white bg-blue-500/20 px-3 py-2 rounded-lg text-center text-lg group-hover:bg-blue-500/30">{timeComplexities.best}</span>
             </div>
-            <div 
+            <div
               onClick={() => navigateToComplexity(timeComplexities.average)}
               className="flex flex-col p-4 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] hover:border-blue-500 hover:scale-[1.03] transition-all cursor-pointer shadow-sm group"
             >
               <span className="font-semibold text-[var(--color-text-secondary)] mb-2 text-center text-sm uppercase tracking-wider group-hover:text-blue-300">Average</span>
               <span className="font-mono font-bold text-white bg-blue-500/20 px-3 py-2 rounded-lg text-center text-lg group-hover:bg-blue-500/30">{timeComplexities.average}</span>
             </div>
-            <div 
+            <div
               onClick={() => navigateToComplexity(timeComplexities.worst)}
               className="flex flex-col p-4 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] hover:border-blue-500 hover:scale-[1.03] transition-all cursor-pointer shadow-sm group"
             >
               <span className="font-semibold text-[var(--color-text-secondary)] mb-2 text-center text-sm uppercase tracking-wider group-hover:text-blue-300">Worst</span>
               <span className="font-mono font-bold text-white bg-blue-500/20 px-3 py-2 rounded-lg text-center text-lg group-hover:bg-blue-500/30">{timeComplexities.worst}</span>
             </div>
-            <div 
+            <div
               onClick={() => navigateToComplexity(timeComplexities.space, true)}
               className="flex flex-col p-4 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] hover:border-blue-500 hover:scale-[1.03] transition-all cursor-pointer shadow-sm group"
             >
@@ -306,15 +309,15 @@ export default function AlgorithmPageLayout({
               Implementation
             </h2>
           </div>
-          
+
           <div className="flex border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-tertiary)] overflow-x-auto custom-scrollbar">
             {(['python', 'javascript', 'java', 'cpp'] as const).map((lang) => (
               <button
                 key={lang}
                 onClick={() => setLanguage(lang)}
                 className={`px-8 py-4 text-sm font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${
-                  language === lang 
-                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5' 
+                  language === lang
+                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5'
                     : 'text-[var(--color-text-muted)] hover:text-white hover:bg-white/5'
                 }`}
               >
@@ -322,7 +325,7 @@ export default function AlgorithmPageLayout({
               </button>
             ))}
           </div>
-          
+
           <div className="h-[500px]">
             <Editor
               height="100%"
@@ -343,8 +346,8 @@ export default function AlgorithmPageLayout({
 
         {/* Action Buttons */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8">
-          <button
-            onClick={() => navigate(`/quiz?topic=${encodeURIComponent(title)}`)}
+          {topicLinks?.quiz && <button
+            disabled={!topicLinks?.quiz} onClick={() => topicLinks?.quiz && navigate(`/quiz?topic=${encodeURIComponent(topicLinks.quiz)}`)}
             className="flex items-center justify-between p-8 bg-gradient-to-br from-[var(--color-surface-glass)] to-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] rounded-2xl hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all group shadow-xl"
           >
             <div className="flex items-center gap-6">
@@ -352,14 +355,14 @@ export default function AlgorithmPageLayout({
                 <HelpCircle size={32} />
               </div>
               <div className="text-left">
-                <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-indigo-400 transition-colors">Take a Quiz</h3>
+                <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-indigo-400 transition-colors">{topicLinks?.quiz?'Take a Quiz':'Quiz unavailable'}</h3>
                 <p className="text-base text-[var(--color-text-muted)]">Test your knowledge on {title}.</p>
               </div>
             </div>
             <div className="text-indigo-400 opacity-0 group-hover:opacity-100 transform translate-x-[-15px] group-hover:translate-x-0 transition-all">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
             </div>
-          </button>
+          </button>}
           <button
             onClick={() => navigate(`/coding?topic=${encodeURIComponent(title)}`)}
             className="flex items-center justify-between p-8 bg-gradient-to-br from-[var(--color-surface-glass)] to-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] rounded-2xl hover:border-blue-500/50 hover:bg-blue-500/10 transition-all group shadow-xl"
@@ -378,6 +381,7 @@ export default function AlgorithmPageLayout({
             </div>
           </button>
         </div>
+        <TopicNextStep/>
       </div>
     </div>
   );

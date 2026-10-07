@@ -53,7 +53,7 @@ function PlanetNode({ node, onHover, onClick }: { node: SkillNode; onHover: (n: 
   });
 
   return (
-    <group 
+    <group
       ref={groupRef}
       onPointerOver={(e) => {
         e.stopPropagation();
@@ -100,15 +100,15 @@ function PlanetNode({ node, onHover, onClick }: { node: SkillNode; onHover: (n: 
           clearcoatRoughness={0.1}
         />
       </mesh>
-      
+
       {/* Visual ring for aesthetic */}
       {node.hasRing && (
         <mesh rotation={[Math.PI / 2.2, Math.PI / 8, 0]}>
           <ringGeometry args={[node.size + 0.3, node.size + 0.45, 64]} />
-          <meshStandardMaterial 
-            color={node.color} 
-            side={THREE.DoubleSide} 
-            transparent 
+          <meshStandardMaterial
+            color={node.color}
+            side={THREE.DoubleSide}
+            transparent
             opacity={hovered ? 0.8 : 0.4}
             emissive={node.color}
             emissiveIntensity={1.5}
@@ -133,7 +133,7 @@ function PlanetNode({ node, onHover, onClick }: { node: SkillNode; onHover: (n: 
 
 function SunNode() {
   const sunRef = useRef<THREE.Mesh>(null);
-  
+
   useFrame((state, delta) => {
     if (sunRef.current) {
       sunRef.current.rotation.y += delta * 0.2;
@@ -164,7 +164,7 @@ function SunNode() {
           depthWrite={false}
         />
       </mesh>
-      
+
       {/* Solar Flares / Sparkles */}
       <Sparkles count={80} scale={4.5} size={4} speed={0.4} opacity={0.4} color="#FEF08A" />
 
@@ -191,11 +191,11 @@ function OrbitRings() {
       {skillNodes.map(node => (
         <mesh key={node.id}>
           <ringGeometry args={[node.orbitRadius - 0.02, node.orbitRadius + 0.02, 128]} />
-          <meshBasicMaterial 
-            color={node.color} 
-            side={THREE.DoubleSide} 
-            transparent 
-            opacity={0.2} 
+          <meshBasicMaterial
+            color={node.color}
+            side={THREE.DoubleSide}
+            transparent
+            opacity={0.2}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
           />
@@ -232,15 +232,15 @@ function AsteroidBelt({ radius = 12, count = 200 }) {
         ast.angle += ast.speed * delta;
         ast.rx += ast.speed * delta;
         ast.ry += ast.speed * delta;
-        
+
         const x = Math.cos(ast.angle) * ast.dist;
         const z = Math.sin(ast.angle) * ast.dist;
-        
+
         dummy.position.set(x, ast.y, z);
         dummy.rotation.set(ast.rx, ast.ry, ast.rz);
         dummy.scale.set(ast.scale, ast.scale, ast.scale);
         dummy.updateMatrix();
-        
+
         meshRef.current!.setMatrixAt(i, dummy.matrix);
       });
       meshRef.current.instanceMatrix.needsUpdate = true;
@@ -292,20 +292,20 @@ function CameraTransition({ zoomingTo, onComplete }: { zoomingTo: SkillNode | nu
   const { camera } = useThree();
   const vec = new THREE.Vector3();
   const target = new THREE.Vector3();
-  
+
   useFrame((state, delta) => {
     if (zoomingTo) {
       const t = state.clock.getElapsedTime();
       const angle = (t * zoomingTo.orbitSpeed) + zoomingTo.angleOffset;
       const x = Math.cos(angle) * zoomingTo.orbitRadius;
       const z = Math.sin(angle) * zoomingTo.orbitRadius;
-      
+
       target.set(x, 0, z);
       vec.set(x, zoomingTo.size * 0.5, z + zoomingTo.size + 2.0); // position right in front of it
 
       camera.position.lerp(vec, delta * 3.5); // smooth swish
       camera.lookAt(target);
-      
+
       if (camera.position.distanceTo(vec) < 0.2) {
         onComplete();
       }
@@ -328,8 +328,8 @@ export default function SkillTreeMap() {
   };
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden bg-transparent text-white">
-      
+    <div className="relative flex flex-col overflow-hidden bg-transparent text-white" style={{height:"calc(100dvh - var(--app-header-height) - 2 * var(--app-content-gutter))",minHeight:500}}>
+
       {/* 3D Canvas Viewport */}
       <div className="absolute inset-0 z-0">
         <Canvas camera={{ position: [0, 1, 10.5], fov: 60 }}>
@@ -342,13 +342,13 @@ export default function SkillTreeMap() {
           <Stars radius={50} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
           <Asteroids count={150} />
           <Sparkles count={100} scale={15} size={2} speed={0.2} opacity={0.1} color="#818cf8" />
-          
+
           <Billboard position={[0, 4.0, -3]}>
             <Text fontSize={0.6} color="#ffffff" outlineWidth={0.03} outlineColor="#000000" anchorX="center" anchorY="middle">
               Syllabus Constellation
             </Text>
           </Billboard>
-          
+
           <SunNode />
           <OrbitRings />
           <AsteroidBelt radius={12} count={300} />
@@ -369,16 +369,16 @@ export default function SkillTreeMap() {
           {zoomingTo && <CameraTransition zoomingTo={zoomingTo} onComplete={handleZoomComplete} />}
 
           {!zoomingTo && (
-            <OrbitControls 
-              enableZoom={true} 
-              maxDistance={35} 
-              minDistance={4} 
+            <OrbitControls
+              enableZoom={true}
+              maxDistance={35}
+              minDistance={4}
               enablePan={true}
               autoRotate
               autoRotateSpeed={0.15}
             />
           )}
-          
+
           <EffectComposer>
             <Bloom luminanceThreshold={0.4} luminanceSmoothing={0.9} intensity={2.0} mipmapBlur />
             <Vignette eskil={false} offset={0.1} darkness={1.1} />
@@ -389,7 +389,7 @@ export default function SkillTreeMap() {
       {/* Floating UI HUD elements */}
       <div className="relative z-10 flex-shrink-0 px-8 py-6 flex justify-between items-center bg-black/40 backdrop-blur-md border-b border-white/5 pointer-events-auto">
         <div className="flex items-center gap-4">
-          <button 
+          <button
             onClick={() => navigate('/dashboard')}
             className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-gray-300 hover:text-white transition-all flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider"
           >
@@ -413,7 +413,7 @@ export default function SkillTreeMap() {
         {selectedNode ? (
           <Card strong gradientBorder className="p-5 space-y-3.5 bg-black/50 backdrop-blur-xl border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.8)] transition-all scale-100 duration-200">
             <div className="flex justify-between items-center">
-              <span 
+              <span
                 className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border"
                 style={{ borderColor: selectedNode.color, color: selectedNode.color }}
               >

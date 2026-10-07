@@ -42,128 +42,6 @@
   font-size:12px;
   font-weight:500;
 }
-.ad-sidebar {
-  width:208px;
-  position:fixed;
-  inset:0 auto 0 0;
-  display:flex;
-  flex-direction:column;
-  background:linear-gradient(160deg,#080f1c,#060d17);
-  border-right:1px solid var(--ad-border);
-  z-index:40;
-}
-.ad-brand {
-  display:flex;
-  align-items:center;
-  gap:12px;
-  padding:21px 24px 24px;
-}
-.ad-brand>span {
-  font-size:27px;
-  letter-spacing:-.7px;
-  line-height:1.1;
-  font-weight:600;
-}
-.ad-brand small {
-  display:block;
-  font-size:10px;
-  letter-spacing:.2px;
-  color:#8d9fbd;
-  font-weight:400;
-  margin-top:5px;
-}
-.ad-sidebar nav {
-  display:flex;
-  flex-direction:column;
-  gap:6px;
-  padding:0 12px;
-}
-.ad-sidebar nav a,.ad-sidebar nav button {
-  position:relative;
-  display:flex;
-  align-items:center;
-  gap:20px;
-  padding:11px 14px;
-  color:#b8c7e2;
-  border-radius:8px;
-  font-size:13px;
-  text-align:left;
-  background:none;
-  border:0;
-}
-.ad-sidebar nav a:hover,.ad-sidebar nav button:hover {
-  background:#111d31;
-  color:#fff;
-}
-.ad-sidebar nav a.active {
-  background:linear-gradient(100deg,#191733,#282064);
-  color:#f4f0ff;
-}
-.ad-sidebar nav a.active svg {
-  color:#c49aff;
-}
-.ad-sidebar nav a.active:before {
-  content:'';
-  position:absolute;
-  left:-12px;
-  top:0;
-  bottom:0;
-  width:3px;
-  background:#8762ff;
-  border-radius:0 2px 2px 0;
-}
-.ad-motivation {
-  margin:auto 12px 36px;
-  padding:14px 16px 73px;
-  border:1px solid var(--ad-border);
-  border-radius:13px;
-  background:linear-gradient(140deg,#091321,#17123b);
-  overflow:hidden;
-  position:relative;
-}
-.ad-motivation>span {
-  display:flex;
-  align-items:center;
-  gap:10px;
-  color:#bc95ff;
-}
-.ad-motivation p {
-  font-size:15px;
-  line-height:1.6;
-  color:#a68aff;
-  margin-top:16px;
-}
-.ad-motivation svg:not(:first-child) {
-  position:absolute;
-  bottom:0;
-  left:0;
-  width:100%;
-}
-.ad-sidebar footer {
-  border-top:1px solid var(--ad-border);
-  padding:15px 23px;
-  color:#c8d5ed;
-}
-.ad-sidebar footer small {
-  display:block;
-  font-size:10px;
-  color:#7f94b6;
-}
-.ad-workspace {
-  margin-left:208px;
-}
-.ad-header {
-  height:64px;
-  padding:0 27px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:20px;
-  border-bottom:1px solid var(--ad-border);
-  background:rgba(6,13,24,.88);
-  position:relative;
-  z-index:30;
-}
 .ad-search-wrap {
   position:relative;
   width:min(408px,45%);
@@ -200,49 +78,6 @@
   padding:2px 5px;
   border-radius:4px;
 }
-.ad-header-right {
-  display:flex;
-  align-items:center;
-  gap:20px;
-}
-.ad-header-streak {
-  display:flex;
-  align-items:center;
-  gap:7px;
-  border:1px solid var(--ad-border);
-  padding:8px 10px;
-  border-radius:9px;
-  font-size:12px;
-  white-space:nowrap;
-}
-.ad-header-streak svg {
-  color:#ff9c42;
-  filter:drop-shadow(0 0 7px #f6763644);
-}
-.ad-header-rank {
-  display:flex;
-  align-items:center;
-  gap:10px;
-  border-right:1px solid var(--ad-border);
-  padding-right:20px;
-}
-.ad-header-rank>svg {
-  color:#dfa26d;
-}
-.ad-header-rank strong {
-  display:block;
-  font-size:12px;
-  font-weight:500;
-}
-.ad-header-rank small {
-  font-size:10px;
-  color:var(--ad-muted);
-}
-.ad-header-rank .ad-progress {
-  width:108px;
-  height:5px;
-  margin-top:3px;
-}
 .ad-avatar {
   width:39px;
   height:39px;
@@ -271,14 +106,6 @@
 }
 .ad-icon-button:hover {
   background:#1b2540;
-}
-.ad-menu-toggle,.ad-close-nav {
-  display:none;
-}
-.ad-page {
-  padding:20px 27px 12px;
-  max-width:1660px;
-  margin:auto;
 }
 .ad-greeting {
   margin-bottom:17px;
@@ -993,9 +820,6 @@
   }
 }
 @media(min-width:1450px) {
-  .ad-page {
-    padding-top:19px;
-  }
   .ad-hero {
     min-height:149px;
   }
@@ -1011,29 +835,8 @@
   .ad-three-cards {
     min-height:158px;
   }
-  .ad-motivation {
-    margin-bottom:36px;
-  }
 }
 @media(max-width:1250px) {
-  .ad-sidebar {
-    width:190px;
-  }
-  .ad-workspace {
-    margin-left:190px;
-  }
-  .ad-brand {
-    padding-left:17px;
-  }
-  .ad-sidebar nav a,.ad-sidebar nav button {
-    gap:14px;
-  }
-  .ad-page {
-    padding:20px;
-  }
-  .ad-header {
-    padding:0 20px;
-  }
   .ad-continue {
     gap:12px;
   }
@@ -1091,59 +894,12 @@
   .ad-achievements {
     grid-column:span 8;
   }
-  .ad-motivation {
-    margin-bottom:18px;
-  }
 }
 @media(max-width:1000px) {
-  .ad-sidebar {
-    transform:translateX(-100%);
-    transition:transform .2s;
-    width:208px;
-  }
-  .ad-sidebar.open {
-    transform:none;
-  }
-  .ad-workspace {
-    margin-left:0;
-  }
-  .ad-menu-toggle,.ad-close-nav {
-    display:grid;
-  }
-  .ad-close-nav {
-    position:absolute;
-    right:6px;
-    top:4px;
-  }
-  .ad-nav-backdrop {
-    position:fixed;
-    inset:0;
-    border:0;
-    background:#020711aa;
-    z-index:39;
-  }
-  .ad-header {
-    gap:12px;
-  }
   .ad-search-wrap {
     width:auto;
     flex:1;
     max-width:408px;
-  }
-  .ad-header-right {
-    gap:12px;
-  }
-  .ad-header-streak {
-    display:none;
-  }
-  .ad-motivation {
-    margin-top:30px;
-  }
-  .ad-sidebar {
-    overflow-y:auto;
-  }
-  .ad-header-rank {
-    padding-right:12px;
   }
   .ad-hero {
     grid-template-columns:1fr 240px;
@@ -1184,17 +940,6 @@
   }
 }
 @media(max-width:650px) {
-  .ad-header {
-    height:60px;
-    padding:0 13px;
-    gap:7px;
-  }
-  .ad-header-right {
-    gap:5px;
-  }
-  .ad-header-rank {
-    display:none;
-  }
   .ad-avatar {
     width:31px;
     height:31px;
@@ -1214,12 +959,6 @@
   }
   .ad-search input::placeholder {
     font-size:10px;
-  }
-  .ad-header .ad-icon-button {
-    padding:5px;
-  }
-  .ad-page {
-    padding:22px 15px 15px;
   }
   .ad-greeting {
     margin-bottom:19px;
@@ -1506,9 +1245,6 @@
 .ad-tag {
   line-height:14px;
 }
-.ad-motivation p {
-  font-family:Inter,system-ui,sans-serif;
-}
 @media(min-width:1001px) {
   .ad-continue {
     min-height:148px;
@@ -1566,12 +1302,8 @@
 /* Shared Dashboard shell: the same navigation, logo, search and account controls. */
 .ad-my-progress { float:right; padding:8px 13px; border:1px solid var(--ad-border); border-radius:9px; color:#b7a5fb!important; font-size:12px; }
 .ad-my-progress:hover { border-color:#9473f1; }
-.ad-motivation cite { display:block; font-style:normal; font-size:10px; color:#a8a2d7; margin:12px 0 15px; position:relative; z-index:1; }
-@media(min-width:1251px) { .ad-sidebar { width:224px; }.ad-workspace { margin-left:224px; }.ad-header { height:80px; } }
-@media(max-width:640px) { .ad-my-progress { float:none; display:inline-flex; margin-bottom:14px; } }
-.ad-ai-subnav{margin-top:14px;border-top:1px solid #7088b426;padding-top:16px}.ad-ai-subnav>small{display:block;font-size:10px;letter-spacing:1px;color:#8c9cba;padding:0 15px 10px}.ad-ai-subnav .active{border-left:2px solid #7657ff;background:linear-gradient(90deg,#6348ff4d,#6348ff1c)}
-.academy-ai .ad-sidebar>.ad-brand{visibility:hidden}.academy-ai .ad-ai-subnav{border-top:0;margin-top:0;padding-top:0}.academy-ai .ad-header{margin-left:-224px;width:calc(100% + 224px);position:relative;z-index:25;padding-left:28px;gap:20px}.ad-ai-brand{width:180px;flex-shrink:0}.ad-ai-brand .ad-brand{margin:0!important;padding:0!important}.ad-ai-brand .ad-brand small{display:none}.ad-global-ai{display:flex;gap:9px;align-items:center;flex-shrink:0}.ad-global-ai a{font-size:12px;padding:10px 13px;text-decoration:none;color:#a7b8d7;border-radius:10px}.ad-global-ai a.active{background:#08091c;color:#fff}.academy-ai .ad-search-wrap{flex:1;width:auto;max-width:410px}.academy-ai .ad-search{width:100%}.academy-ai .ad-header-right{margin-left:auto}.academy-ai .ad-sidebar{padding-top:22px}.academy-ai .ad-sidebar>footer{display:none}
-@media(max-width:1250px){.academy-ai .ad-header{margin-left:-190px;width:calc(100% + 190px);gap:10px;padding-left:20px}.ad-ai-brand{width:150px}.ad-global-ai a{padding:8px;font-size:11px}.academy-ai .ad-header-streak{display:none}}
-@media(max-width:1000px){.academy-ai .ad-header{margin-left:0;width:100%;padding-left:15px}.ad-ai-brand{display:none}.ad-global-ai{gap:2px}.ad-global-ai a{padding:7px 5px;font-size:10px}.academy-ai .ad-sidebar>.ad-brand{visibility:visible}.academy-ai .ad-header-rank{display:none}}
-@media(max-width:640px){.academy-ai .ad-search-wrap{display:none}.academy-ai .ad-header{gap:8px}.ad-global-ai a{font-size:10px}.academy-ai .ad-header-right{gap:8px}.academy-ai .ad-header-right .ad-avatar{width:30px;height:30px}}
-.academy-ai .ad-sidebar>.ad-brand{visibility:visible}
+@media(min-width:1251px) { }
+@media(max-width:640px) { .ad-my-progress { float:none; display:inline-flex; margin-bottom:14px; } }.academy-ai .ad-search-wrap{flex:1;width:auto;max-width:410px}.academy-ai .ad-search{width:100%}
+@media(max-width:1250px){}
+@media(max-width:1000px){}
+@media(max-width:640px){.academy-ai .ad-search-wrap{display:none}}

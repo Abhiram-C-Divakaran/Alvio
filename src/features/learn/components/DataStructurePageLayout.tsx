@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { TopicOrientation, TopicNextStep, topicNavigation } from '../../../navigation/TopicOrientation';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { createDefaultStructure, insertValue, deleteValue, searchValue } from '../../workspace/dataStructureOps';
 import Visualization3D from '../../workspace/Visualization3D';
@@ -34,8 +35,9 @@ export default function DataStructurePageLayout({
   content,
 }: DataStructurePageLayoutProps) {
   const navigate = useNavigate();
+  const topicLinks=topicNavigation(useLocation().pathname);
   const {hash}=useLocation();
-  useEffect(()=>{if(!hash)return;const timer=requestAnimationFrame(()=>{const target=document.getElementById(hash.slice(1));target?.scrollIntoView({block:'start'});target?.focus({preventScroll:true});});return()=>cancelAnimationFrame(timer);},[hash]);
+  useLayoutEffect(()=>{if(!hash)return;const target=document.getElementById(hash.slice(1));target?.scrollIntoView({block:'start',behavior:'instant'});target?.focus({preventScroll:true});},[hash]);
   const [structure, setStructure] = useState<DataStructure | null>(null);
   const [language, setLanguage] = useState<'python' | 'javascript' | 'java' | 'cpp'>('python');
   const [isVisualizerExpanded, setIsVisualizerExpanded] = useState(false);
@@ -90,22 +92,23 @@ export default function DataStructurePageLayout({
   };
 
   return (
-    <div className="w-full min-h-full bg-[var(--color-bg-primary)] p-4 md:p-8 lg:p-12 text-white font-sans overflow-y-auto selection:bg-blue-500/30">
+    <div className="app-lesson text-white">
 
-      <div className="max-w-[1000px] mx-auto space-y-16 pb-24">
+      <div className="app-lesson-body">
 
+        <TopicOrientation/>
         {/* Header */}
-        <header className="space-y-6 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-[var(--color-border-subtle)] pb-8 pt-8">
+        <header className="space-y-6 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-[var(--color-border-subtle)] pb-6">
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <h1 className="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-extrabold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
                 {title}
               </h1>
               <span className={`px-3 py-1 text-xs font-bold rounded-full border ${getDifficultyColor(difficulty)}`}>
                 {difficulty}
               </span>
             </div>
-            <p className="text-[var(--color-text-secondary)] text-xl max-w-3xl leading-relaxed">
+            <p className="text-[var(--color-text-secondary)] text-sm max-w-3xl leading-relaxed">
               {description}
             </p>
           </div>
@@ -253,8 +256,8 @@ export default function DataStructurePageLayout({
 
         {/* Action Buttons */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8">
-          <button
-            onClick={() => navigate(`/quiz?topic=${encodeURIComponent(title === 'Array' ? 'Arrays' : title === 'Stack' ? 'Stacks' : title === 'Linked List' ? 'Linked Lists' : title === 'Binary Tree' ? 'Binary Trees' : title === 'AVL Tree' ? 'AVL Trees' : title === 'Graph' ? 'Graphs' : title === 'Queue' ? 'Queues' : title === 'Hash Table' ? 'Hash Tables' : title)}`)}
+          {topicLinks?.quiz && <button
+            disabled={!topicLinks?.quiz} onClick={() => topicLinks?.quiz && navigate(`/quiz?topic=${encodeURIComponent(topicLinks.quiz)}`)}
             className="flex items-center justify-between p-8 bg-gradient-to-br from-[var(--color-surface-glass)] to-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] rounded-2xl hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all group shadow-xl"
           >
             <div className="flex items-center gap-6">
@@ -262,14 +265,14 @@ export default function DataStructurePageLayout({
                 <HelpCircle size={32} />
               </div>
               <div className="text-left">
-                <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-indigo-400 transition-colors">Take a Quiz</h3>
+                <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-indigo-400 transition-colors">{topicLinks?.quiz?'Take a Quiz':'Quiz unavailable'}</h3>
                 <p className="text-base text-[var(--color-text-muted)]">Test your knowledge on {title}s.</p>
               </div>
             </div>
             <div className="text-indigo-400 opacity-0 group-hover:opacity-100 transform translate-x-[-15px] group-hover:translate-x-0 transition-all">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
             </div>
-          </button>
+          </button>}
           <button
             onClick={() => navigate(`/coding?topic=${encodeURIComponent(title)}`)}
             className="flex items-center justify-between p-8 bg-gradient-to-br from-[var(--color-surface-glass)] to-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] rounded-2xl hover:border-blue-500/50 hover:bg-blue-500/10 transition-all group shadow-xl"
@@ -288,6 +291,7 @@ export default function DataStructurePageLayout({
             </div>
           </button>
         </div>
+        <TopicNextStep/>
       </div>
     </div>
   );
