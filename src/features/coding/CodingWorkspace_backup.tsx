@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/api';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
@@ -119,7 +120,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     // Fetch interaction data
     const fetchInteractions = async () => {
       try {
-        const res = await fetch(`/api/problems/${problem.id}/interaction`, {
+        const res = await apiFetch(`/api/problems/${problem.id}/interaction`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         if (res.ok) {
@@ -139,7 +140,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
       if (!token) return;
       setLoadingSubmission(true);
       try {
-        const res = await fetch(`/api/problems/${problem.id}/submissions`, {
+        const res = await apiFetch(`/api/problems/${problem.id}/submissions`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -168,7 +169,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     setLoadingHint(true);
     try {
       const hintCount = aiHints.length + 1;
-      const res = await fetch('/api/chat', {
+      const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -300,7 +301,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     if (execResult.status === 'Passed') {
       if (token) {
         try {
-          await fetch(`/api/problems/${problem.id}/submit`, {
+          await apiFetch(`/api/problems/${problem.id}/submit`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -318,7 +319,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
           });
 
           // Refresh submission data
-          const resSub = await fetch(`/api/problems/${problem.id}/submissions`, {
+          const resSub = await apiFetch(`/api/problems/${problem.id}/submissions`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (resSub.ok) {
@@ -407,7 +408,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                 setStarred(newState);
                 if (token) {
                   try {
-                    await fetch(`/api/problems/${problem.id}/interaction`, {
+                    await apiFetch(`/api/problems/${problem.id}/interaction`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                       body: JSON.stringify({ type: 'star', action: newState ? 'add' : 'remove' })
@@ -622,7 +623,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                       setLikesCount(prev => newState ? prev + 1 : prev - 1);
                       if (token) {
                         try {
-                          await fetch(`/api/problems/${problem.id}/interaction`, {
+                          await apiFetch(`/api/problems/${problem.id}/interaction`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                             body: JSON.stringify({ type: 'like', action: newState ? 'add' : 'remove' })
@@ -645,7 +646,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                       if (liked) setLikesCount(p => p - 1);
                       if (token) {
                         try {
-                          await fetch(`/api/problems/${problem.id}/interaction`, {
+                          await apiFetch(`/api/problems/${problem.id}/interaction`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                             body: JSON.stringify({ type: 'dislike', action: newState ? 'add' : 'remove' })
@@ -1225,7 +1226,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                     onClick={async () => {
                       setIsSubmittingFeedback(true);
                       try {
-                        await fetch(`/api/problems/${problem.id}/feedback`, {
+                        await apiFetch(`/api/problems/${problem.id}/feedback`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                           body: JSON.stringify({ issues: feedbackIssues, additionalFeedback, rating })

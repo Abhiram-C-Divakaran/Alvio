@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/api';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, SkipForward, SkipBack, RefreshCcw, Loader2, ChevronDown, CheckCircle2, Circle, Activity, Brain, Box, Copy, Sparkles, ArrowRight, Search } from 'lucide-react';
 import AIVisualizerEngine from './AIVisualizerEngine';
@@ -151,7 +152,7 @@ export default function AIVisualizerPage() {
     setIsPlaying(false);
 
     try {
-      const res = await fetch('/api/generate-trace', {
+      const res = await apiFetch('/api/generate-trace', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ problem: problemText })

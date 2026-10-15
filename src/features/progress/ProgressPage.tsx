@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/api';
 import { useEffect, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore';
@@ -23,7 +24,7 @@ export default function ProgressPage() {
     setPractice([]); setError('');
     if (!token) return;
     const abort = new AbortController();
-    fetch('/api/profile', { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal }).then(async response => {
+    apiFetch('/api/profile', { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal }).then(async response => {
       if (!response.ok) throw new Error('Practice activity could not be loaded. Your saved learning progress is still shown.');
       const profile = await response.json();
       if (profile.practiceActivity) setPractice(profile.practiceActivity);

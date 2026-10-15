@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/api';
 import LanguagePicker from './LanguagePicker';
 import './workspace.css';
 import React, { useState, useEffect, useRef } from 'react';
@@ -172,15 +173,15 @@ interface CodingWorkspaceProps {
 
 export default function CodingWorkspace({ problem, problemNumber, isSolved, onBack, onNext, onPrev, onShuffle }: CodingWorkspaceProps) {
   const [language, setLanguage] = useState<'javascript' | 'python' | 'python3' | 'cpp' | 'c' | 'java' | 'typescript' | 'csharp'>('javascript');
-  const [code, setCode] = useState(()=>localStorage.getItem(`alvio-code:${problem.id}:javascript`) ?? problem.starterCode.javascript);
+  const [code, setCode] = useState(()=>localStorage.getItem(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:javascript`) ?? problem.starterCode.javascript);
   const [autoSave,setAutoSave]=useState(()=>localStorage.getItem('alvio-autosave')!=='false');
   const [expanded,setExpanded]=useState(false);
   const [saved,setSaved]=useState('');
   const [editorLight,setEditorLight]=useState(false);
   const draftOwner=useRef(problem.id);
-  const saveDraft=()=>{localStorage.setItem(`alvio-code:${problem.id}:${language}`,code);setSaved('Saved locally');};
-  useEffect(()=>{localStorage.setItem('alvio-autosave',String(autoSave));if(autoSave&&draftOwner.current===problem.id)localStorage.setItem(`alvio-code:${problem.id}:${language}`,code);},[code,language,autoSave,problem.id]);
-  useEffect(()=>{draftOwner.current=problem.id;setCode(localStorage.getItem(`alvio-code:${problem.id}:${language}`)??generateStarterCode(problem,language));setResult(null);setSubmitSuccess(false);},[problem.id]);
+  const saveDraft=()=>{localStorage.setItem(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${language}`,code);setSaved('Saved locally');};
+  useEffect(()=>{localStorage.setItem('alvio-autosave',String(autoSave));if(autoSave&&draftOwner.current===problem.id)localStorage.setItem(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${language}`,code);},[code,language,autoSave,problem.id]);
+  useEffect(()=>{draftOwner.current=problem.id;setCode(localStorage.getItem(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${language}`)??generateStarterCode(problem,language));setResult(null);setSubmitSuccess(false);},[problem.id]);
 
 
   const [isExecuting, setIsExecuting] = useState(false);
@@ -249,7 +250,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     // Fetch interaction data
     const fetchInteractions = async () => {
       try {
-        const res = await fetch(`/api/problems/${problem.id}/interaction`, {
+        const res = await apiFetch(`/api/problems/${problem.id}/interaction`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         if (res.ok) {
@@ -269,7 +270,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
       if (!token) return;
       setLoadingSubmission(true);
       try {
-        const res = await fetch(`/api/problems/${problem.id}/submissions`, {
+        const res = await apiFetch(`/api/problems/${problem.id}/submissions`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -296,7 +297,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     setLoadingAnalysis(true);
     setAiAnalysis(null);
     try {
-      const res = await fetch('/api/chat', {
+      const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -329,7 +330,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     saveDraft();
     setLanguage(newLang);
     const key = newLang === 'python3' ? 'python' : newLang;
-    setCode(localStorage.getItem(`alvio-code:${problem.id}:${newLang}`)??generateStarterCode(problem, key));
+    setCode(localStorage.getItem(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${newLang}`)??generateStarterCode(problem, key));
     setResult(null);
   };
 
@@ -410,40 +411,34 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     setResult(execResult);
     setIsSubmitting(false);
 
-    if (execResult.status === 'Passed') {
+    if (execResult) {
       if (token) {
         try {
-          const submissionResponse = await fetch(`/api/problems/${problem.id}/submit`, {
+          const submissionResponse = await apiFetch(`/api/problems/${problem.id}/submit`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({
-              status: execResult.status,
-              language: language,
-              code: code,
-              runtimeMs: execResult.executionTimeMs,
-              memoryMb: null,
-              passedTestcases: execResult.passedCount,
-              totalTestcases: execResult.totalCount
+              language, code
             })
           });
 
           if(!submissionResponse.ok){setSaved('Submission could not be saved. Please retry.');return;}
           // Refresh submission data
-          const resSub = await fetch(`/api/problems/${problem.id}/submissions`, {
+          const resSub = await apiFetch(`/api/problems/${problem.id}/submissions`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (resSub.ok) {
             const dataSub = await resSub.json();
             setLatestSubmission(dataSub.submission);setSubmissionHistory(dataSub.submissions||[]);
           }
-        } catch (e) {
-          console.error(e);
+        } catch {
+          setSaved('Could not confirm the saved attempt. Please retry.'); return;
         }
-      }
-      setSubmitSuccess(true);
+      } else { setSaved('Sign in to save this attempt.'); return; }
+      setSubmitSuccess(true); setSaved('Attempt saved as unverified. Local test results do not award solved credit.');
 
     }
   };
@@ -522,7 +517,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                   setStarred(newState);
                   if (token) {
                     try {
-                      await fetch(`/api/problems/${problem.id}/interaction`, {
+                      await apiFetch(`/api/problems/${problem.id}/interaction`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                         body: JSON.stringify({ type: 'star', action: newState ? 'add' : 'remove' })
@@ -569,7 +564,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                       <h1 className="text-[24px] font-bold text-white mb-4">
                         {problemNumber}. {problem.title}
                       </h1>
-                      {(isSolved || (submitSuccess&&!!token)) ? (
+                      {isSolved ? (
                         <div className="flex items-center gap-1.5 text-sm text-[#2cbb5d] font-semibold mt-1">
                           Solved <CheckCircle2 size={16} />
                         </div>
@@ -748,7 +743,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                         setLikesCount(prev => newLike ? prev + 1 : prev - 1);
                         if (token) {
                           try {
-                            await fetch(`/api/problems/${problem.id}/interaction`, {
+                            await apiFetch(`/api/problems/${problem.id}/interaction`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                               body: JSON.stringify({ type: 'like', action: newLike ? 'add' : 'remove' })
@@ -767,7 +762,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                         if (newDislike) setLiked(false);
                         if (token) {
                           try {
-                            await fetch(`/api/problems/${problem.id}/interaction`, {
+                            await apiFetch(`/api/problems/${problem.id}/interaction`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                               body: JSON.stringify({ type: 'dislike', action: newDislike ? 'add' : 'remove' })
@@ -809,7 +804,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                 </motion.div>
               )}
 
-              {leftTab==='submissions'&&submissionHistory.length>0&&<div className="cw-history">{submissionHistory.map(sub=><button key={sub.id} onClick={()=>setLatestSubmission(sub)}>{sub.status==='Passed'?'Accepted':sub.status} · {sub.language} · {sub.runtime_ms} ms · {sub.created_at}</button>)}</div>}
+              {leftTab==='submissions'&&submissionHistory.length>0&&<div className="cw-history">{submissionHistory.map(sub=><button key={sub.id} onClick={()=>setLatestSubmission(sub)}>{sub.verified&&sub.status==='Passed'?'Accepted':'Unverified'} · {sub.language} · {sub.runtime_ms} ms · {sub.created_at}</button>)}</div>}
               {leftTab === 'submissions' && (
                 <motion.div
                   initial={{ opacity: 0, y: 5 }}
@@ -827,7 +822,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                       <div className="flex items-center justify-between">
                         <div className="space-y-1">
                           <div className={`text-[22px] font-bold tracking-tight ${latestSubmission.status === 'Passed' ? 'text-[#2cbb5d]' : 'text-rose-400'}`}>
-                            {latestSubmission.status === 'Passed' ? 'Accepted' : latestSubmission.status}
+                            {latestSubmission.verified && latestSubmission.status === 'Passed' ? 'Accepted' : 'Unverified'}
                           </div>
                           <div className="flex items-center gap-2 text-xs text-gray-400">
                             <User size={12} />
@@ -1108,7 +1103,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
 
                 {rightBottomTab==='testcases'&&localTestCases[selectedCaseIdx]&&<label className="cw-expected">Expected output (JSON)<input aria-label="Expected output" value={typeof localTestCases[selectedCaseIdx].expected==='string'?localTestCases[selectedCaseIdx].expected:JSON.stringify(localTestCases[selectedCaseIdx].expected)} onChange={e=>setLocalTestCases(prev=>prev.map((tc,i)=>i===selectedCaseIdx?{...tc,expected:e.target.value}:tc))}/></label>}
                 {rightBottomTab==='testcases'&&<div className="cw-run-case"><a href="/ai-tutor">✦ Ask Alvio</a> <a href="/learn/complexity">Visualize Complexity →</a><button disabled={isExecuting||isSubmitting} onClick={()=>handleRun(true)}><Play size={14}/>Run Testcase</button><p>Use Run to see output for this testcase</p></div>}
-                <p className="cw-judge-note">Submit checks the problem’s provided tests. Hidden-test judging and measured memory/percentiles are not available.</p>{submitSuccess&&<p role="status">All provided testcases passed. {token?'Submission saved.':'Sign in to save your submission.'}</p>}
+                <p className="cw-judge-note">Submit checks the problem’s provided tests. Hidden-test judging and measured memory/percentiles are not available.</p>{submitSuccess&&<p role="status">Attempt saved as unverified. Local results do not award solved credit.</p>}
                 {rightBottomTab === 'results' && (
                   <div className="h-full">
                     {!result && !isExecuting && (
@@ -1129,7 +1124,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                             result.status === 'Passed' ? 'text-emerald-500' :
                             result.status === 'Failed' ? 'text-rose-500' : 'text-amber-500'
                           }`}>
-                            {result.status === 'Passed' ? 'Accepted' : result.status === 'Failed' ? 'Wrong Answer' : result.message?.includes('Time Limit')?'Time Limit Exceeded':result.message?.includes('Syntax')?'Compilation Error':'Runtime Error'}
+                            {result.status === 'Passed' ? 'Local tests passed' : result.status === 'Failed' ? 'Wrong Answer' : result.message?.includes('Time Limit')?'Time Limit Exceeded':result.message?.includes('Syntax')?'Compilation Error':'Runtime Error'}
                           </span>
                           <span className="text-gray-400 text-[13px] font-medium">
                             Runtime: {result.executionTimeMs} ms
@@ -1324,11 +1319,12 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                     onClick={async () => {
                       setIsSubmittingFeedback(true);
                       try {
-                        await fetch(`/api/problems/${problem.id}/feedback`, {
+                        const response = await apiFetch(`/api/problems/${problem.id}/feedback`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                           body: JSON.stringify({ issues: feedbackIssues, additionalFeedback, rating })
                         });
+                        if (!response.ok) throw Error('Feedback could not be saved.');
                         setShowFeedbackModal(false);
                         setFeedbackIssues([]);
                         setAdditionalFeedback("");

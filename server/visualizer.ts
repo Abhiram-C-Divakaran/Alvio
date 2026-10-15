@@ -1,22 +1,18 @@
+import {requireAuth} from './auth';
+import {rateLimit,logFailure,providerCancellation} from './security';
 import type {Express} from 'express';
 import Groq from 'groq-sdk';
 import {adapters,validateSpecification,compileSpecification,languages} from '../src/features/ai-visualizer/model';
 import {example} from '../src/features/ai-visualizer/example';
 
 export function registerVisualizer(app:Express){
-  const limits=new Map<string,{count:number;until:number}>();
-  app.post('/api/visualizer',async(req,res)=>{
-    const now=Date.now(),address=req.ip||'local';
-    for(const [ip,item] of limits)if(item.until<now)limits.delete(ip);
-    const limit=limits.get(address)||{count:0,until:now+60000};
-    if(limit.count>=12||limits.size>5000){res.status(429).json({error:'Please wait a moment before generating another visualization.'});return;}
-    limit.count++;limits.set(address,limit);
-    const abort=new AbortController();res.on('close',()=>{if(!res.writableEnded)abort.abort();});
+  app.post('/api/visualizer',requireAuth,rateLimit(12,60000,'visualizer',true),async(req,res)=>{
+    const cancellation=providerCancellation(res); const abort=cancellation;
     try{
       const {problem,language='cpp',mode='Explain Solution',context,question}=req.body;
       if(typeof problem!=='string'||!problem.trim()||problem.length>16000||!Object.hasOwn(languages,language)){res.status(400).json({error:'Please paste a question or a problem statement (up to 16,000 characters).'});return;}
       if(!['Explain Solution','Visualize Only','Give Me a Hint','Walk Me Through'].includes(mode)){res.status(400).json({error:'Choose a learning mode.'});return;}
-      const groq=new Groq({apiKey:process.env.GROQ_API_KEY,timeout:90000,maxRetries:1});
+      const groq=new Groq({apiKey:process.env.GROQ_API_KEY,timeout:90000,maxRetries:0});
       if(question!==undefined){
         if(typeof question!=='string'||!question.trim()||question.length>2000)throw new Error('Invalid follow-up');
         const spec=validateSpecification(context.spec);
@@ -38,6 +34,6 @@ Step operations: compare,swap,insert,delete,move,visit,connect,disconnect,highli
         try{res.json(compileSpecification(JSON.parse(raw)));return;}
         catch(error){if(attempt===1)throw error;messages.push({role:'assistant',content:raw},{role:'user',content:`Your JSON did not pass validation: ${error instanceof Error?error.message:'Invalid output'}. Repair it and return the complete object. Check every codeFocus entry is copied directly from an existing complete code line, all IDs/edges are valid, node values are numbers or strings, states and operations use the allowed enums, and required fields are present. Do not include markdown or beforeState.`});}
       }
-    }catch(error){if(abort.signal.aborted)return;console.error('Visualizer generation failed',error instanceof Error?error.message:'Unknown error');res.status(502).json({error:"We couldn't generate this visualization. Try simplifying the question or paste the full problem statement."});}
+    }catch(error){if(res.destroyed)return;logFailure(req,'visualizer_provider_failure');res.status(502).json({error:"We couldn't generate this visualization. Try simplifying the question or paste the full problem statement."});}finally{cancellation.dispose();}
   });
 }

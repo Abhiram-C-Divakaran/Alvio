@@ -3,14 +3,15 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import cors from "cors";
 import Groq from "groq-sdk";
-import { GoogleGenAI } from "@google/genai";
-import dotenv from "dotenv";
+import "dotenv/config";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import {authSecret,requireAuth,signAuthToken,publicUser} from "./server/auth";
+import {rateLimit,securityHeaders,safeErrors,logFailure,providerCancellation} from "./server/security";
+import {registerProgress} from "./server/progress";
 import db from "./server/db";
 import { registerVisualizer } from './server/visualizer';
 
-dotenv.config();
+authSecret();
 
 function getEpicLevel(xp: number) {
   if (xp < 100) return 'Bronze V';
@@ -33,30 +34,38 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  app.use(cors());
-  app.use('/api/visualizer',express.json({limit:'768kb'}));
-  app.use(express.json());
+  app.disable('x-powered-by');
+  const origins=(process.env.ALLOWED_ORIGINS||'').split(',').map(v=>v.trim()).filter(Boolean);
+  if(process.env.NODE_ENV==='production'&&!origins.length)throw Error('ALLOWED_ORIGINS is required in production.');
+  app.use(securityHeaders);
+  app.use(cors({origin:(origin,done)=>done(null,!origin||origins.includes(origin)||(process.env.NODE_ENV!=='production'&&/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)))}));
+  app.use('/api',(_req,res,next)=>{res.setHeader('Cache-Control','no-store');next()});
+  app.use(express.json({limit:'512kb'}));
+  registerProgress(app);
   registerVisualizer(app);
 
   // API routes FIRST
-  app.post("/api/chat", async (req, res) => {
+  app.post("/api/chat", requireAuth, rateLimit(25,60000,"chat",true), async (req, res) => {
+    const request=providerCancellation(res);
     try {
       const { messages, tutorMode } = req.body;
+      if(!Array.isArray(messages)||messages.length<1||messages.length>40||messages.some((m:any)=>!m||!['user','assistant','system'].includes(m.role)||typeof m.content!=='string'||m.content.length>24000)||messages.reduce((n:number,m:any)=>n+m.content.length,0)>100000)return res.status(400).json({error:'Please shorten the conversation or attachment.'});
       const tutorModes: Record<string,string> = {
         'Teach me': 'Use clear examples and manageable steps.',
         'Give me a hint': 'Override the code and visualization requirements below: give one progressive hint, with no full solution, code, or revealing visualization unless explicitly requested.',
         'Quiz me': 'Override the code and visualization requirements below: ask one question and wait for the student answer; do not reveal the answer first.',
         'Review my code': 'Review correctness, edge cases and complexity before proposing fixes.'
       };
+      if (tutorMode !== undefined && (typeof tutorMode !== 'string' || !Object.hasOwn(tutorModes, tutorMode))) return res.status(400).json({ error: 'Choose a supported tutor mode.' });
       const tutorInstruction = typeof tutorMode === 'string' ? tutorModes[tutorMode] || '' : '';
       const apiKey = process.env.GROQ_API_KEY;
 
       if (!apiKey) {
-        res.status(500).json({ error: "GROQ_API_KEY is not set in environment variables. Please create a .env file in the root directory and add GROQ_API_KEY=your_key" });
+        res.status(500).json({ error: "AI assistance is temporarily unavailable." });
         return;
       }
 
-      const groq = new Groq({ apiKey });
+      const groq = new Groq({ apiKey,timeout:60000,maxRetries:0 });
 
       // Server-side system prompt — enforced regardless of what the frontend sends.
       // This ensures consistent, high-quality tutor behavior even if the client-side
@@ -120,7 +129,7 @@ IMPORTANT:
         temperature: 0.7,
         max_tokens: 4096,
         stream: true,
-      });
+      },{signal:request.signal});
 
       // Stream the response back as Server-Sent Events
       res.setHeader("Content-Type", "text/event-stream");
@@ -138,25 +147,26 @@ IMPORTANT:
       res.write(`data: ${JSON.stringify({ done: true, text: fullText })}\n\n`);
       res.end();
     } catch (error: any) {
-      console.error(error);
-      let errorMessage = error.message || "Failed to generate response";
-      res.status(500).json({ error: errorMessage });
-    }
+      logFailure(req,'chat_failed');
+      if(res.headersSent){res.write(`data: ${JSON.stringify({error:'AI assistance was interrupted. Please retry.'})}\n\n`);res.end();}else res.status(502).json({error:'AI assistance is temporarily unavailable.'});
+    }finally{request.dispose()}
   });
 
 
 
-  app.post("/api/generate-trace", async (req, res) => {
+  app.post("/api/generate-trace", requireAuth, rateLimit(12,60000,"trace",true), async (req, res) => {
+    const request=providerCancellation(res);
     try {
       const { problem } = req.body;
+      if(typeof problem!=='string'||!problem.trim()||problem.length>16000)return res.status(400).json({error:'Enter a problem of up to 16,000 characters.'});
       const apiKey = process.env.GROQ_API_KEY;
 
       if (!apiKey) {
-        res.status(500).json({ error: "GROQ_API_KEY is not set in environment variables." });
+        res.status(500).json({ error: "AI assistance is temporarily unavailable." });
         return;
       }
 
-      const groq = new Groq({ apiKey });
+      const groq = new Groq({ apiKey,timeout:60000,maxRetries:0 });
 
       const systemPrompt = `You are an expert Data Structures & Algorithms visualization architect. Your job is to take ANY coding problem (e.g. "Two Sum", "4Sum", "Merge Intervals", "LRU Cache") and output a single, strictly valid JSON object describing a step-by-step 3D visualization. You NEVER write raw 3D code, Three.js, or geometry. You ONLY select from a fixed set of visual primitives and describe how they change over time. You never include any text outside the JSON object.
 
@@ -274,27 +284,27 @@ RULES
         temperature: 0.1,
         max_tokens: 8000,
         response_format: { type: "json_object" }
-      });
+      },{signal:request.signal});
 
       const jsonStr = response.choices[0]?.message?.content || "{}";
       res.json(JSON.parse(jsonStr));
     } catch (error: any) {
-      console.error("Generate trace error:", error);
-      res.status(500).json({ error: error.message || "Failed to generate trace" });
-    }
+      logFailure(req,'trace_failed');res.status(502).json({error:'Could not generate this trace. Please retry.'});
+    }finally{request.dispose()}
   });
 
-  const JWT_SECRET = process.env.JWT_SECRET || "super-secret-alvio-key";
+
 
   // --- Auth Routes ---
-  app.post("/api/auth/signup", async (req, res) => {
+  app.post("/api/auth/signup", rateLimit(5,600000,"signup"), async (req, res) => {
     try {
-      const { name, email, password } = req.body;
+      const {password}=req.body;const name=typeof req.body.name==='string'?req.body.name.trim():'';const email=typeof req.body.email==='string'?req.body.email.trim().toLowerCase():'';
+      if(name.length<2||name.length>80||email.length>254||!/^\S+@\S+\.\S+$/.test(email)||typeof password!=='string'||password.length<8||Buffer.byteLength(password)>72)return res.status(400).json({error:'Use a valid name, email, and a password of 8–72 bytes.'});
       if (!name || !email || !password) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      const existingUser = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
+      const existingUser = db.prepare("SELECT * FROM users WHERE lower(email) = ?").get(email);
       if (existingUser) {
         return res.status(400).json({ error: "Email already registered" });
       }
@@ -303,27 +313,28 @@ RULES
       const insert = db.prepare("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)");
       const result = insert.run(name, email, hash);
 
-      const user = { id: result.lastInsertRowid, name, email, xp: 0, level: "Apprentice" };
-      const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "7d" });
+      const user = { id: Number(result.lastInsertRowid), name, email, xp: 0, level: "Apprentice" };
+      const token = signAuthToken(Number(user.id));
 
       // Add a welcome activity
-      db.prepare("INSERT INTO user_activity (user_id, activity_type, points) VALUES (?, ?, ?)").run(user.id, "Joined Alvio", 100);
+      db.prepare("INSERT INTO user_activity (user_id, activity_type, points) VALUES (?, ?, ?)").run(user.id, "Joined Alvio", 0);
 
-      res.json({ user, token });
+      res.json({ user: publicUser(user), token });
     } catch (error: any) {
-      console.error("Signup error:", error);
+      logFailure(req,'backend_error');
       res.status(500).json({ error: "Failed to create account" });
     }
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  app.post("/api/auth/login", rateLimit(10,600000,"login"), async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const {password}=req.body;const email=typeof req.body.email==='string'?req.body.email.trim().toLowerCase():'';
+      if(!email||email.length>254||typeof password!=='string'||Buffer.byteLength(password)>72)return res.status(400).json({error:'Enter a valid email and password.'});
       if (!email || !password) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
+      const user = db.prepare("SELECT * FROM users WHERE lower(email) = ?").get(email) as any;
       if (!user) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
@@ -333,34 +344,28 @@ RULES
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
-      const userData = { id: user.id, name: user.name, email: user.email, xp: user.xp, level: user.level };
-      const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "7d" });
+      const token = signAuthToken(Number(user.id));
 
-      res.json({ user: userData, token });
+      res.json({ user: publicUser(user), token });
     } catch (error: any) {
-      console.error("Login error:", error);
+      logFailure(req,'backend_error');
       res.status(500).json({ error: "Failed to log in" });
     }
   });
 
   // --- Dashboard Route ---
-  app.get("/api/dashboard", (req, res) => {
+  app.get("/api/dashboard", requireAuth, (req, res) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
 
-      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(decoded.id) as any;
+
+      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.userId) as any;
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
 
-      const activity = db.prepare("SELECT * FROM user_activity WHERE user_id = ? ORDER BY created_at DESC LIMIT 10").all(decoded.id);
+      const activity = db.prepare("SELECT * FROM user_activity WHERE user_id = ? ORDER BY created_at DESC LIMIT 10").all(req.userId);
 
-      const allDates = db.prepare("SELECT DISTINCT date(created_at) as d FROM user_activity WHERE user_id = ? ORDER BY d DESC").all(decoded.id) as {d: string}[];
+      const allDates = db.prepare("SELECT DISTINCT date(created_at) as d FROM user_activity WHERE user_id = ? ORDER BY d DESC").all(req.userId) as {d: string}[];
       let dayStreak = 0;
       const today = new Date();
       let currentDate = new Date(today);
@@ -391,13 +396,15 @@ RULES
         }
       }
 
-      const timeSpentMins = allDates.length * 45 + activity.length * 10;
+      const snapshot = db.prepare('SELECT progress_json FROM learning_progress WHERE user_id=?').get(req.userId) as any;
+      const learning = snapshot ? JSON.parse(snapshot.progress_json) : null;
+      const timeSpentMins = learning?.totalTimeSpentMinutes || 0;
 
       const realLevel = getEpicLevel(user.xp);
 
-      const onlineUsers = 1200 + Math.floor(Math.random() * 50);
+      const onlineUsers = null;
 
-      const completedCountQuery = db.prepare("SELECT COUNT(*) as c FROM course_progress WHERE user_id = ?").get(decoded.id) as {c: number};
+      const completedCountQuery = db.prepare("SELECT COUNT(*) as c FROM course_progress WHERE user_id = ?").get(req.userId) as {c: number};
       const topicsCompleted = (completedCountQuery ? completedCountQuery.c : 0);
 
       res.json({
@@ -414,8 +421,8 @@ RULES
         allDates: allDates.map(d => d.d),
       });
     } catch (error: any) {
-      console.error("Dashboard error:", error);
-      res.status(401).json({ error: "Invalid or expired token" });
+      logFailure(req,'backend_error');
+      res.status(500).json({ error: "Unable to load your account. Please try again." });
     }
   });
 
@@ -423,72 +430,7 @@ RULES
 
 
   // --- Activity Routes ---
-  app.post("/api/activity", (req, res) => {
-    try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-
-      const { activity_type, points } = req.body;
-
-      db.prepare("INSERT INTO user_activity (user_id, activity_type, points) VALUES (?, ?, ?)").run(decoded.id, activity_type, points || 0);
-
-      // Upsert into course_progress
-      const existing = db.prepare("SELECT id FROM course_progress WHERE user_id = ? AND course_name = ?").get(decoded.id, activity_type);
-      if (!existing) {
-        db.prepare("INSERT INTO course_progress (user_id, course_name, progress) VALUES (?, ?, ?)").run(decoded.id, activity_type, 100);
-      } else {
-        db.prepare("UPDATE course_progress SET progress = 100, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run((existing as any).id);
-      }
-
-      if (points > 0) {
-        db.prepare("UPDATE users SET xp = xp + ? WHERE id = ?").run(points, decoded.id);
-      }
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-  // Ensure table exists on hot-reload without full restart
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS problems (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      topic TEXT,
-      difficulty TEXT NOT NULL,
-      description TEXT NOT NULL,
-      examples TEXT NOT NULL,
-      constraints TEXT NOT NULL,
-      signature TEXT NOT NULL,
-      starterCode TEXT NOT NULL,
-      testCases TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS user_problem_interactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      problem_id TEXT NOT NULL,
-      interaction_type TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(user_id) REFERENCES users(id),
-      FOREIGN KEY(problem_id) REFERENCES problems(id),
-      UNIQUE(user_id, problem_id, interaction_type)
-    );
-
-    CREATE TABLE IF NOT EXISTS problem_stats (
-      problem_id TEXT PRIMARY KEY,
-      accepted INTEGER DEFAULT 0,
-      submissions INTEGER DEFAULT 0,
-      FOREIGN KEY(problem_id) REFERENCES problems(id)
-    );
-  `);
-
+  app.post('/api/activity',requireAuth,(_req,res)=>res.status(410).json({error:'Client-reported rewards are no longer accepted. Use learning progress sync.',code:'UNVERIFIED_REWARD'}));
   // Dummy stats seeding removed as per user request to only use real time data
 
   // --- Problems API Routes (Dedicated Backend) ---
@@ -510,14 +452,14 @@ RULES
       }));
       res.json(cleanedProblems);
     } catch (error) {
-      console.error(error);
+      logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
   app.get("/api/problems/:problemId", (req, res) => {
     try {
-      const problem = db.prepare("SELECT * FROM problems WHERE id = ?").get(req.params.problemId) as any;
+      const problem = db.prepare("SELECT * FROM problems WHERE id = ?").get(String(req.params.problemId)) as any;
       if (!problem) {
         return res.status(404).json({ error: "Problem not found" });
       }
@@ -533,7 +475,7 @@ RULES
       problem.testCases = JSON.parse(problem.testCases);
 
       // Fetch stats
-      const stats = db.prepare("SELECT accepted, submissions FROM problem_stats WHERE problem_id = ?").get(req.params.problemId) as any;
+      const stats = db.prepare("SELECT accepted, submissions FROM problem_stats WHERE problem_id = ?").get(String(req.params.problemId)) as any;
       if (stats) {
         problem.stats = stats;
       } else {
@@ -542,37 +484,25 @@ RULES
           accepted: 0,
           submissions: 0
         };
-        db.prepare("INSERT INTO problem_stats (problem_id, accepted, submissions) VALUES (?, ?, ?)").run(req.params.problemId, initialStats.accepted, initialStats.submissions);
+        db.prepare("INSERT INTO problem_stats (problem_id, accepted, submissions) VALUES (?, ?, ?)").run(String(req.params.problemId), initialStats.accepted, initialStats.submissions);
         problem.stats = initialStats;
       }
 
       res.json(problem);
     } catch (error) {
-      console.error(error);
+      logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
   // --- Problem Interaction Routes ---
-  app.post("/api/problems/:problemId/feedback", (req, res) => {
+  app.post("/api/problems/:problemId/feedback", requireAuth, (req, res) => {
     try {
-      const { problemId } = req.params;
+      const problemId = String(req.params.problemId);
       const { issues, additionalFeedback, rating } = req.body;
 
-      const authHeader = req.headers.authorization;
-      let userId = null;
-      if (authHeader) {
-        const token = authHeader.split(" ")[1];
-        if (token) {
-          try {
-            const decoded: any = jwt.verify(token, process.env.JWT_SECRET || "fallback_secret");
-            userId = decoded.userId;
-          } catch (e) {
-            // Ignore invalid tokens for feedback, just insert without user_id
-          }
-        }
-      }
-
+      const userId=req.userId;
+      if(!Array.isArray(issues)||issues.length>20||issues.some((x:any)=>typeof x!=="string"||x.length>200)||typeof additionalFeedback!=="string"||additionalFeedback.length>5000||!Number.isInteger(rating)||rating<0||rating>5)return res.status(400).json({error:"Invalid feedback."});
       db.prepare("INSERT INTO problem_feedback (user_id, problem_id, issues, additional_feedback, rating) VALUES (?, ?, ?, ?, ?)").run(
         userId,
         problemId,
@@ -583,21 +513,16 @@ RULES
 
       res.json({ success: true });
     } catch (error) {
-      console.error(error);
+      logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
-  app.get("/api/problems/:problemId/interaction", (req, res) => {
+  app.get("/api/problems/:problemId/interaction", requireAuth, (req, res) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-      const problemId = req.params.problemId;
 
-      const interactions = db.prepare("SELECT interaction_type FROM user_problem_interactions WHERE user_id = ? AND problem_id = ?").all(decoded.id, problemId) as any[];
+      const problemId = String(req.params.problemId);
+
+      const interactions = db.prepare("SELECT interaction_type FROM user_problem_interactions WHERE user_id = ? AND problem_id = ?").all(req.userId, problemId) as any[];
 
       const state = { liked: false, disliked: false, starred: false };
       interactions.forEach(i => {
@@ -612,62 +537,24 @@ RULES
 
       res.json({ ...state, totalLikes });
     } catch (error) {
-      console.error(error);
+      logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
-  app.post("/api/problems/:problemId/submit", (req, res) => {
-    try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-      const problemId = req.params.problemId;
-      const { status, language, code, runtimeMs, memoryMb, passedTestcases, totalTestcases } = req.body;
-
-      const stats = db.prepare("SELECT accepted, submissions FROM problem_stats WHERE problem_id = ?").get(problemId) as any;
-      if (stats) {
-        db.prepare("UPDATE problem_stats SET submissions = submissions + 1, accepted = accepted + ? WHERE problem_id = ?")
-          .run(status === 'Passed' ? 1 : 0, problemId);
-      } else {
-        db.prepare("INSERT INTO problem_stats (problem_id, accepted, submissions) VALUES (?, ?, 1)")
-          .run(problemId, status === 'Passed' ? 1 : 0);
-      }
-
-      db.prepare(`
-        INSERT INTO user_submissions (user_id, problem_id, status, language, code, runtime_ms, memory_mb, passed_testcases, total_testcases)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        decoded.id,
-        problemId,
-        status || 'Unknown',
-        language || 'javascript',
-        code || '',
-        runtimeMs || 0,
-        memoryMb || 0,
-        passedTestcases || 0,
-        totalTestcases || 0
-      );
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Internal server error" });
-    }
+  // Judge boundary: code/language only. A future isolated worker owns all verdicts.
+  app.post('/api/problems/:problemId/submit',requireAuth,rateLimit(30,60000,'submit',true),(req,res)=>{
+    const {code,language}=req.body;
+    if(typeof code!=='string'||code.length>100000||!['javascript','python','java','cpp','c','typescript','python3','csharp'].includes(language))return res.status(400).json({error:'Invalid code or language.'});
+    if(!db.prepare('SELECT id FROM problems WHERE id=?').get(String(req.params.problemId)))return res.status(404).json({error:'Problem not found.'});
+    db.prepare("INSERT INTO user_submissions(user_id,problem_id,status,language,code,verified) VALUES(?,?,?,?,?,0)").run(req.userId,String(req.params.problemId),'Unverified',language,code);
+    res.status(202).json({success:true,status:'Unverified',verified:false,message:'Saved as an unverified attempt. Server judging is not yet available.'});
   });
 
-  app.get("/api/problems/:problemId/submissions", (req, res) => {
+  app.get("/api/problems/:problemId/submissions", requireAuth, (req, res) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-      const problemId = req.params.problemId;
+
+      const problemId = String(req.params.problemId);
 
       const submission = db.prepare(`
         SELECT us.*, u.name as user_name
@@ -676,138 +563,123 @@ RULES
         WHERE us.problem_id = ? AND us.user_id = ?
         ORDER BY us.created_at DESC
         LIMIT 1
-      `).get(problemId, decoded.id);
+      `).get(problemId, req.userId);
 
       if (submission) {
-        res.json({ submission, submissions: db.prepare("SELECT * FROM user_submissions WHERE user_id = ? AND problem_id = ? ORDER BY created_at DESC, id DESC LIMIT 50").all(decoded.id,problemId) });
+        res.json({ submission, submissions: db.prepare("SELECT * FROM user_submissions WHERE user_id = ? AND problem_id = ? ORDER BY created_at DESC, id DESC LIMIT 50").all(req.userId,problemId) });
       } else {
         res.json({ submission: null });
       }
     } catch (error) {
-      console.error(error);
+      logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
-  app.post("/api/problems/:problemId/interaction", (req, res) => {
+  app.post("/api/problems/:problemId/interaction", requireAuth, (req, res) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-      const problemId = req.params.problemId;
-      const { type, action } = req.body; // type: 'like' | 'dislike' | 'star', action: 'add' | 'remove'
+
+      const problemId = String(req.params.problemId);
+      const { type, action } = req.body;
+      if(!['like','dislike','star'].includes(type)||!['add','remove'].includes(action))return res.status(400).json({error:'Invalid interaction.'}); // type: 'like' | 'dislike' | 'star', action: 'add' | 'remove'
 
       if (action === 'add') {
         // If adding a like, remove dislike (and vice versa)
         if (type === 'like') {
-          db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'dislike'").run(decoded.id, problemId);
+          db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'dislike'").run(req.userId, problemId);
         } else if (type === 'dislike') {
-          db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'like'").run(decoded.id, problemId);
+          db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'like'").run(req.userId, problemId);
         }
 
         // Insert new interaction (ignore if exists due to unique constraint)
-        db.prepare("INSERT OR IGNORE INTO user_problem_interactions (user_id, problem_id, interaction_type) VALUES (?, ?, ?)").run(decoded.id, problemId, type);
+        db.prepare("INSERT OR IGNORE INTO user_problem_interactions (user_id, problem_id, interaction_type) VALUES (?, ?, ?)").run(req.userId, problemId, type);
       } else if (action === 'remove') {
-        db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = ?").run(decoded.id, problemId, type);
+        db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = ?").run(req.userId, problemId, type);
       }
 
       res.json({ success: true });
     } catch (error) {
-      console.error(error);
+      logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
-  app.get("/api/profile/favourites", (req, res) => {
+  app.get("/api/profile/favourites", requireAuth, (req, res) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
 
-      const favourites = db.prepare("SELECT problem_id, created_at FROM user_problem_interactions WHERE user_id = ? AND interaction_type = 'star' ORDER BY created_at DESC").all(decoded.id);
+
+      const favourites = db.prepare("SELECT problem_id, created_at FROM user_problem_interactions WHERE user_id = ? AND interaction_type = 'star' ORDER BY created_at DESC").all(req.userId);
       res.json(favourites);
     } catch (error) {
-      console.error(error);
+      logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
   // --- Leaderboard Routes ---
-  app.get("/api/leaderboard", (req, res) => {
+  app.get("/api/leaderboard", requireAuth, (req, res) => {
     try {
       const topUsers = db.prepare("SELECT name, xp FROM users ORDER BY xp DESC LIMIT 5").all();
       res.json(topUsers);
     } catch (error) {
-      console.error(error);
+      logFailure(req,'backend_error');
       res.status(500).json({ error: "Failed to fetch leaderboard" });
     }
   });
 
   // --- Profile Routes ---
-  app.get("/api/profile", (req, res) => {
+  app.get("/api/profile", requireAuth, (req, res) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, JWT_SECRET);
 
-      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(decoded.id);
+
+      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.userId);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
 
-      const activity = db.prepare("SELECT * FROM user_activity WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").all(decoded.id);
-      const courses = db.prepare("SELECT * FROM course_progress WHERE user_id = ? ORDER BY updated_at DESC").all(decoded.id);
+      const activity = db.prepare("SELECT * FROM user_activity WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").all(req.userId);
+      const courses = db.prepare("SELECT * FROM course_progress WHERE user_id = ? ORDER BY updated_at DESC").all(req.userId);
       const solvedProblems = db.prepare(`
         SELECT p.id, p.title, p.difficulty, MAX(us.created_at) as solved_at
         FROM user_submissions us
         JOIN problems p ON us.problem_id = p.id
-        WHERE us.user_id = ? AND us.status = 'Passed'
+        WHERE us.user_id = ? AND us.status = 'Passed' AND us.verified = 1
         GROUP BY p.id, p.title, p.difficulty
         ORDER BY solved_at DESC
-      `).all(decoded.id);
+      `).all(req.userId);
 
-      const attemptedProblems = db.prepare("SELECT DISTINCT problem_id as id FROM user_submissions WHERE user_id = ?").all(decoded.id);
+      const attemptedProblems = db.prepare("SELECT DISTINCT problem_id as id FROM user_submissions WHERE user_id = ?").all(req.userId);
       const practiceActivity = db.prepare(`
         SELECT strftime('%Y-%m-%dT%H:00:00Z', created_at) as recordedAt, COUNT(*) as attempts
         FROM user_submissions WHERE user_id = ? AND created_at >= datetime('now', '-62 days')
         GROUP BY strftime('%Y-%m-%dT%H:00:00Z', created_at)
         ORDER BY recordedAt
-      `).all(decoded.id);
-      res.json({ user, activity, courses, solvedProblems, attemptedProblems, practiceActivity });
+      `).all(req.userId);
+      res.json({ user: { ...publicUser(user), location:user.location, university:user.university, github:user.github, linkedin:user.linkedin, avatar_url:user.avatar_url }, activity, courses, solvedProblems, attemptedProblems, practiceActivity });
     } catch (error) {
-      res.status(401).json({ error: "Invalid token" });
+      res.status(500).json({ error: "The service is temporarily unavailable." });
     }
   });
 
-  app.post("/api/profile/update", (req, res) => {
+  app.post("/api/profile/update", requireAuth, (req, res) => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-      const token = authHeader.split(" ")[1];
-      const decoded = jwt.verify(token, JWT_SECRET);
 
-      const { location, university, github, linkedin, avatar_url } = req.body;
+
+      const {location='',university='',github='',linkedin='',avatar_url=''}=req.body;
+      if([location,university,github,linkedin,avatar_url].some(v=>typeof v!=='string'||v.length>2000)||[github,linkedin,avatar_url].some(v=>v&&!/^https?:\/\//i.test(v)))return res.status(400).json({error:'Invalid profile details.'});
 
       db.prepare("UPDATE users SET location = ?, university = ?, github = ?, linkedin = ?, avatar_url = ? WHERE id = ?")
-        .run(location, university, github, linkedin, avatar_url, decoded.id);
+        .run(location, university, github, linkedin, avatar_url, req.userId);
 
       res.json({ success: true });
     } catch (error) {
-      res.status(401).json({ error: "Invalid token" });
+      res.status(500).json({ error: "The service is temporarily unavailable." });
     }
   });
 
+  app.get('/api/auth/me',requireAuth,(req,res)=>res.json({user:publicUser(db.prepare('SELECT * FROM users WHERE id=?').get(req.userId))}));
+  app.use('/api',(_req,res)=>res.status(404).json({error:'API route not found.'}));
+  app.use(safeErrors);
   // Vite middleware for development
 
 
@@ -819,7 +691,7 @@ RULES
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { redirect: false }));
     app.get("/*splat", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });

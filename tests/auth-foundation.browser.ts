@@ -1,0 +1,46 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createServer } from 'node:net';
+import { randomBytes } from 'node:crypto';
+import { chromium, type Browser } from 'playwright';
+let server: ReturnType<typeof spawn>, browser: Browser, directory: string, origin: string;
+before(async () => {
+  directory = await mkdtemp(join(tmpdir(), 'alvio-browser-'));
+  const socket = createServer(); await new Promise<void>(r => socket.listen(0, '127.0.0.1', r));
+  const port = (socket.address() as any).port; await new Promise<void>(r => socket.close(() => r())); origin = `http://127.0.0.1:${port}`;
+  server = spawn(process.execPath, ['dist/server.cjs'], { env: { ...process.env, JWT_SECRET: randomBytes(48).toString('hex'), DATABASE_PATH: join(directory, 'test.sqlite'), PORT: String(port), NODE_ENV: 'production', ALLOWED_ORIGINS: origin, GROQ_API_KEY: '' }, stdio: 'ignore' });
+  for (let i = 0; i < 100; i++) { try { await fetch(origin + '/api/auth/me'); break; } catch { if (i === 99) throw Error('Test server did not start'); await new Promise(r => setTimeout(r, 100)); } }
+  const signup = await fetch(origin + '/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Browser Student', email: 'browser@example.test', password: 'browser-test-password' }) }); assert.equal(signup.status, 200);
+  browser = await chromium.launch({ headless: true });
+});
+after(async () => { await browser?.close(); server?.kill(); if (server?.exitCode === null) await new Promise(r => server.once('exit', r)); if (directory) await rm(directory, { recursive: true, force: true }); });
+test('private routes redirect with exact deep links; public routes stay public', async () => {
+  const page = await browser.newPage();
+  for (const target of ['/learn/heap', '/3d-visualizer?ds=Heap', '/coding?topic=Heap#editor', '/quiz']) {
+    await page.goto(origin + target); await page.waitForURL('**/auth?**');
+    assert.equal(new URL(page.url()).searchParams.get('next'), target);
+  }
+  await page.goto(origin + '/'); assert.equal(new URL(page.url()).pathname, '/');
+  await page.close();
+});
+test('real login verifies session, restores query/hash, persists cloud, and rejects forged browser auth', async () => {
+  const page = await browser.newPage(); const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto(origin + '/dashboard?source=auth#learning'); await page.waitForURL('**/auth?**');
+  await page.getByLabel('Email', { exact: true }).fill('browser@example.test'); await page.getByLabel('Password', { exact: true }).fill('browser-test-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click(); await page.waitForURL('**/dashboard?source=auth#learning');
+  await page.locator('.app-shell').waitFor(); await page.getByText('Progress synced', { exact: true }).waitFor();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('alvio-auth-storage')!).state);
+  const cloud = await (await fetch(origin + '/api/progress', { headers: { Authorization: `Bearer ${saved.token}` } })).json(); assert.equal(cloud.progress.userId, saved.user.id);
+  await page.reload(); await page.locator('.app-shell').waitFor();
+  await page.route('**/api/**', route => route.abort());
+  await page.reload(); await page.locator('.app-shell').waitFor();
+  await page.getByText('Cloud sync is unavailable. Your progress is saved on this device.', { exact: true }).waitFor();
+  await page.unroute('**/api/**');
+  await page.evaluate(() => localStorage.setItem('alvio-auth-storage', JSON.stringify({ state: { user: { id: '999', name: 'Forged' }, token: 'fake', isAuthenticated: true }, version: 0 })));
+  await page.reload(); await page.waitForURL('**/auth?**'); assert.equal(new URL(page.url()).searchParams.get('next'), '/dashboard?source=auth#learning');
+  assert.deepEqual(errors, []); await page.close();
+});

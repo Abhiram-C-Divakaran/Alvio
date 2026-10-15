@@ -4,9 +4,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User, AuthState } from '../types/user';
-import { dbService } from '../services/db';
+import { cancelSessionRequests } from '../services/sessionRequests';
 
 interface AuthActions {
+  verifiedToken: string | null;
+  sessionStatus: 'checking' | 'ready' | 'anonymous' | 'unavailable';
   /** Set user data after login/register */
   setUser: (user: User, token: string) => void;
   /** Clear auth state on logout */
@@ -19,12 +21,14 @@ interface AuthActions {
 
 /**
  * Global authentication state.
- * Connects with IndexedDB to store session state.
+ * Persists public account details and a server-issued token; bootstrap verifies it.
  */
 const useAuthStore = create<AuthState & AuthActions>()(
   persist(
     (set) => ({
       // ---- State ----
+      sessionStatus: 'checking',
+      verifiedToken: null,
       user: null,
       token: null,
       isAuthenticated: false,
@@ -32,12 +36,15 @@ const useAuthStore = create<AuthState & AuthActions>()(
       error: null,
 
       // ---- Actions ----
-      setUser: (user: User, token: string) =>
-        set({ user, token, isAuthenticated: true, isLoading: false, error: null }),
+      setUser: (user: User, token: string) => {
+        const sameSession = useAuthStore.getState().token === token;
+        if (!sameSession) cancelSessionRequests();
+        set({ user: { ...user, id: String(user.id) }, token, ...(sameSession ? {} : { sessionStatus: 'checking' as const, isAuthenticated: false }), isLoading: false, error: null });
+      },
 
       logout: () => {
-        dbService.clearSession().catch((err) => console.warn('Failed to clear DB session:', err));
-        set({ user: null, token: null, isAuthenticated: false, error: null });
+        cancelSessionRequests();
+        set({ user: null, token: null, verifiedToken: null, sessionStatus: 'anonymous', isAuthenticated: false, error: null });
       },
 
       setLoading: (isLoading: boolean) =>
@@ -48,6 +55,8 @@ const useAuthStore = create<AuthState & AuthActions>()(
     }),
     {
       name: 'alvio-auth-storage',
+      partialize: (state) => ({ user: state.user, token: state.token, verifiedToken: state.verifiedToken }),
+      merge: (persisted, current) => { const saved = persisted as Partial<AuthState & AuthActions>; return { ...current, user: saved?.user ?? null, token: saved?.token ?? null, verifiedToken: saved?.verifiedToken ?? null, sessionStatus: 'checking', isAuthenticated: false }; },
     }
   )
 );

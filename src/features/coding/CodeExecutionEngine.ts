@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/api';
 // ============================================================
 // Code Execution Engine (Client-side JS Sandbox)
 // ============================================================
@@ -282,7 +283,7 @@ async function executeOnPaiza(language: PaizaLanguage, code: string, testCasesLe
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   const request = async (url: string, init?: RequestInit) => {
-    const response = await fetch(url, { ...init, signal: controller.signal });
+    const response = await apiFetch(url, { ...init, signal: controller.signal });
     let data: any;
     try { data = await response.json(); } catch {
       throw new Error(`Execution service returned an invalid response (HTTP ${response.status}).`);

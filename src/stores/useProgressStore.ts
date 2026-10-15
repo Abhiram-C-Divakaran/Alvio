@@ -4,7 +4,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { LearningProgress, VideoLessonProgress, TopicProgress, DashboardStats, WeeklyActivity } from '../types/user';
-import { dbService } from '../services/db';
+import { persistProgress } from '../services/progressSync';
 import type { QuizCompletion } from '../features/quiz/quizModel';
 import { recordActivity, localDay } from '../services/progressActivity';
 import { applyVisualizerProgress, type VisualizerUpdate } from '../services/visualizerProgress';
@@ -42,7 +42,7 @@ const calculateStats = (progress: LearningProgress): DashboardStats => {
   const baseTopicXp = completed * 1000;
   const quizXp = progress.topics.reduce((acc, t) => acc + (t.quizScore || 0) * 10, 0);
   const extraXp = (progress as any).totalXp || 0;
-  const totalXp = baseTopicXp + quizXp + extraXp;
+  const totalXp = progress.authoritativeXp ?? (baseTopicXp + quizXp + extraXp);
 
   // Level System
   let level = 1;
@@ -87,7 +87,7 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
         const progress = applyVisualizerProgress(base, update);
         set({ progress, stats: calculateStats(progress), visualizerSyncPending: true });
         try {
-          await dbService.saveProgress(progress);
+          await persistProgress(progress);
           if (get().progress === progress) set({ visualizerSyncPending: false });
         }
         catch { console.warn('Visualizer progress saved locally; database sync is pending.'); }
@@ -134,7 +134,7 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
         const awardedXp = stats.totalXp - calculateStats(progress).totalXp;
         updated.quizHistory = [...(progress.quizHistory || []), { ...result, awardedXp }].slice(-100);
         set({ progress: updated, stats });
-        try { await dbService.saveProgress(updated); } catch (err) { console.warn('Quiz saved locally; database sync failed:', err); }
+        try { await persistProgress(updated); } catch (err) { console.warn('Quiz saved locally; database sync failed:', err); }
         return awardedXp;
       },
 
@@ -143,12 +143,12 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
         if(current&&current.userId!==owner)return;
         const base:LearningProgress=current||{userId:owner,topics:[],totalTimeSpentMinutes:0,overallScore:0,streak:0,badges:[],weakAreas:[],recommendedTopics:[]};
         const old=base.videoLessons?.[id]||{position:0,duration:0,speed:1,watchedSeconds:[],completed:false,notes:[]};
-        const lesson={...old,...patch,completed:old.completed||!!patch.completed};
+        const lesson={...old,...patch,updatedAt:new Date().toISOString(),completed:old.completed||!!patch.completed};
         const firstCompletion=lesson.completed&&!old.completed;
         const updated:LearningProgress={...base,videoLessons:{...base.videoLessons,[id]:lesson},topics:base.topics.map(t=>t.topicId===topicId&&t.status==='not-started'?{...t,status:'in-progress',lastAccessed:new Date().toISOString()}:t)};
         if(firstCompletion)updated.dailyActivity=recordActivity(updated,0,1);
         set({progress:updated,stats:calculateStats(updated)});
-        try{await dbService.saveProgress(updated)}catch{console.warn('Video lesson saved locally; database sync is pending.')}
+        try{await persistProgress(updated)}catch{console.warn('Video lesson saved locally; database sync is pending.')}
       },
 
       setProgress: (progress) => {
@@ -190,7 +190,7 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
         set({ progress: updatedProgress, stats });
 
         try {
-          await dbService.saveProgress(updatedProgress);
+          await persistProgress(updatedProgress);
         } catch (err) {
           console.warn('Failed to sync progress to database:', err);
         }
@@ -262,7 +262,7 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
         set({ progress: updatedProgress, stats });
 
         try {
-          await dbService.saveProgress(updatedProgress);
+          await persistProgress(updatedProgress);
         } catch (err) {
           console.warn('Failed to sync progress to database:', err);
         }
@@ -297,7 +297,7 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
         set({ progress: updatedProgress, stats });
 
         try {
-          await dbService.saveProgress(updatedProgress);
+          await persistProgress(updatedProgress);
         } catch (err) {
           console.warn('Failed to sync progress to database:', err);
         }
@@ -317,7 +317,7 @@ const useProgressStore = create<ProgressState & ProgressActions>()(
         set({ progress: updatedProgress, stats });
 
         try {
-          await dbService.saveProgress(updatedProgress);
+          await persistProgress(updatedProgress);
         } catch (err) {
           console.warn('Failed to sync progress to database:', err);
         }

@@ -1,3 +1,4 @@
+import { useSyncStatus, flushProgress } from '../../services/progressSync';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, Search, Flame, Bell } from 'lucide-react';
@@ -13,6 +14,7 @@ export function PageContainer({children,wide=false}:{children:ReactNode;wide?:bo
   return <div className={`app-page-container${wide?' app-page-container--wide':''}`}>{children}</div>;
 }
 export default function AppShell({children}:{children:ReactNode}) {
+  const sync = useSyncStatus();
   const location=useLocation(), navigate=useNavigate();
   const section=appSection(location.pathname), active=activeNavigation(new URL(location.pathname+location.search+location.hash,window.location.origin));
   const user=useAuthStore(s=>s.user), progress=useProgressStore(s=>s.progress), stats=useProgressStore(s=>s.stats);
@@ -20,7 +22,7 @@ export default function AppShell({children}:{children:ReactNode}) {
   const [drawer,setDrawer]=useState(false),[search,setSearch]=useState(false),[query,setQuery]=useState(''),[selected,setSelected]=useState(0),[notifications,setNotifications]=useState(false);
   const menu=useRef<HTMLButtonElement>(null), sidebar=useRef<HTMLElement>(null), main=useRef<HTMLElement>(null), header=useRef<HTMLElement>(null), input=useRef<HTMLInputElement>(null);
   const results=searchNavigation(query), items=navigation.filter(n=>n.section===section);
-  useEffect(()=>{setDrawer(false);setSearch(false);setNotifications(false)},[location.pathname,location.search,location.hash]);
+  useEffect(()=>{void flushProgress();setDrawer(false);setSearch(false);setNotifications(false)},[location.pathname,location.search,location.hash]);
   useEffect(()=>{if(!location.hash)window.scrollTo(0,0)},[location.pathname]);
   useEffect(()=>{
     const key=(e:KeyboardEvent)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setSearch(true);requestAnimationFrame(()=>input.current?.focus())}if(e.key==='Escape'){setDrawer(false);setSearch(false);setNotifications(false)}};
@@ -51,7 +53,7 @@ export default function AppShell({children}:{children:ReactNode}) {
       {notifications&&<div className="app-notifications"><h2>Your achievements</h2>{data.badges.length?data.badges.slice(-3).map(b=><p key={b.id}>{b.name}</p>):<p>No new notifications. Earned achievements appear here.</p>}<Link to="/dashboard#achievements">View achievements →</Link></div>}
     </header>
     {drawer&&<button className="app-drawer-backdrop" aria-label="Close navigation" onClick={()=>setDrawer(false)}/>}
-    <aside id="app-sidebar" ref={sidebar} className={`app-sidebar${drawer?' is-open':''}`} role={drawer?'dialog':undefined} aria-modal={drawer||undefined} aria-label="Navigation"><button className="app-icon app-drawer-close" aria-label="Close navigation" onClick={()=>setDrawer(false)}><X/></button>{sections(true)}<nav aria-label={`${section==='ai'?'AI Tools':section[0].toUpperCase()+section.slice(1)} navigation`}>{items.map((n,i)=><div key={n.id}>{(i===0||items[i-1].group!==n.group)&&<h2 className="app-nav-group">{n.group}</h2>}<Link data-nav-id={n.id} className="app-nav-link" aria-current={active?.id===n.id?'page':undefined} to={n.path}><n.icon size={20}/><span>{n.label}{n.description&&<small>{n.description}</small>}</span></Link></div>)}</nav><div className="app-motivation"><strong>Learn smarter.<br/>Build with confidence.</strong><p>Small steps today, big results tomorrow.</p><Link to="/learn">Continue learning →</Link></div><footer className="app-sidebar-footer"><Link to="/progress"><strong>Level {stats?.level ?? 1}</strong><span>{data.xp.toLocaleString()} / {data.nextXp.toLocaleString()} XP</span></Link><progress max="100" value={data.xpPercent} aria-label="Progress to next level"/></footer></aside>
+    <aside id="app-sidebar" ref={sidebar} className={`app-sidebar${drawer?' is-open':''}`} role={drawer?'dialog':undefined} aria-modal={drawer||undefined} aria-label="Navigation"><button className="app-icon app-drawer-close" aria-label="Close navigation" onClick={()=>setDrawer(false)}><X/></button>{sections(true)}<nav aria-label={`${section==='ai'?'AI Tools':section[0].toUpperCase()+section.slice(1)} navigation`}>{items.map((n,i)=><div key={n.id}>{(i===0||items[i-1].group!==n.group)&&<h2 className="app-nav-group">{n.group}</h2>}<Link data-nav-id={n.id} className="app-nav-link" aria-current={active?.id===n.id?'page':undefined} to={n.path}><n.icon size={20}/><span>{n.label}{n.description&&<small>{n.description}</small>}</span></Link></div>)}</nav><div className="app-motivation"><strong>Learn smarter.<br/>Build with confidence.</strong><p>Small steps today, big results tomorrow.</p><Link to="/learn">Continue learning →</Link></div><footer className="app-sidebar-footer"><Link to="/progress"><strong>Level {stats?.level ?? 1}</strong><span>{data.xp.toLocaleString()} / {data.nextXp.toLocaleString()} XP</span></Link><progress max="100" value={data.xpPercent} aria-label="Progress to next level"/><small role="status">{sync.message}</small>{(sync.status==='error'||sync.status==='offline')&&<button onClick={()=>void flushProgress()}>Retry sync</button>}</footer></aside>
     <main id="app-content" ref={main} className="app-main" tabIndex={-1}><PageContainer wide={['/coding','/workspace/pvp','/3d-visualizer','/algorithms-visualizer'].includes(location.pathname)}>{children}</PageContainer></main>
   </div>;
 }

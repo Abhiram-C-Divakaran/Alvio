@@ -1,9 +1,10 @@
+import { login, signup } from '../../services/authApi';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Eye, EyeOff, AlertCircle, Mail, LockKeyhole, UserRound, LoaderCircle, X } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore';
 import Logo from '../../components/ui/Logo';
-import { restoreSessionProgress } from '../../services/sessionProgress';
+import { bootstrapSession } from '../../services/sessionBootstrap';
 import AuthArtwork from './AuthArtwork';
 import AuthSocialOptions from './AuthSocialOptions';
 import { authDestination } from './authDestination';
@@ -31,7 +32,7 @@ export default function AuthPage() {
   switchParams.set('next', from);
 
   useEffect(() => {
-    setError(null);
+    if (useAuthStore.getState().error !== 'Your session expired. Sign in to continue.') setError(null);
     setPassword('');
     setShowPassword(false);
   }, [tab, setError]);
@@ -56,15 +57,10 @@ export default function AuthPage() {
     setError(null);
     setLoading(true);
     try {
-      const response = await fetch(`/api/auth/${tab}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(isSignup ? { name: name.trim(), email: email.trim(), password } : { email: email.trim(), password }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || (isSignup ? 'Unable to create your account.' : 'Incorrect email or password.'));
-      await restoreSessionProgress(String(data.user.id));
+      const credentials = { email: email.trim(), password };
+      const data = await (isSignup ? signup({ ...credentials, name: name.trim() }) : login(credentials));
       setUser(data.user, data.token);
+      await bootstrapSession();
       navigate(from, { replace: true });
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'Unable to connect. Please try again.');

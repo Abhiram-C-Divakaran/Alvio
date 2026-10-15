@@ -1,3 +1,4 @@
+import { apiFetch } from '../../../services/api';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, ChartNoAxesColumnIncreasing, Copy, Cpu, Gamepad2, Swords, Trophy, Users, X, Zap } from 'lucide-react';
@@ -36,7 +37,7 @@ export function AcademyLeaderboard({ onClose }: { onClose: () => void }) {
   const [entries, setEntries] = useState<{ name: string; xp: number }[]>([]);
   const [status, setStatus] = useState('Loading leaderboard…');
   const [retry, setRetry] = useState(0);
-  useEffect(() => { const controller = new AbortController(); setStatus('Loading leaderboard…'); fetch('/api/leaderboard', { signal: controller.signal }).then(async r => { if (!r.ok) throw new Error('Unable to load the leaderboard.'); const rows = await r.json(); setEntries(rows); setStatus(rows.length ? '' : 'No ranked learners yet.'); }).catch(e => { if (e.name !== 'AbortError') setStatus(e.message); }); return () => controller.abort(); }, [retry]);
+  useEffect(() => { const controller = new AbortController(); setStatus('Loading leaderboard…'); apiFetch('/api/leaderboard', { signal: controller.signal }).then(async r => { if (!r.ok) throw new Error('Unable to load the leaderboard.'); const rows = await r.json(); setEntries(rows); setStatus(rows.length ? '' : 'No ranked learners yet.'); }).catch(e => { if (e.name !== 'AbortError') setStatus(e.message); }); return () => controller.abort(); }, [retry]);
   return <PvPDialog title="Academy Leaderboard" onClose={onClose}><p className="pvp-modal-description">Alvio's top learners, ranked by earned XP.</p>{status && <p role="status">{status}</p>}{status.startsWith('Unable') && <button className="pvp-secondary" onClick={() => setRetry(n => n + 1)}>Retry</button>}<ol className="pvp-leaderboard">{entries.map((entry, index) => <li key={`${entry.name}-${index}`}><span>{index + 1}</span><strong>{entry.name}</strong><span>{entry.xp.toLocaleString()} XP</span></li>)}</ol><p className="pvp-local-note">Local practice duels do not award ranked XP or PvP ratings.</p><Link to="/progress" className="pvp-secondary">View your progress<ArrowRight size={15}/></Link></PvPDialog>;
 }
 export function PvPResult({ duel, onReview }: { duel: DuelController; onReview: () => void }) {

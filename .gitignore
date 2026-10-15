@@ -30,3 +30,6 @@ __pycache__/
 .env
 data/
 *.sqlite
+
+*.sqlite-wal
+*.sqlite-shm

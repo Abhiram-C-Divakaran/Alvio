@@ -78,4 +78,5 @@ const useChat = create<ChatState & ChatActions>((set, get) => ({
   setError: (error) => set({ error, isLoading: false }),
 }));
 
+if (typeof window !== 'undefined') window.addEventListener('alvio-session-ended', () => useChat.setState({ conversations: [], activeConversationId: null, isLoading: false, error: null }));
 export default useChat;

@@ -1,32 +1,72 @@
-# React + TypeScript + Vite
+# Alvio
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Alvio is an interactive platform for learning data structures and algorithms through lessons, 2D/3D visualizations, quizzes, coding practice, AI tutoring and mock interviews.
 
-Currently, two official plugins are available:
+## Stack and architecture
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+React, TypeScript, React Router and Zustand power the interface. Three.js/React Three Fiber render visualizations; Monaco provides the code editor. Express handles authentication, API authorization and Groq requests. SQLite stores accounts and learning progress; IndexedDB caches progress offline.
 
-## React Compiler
+Read [docs/architecture.md](docs/architecture.md) for session lifecycle, account isolation, progress conflict resolution, API limits and coding submission trust.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Local setup
 
-## Expanding the Oxlint configuration
+Use Node.js 24 and npm. Node's built-in SQLite is required.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+npm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Copy `.env.example` to `.env`, then explicitly configure `JWT_SECRET` with a private random value of at least 32 characters. Generate a value with your password manager or `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"` and place it in `.env`. Never commit it. Startup intentionally fails without a valid secret.
+
+| Variable | Purpose |
+| --- | --- |
+| JWT_SECRET | Required private signing secret; no fallback |
+| PORT | HTTP port; example uses 3001, server default 3000 |
+| ALLOWED_ORIGINS | Comma-separated exact origins; mandatory in production |
+| DATABASE_PATH | SQLite file; default `./data/database.sqlite` |
+| GROQ_API_KEY | Server-only AI provider key; optional for non-AI learning |
+| GROQ_VISUALIZER_MODEL | Visualizer model override |
+| NODE_ENV | Set `production` when serving the built app |
+
+```sh
+npm run dev
+```
+
+Open http://localhost:3001 when using the example environment. Create an account through the public authentication page. Private routes require a verified session. Offline cached learning works for previously verified unexpired sessions; new logins require the server.
+
+## Build and run
+
+```sh
+npm run build
+npm start
+```
+
+Set `NODE_ENV=production` in your process manager/environment for production. Configure allowed origins, HTTPS and persistent database storage before deployment. `npm run preview` previews static assets only and does not replace the Express backend.
+
+## Tests
+
+```sh
+npm run test:foundation
+npx playwright install chromium
+npm run test:auth-browser
+npm run test:learning-browser
+```
+
+The browser tests require the build produced by `test:foundation` or `npm run build`. Tests use temporary databases and disposable secrets; they do not contact Groq. They use portable package imports and can run in CI. Navigation, video, tutor and AI visualizer regressions use isolated authenticated test accounts. Other existing feature checks live under `tests/`; some older browser scripts still need authenticated fixtures. See [docs/phase1-verification.md](docs/phase1-verification.md) for this change’s results. `npm run lint` and `npx tsc -p tsconfig.app.json --noEmit` expose broader existing repository issues and are not currently clean global gates.
+
+## Database and migration
+
+SQLite migrations run on server startup and are tracked in `schema_migrations`. Existing accounts and learning records are preserved. Missing profile columns are added deterministically. Browser database version 2 removes obsolete credentials/session stores while keeping progress. Progress sync uses account ownership and version checks, with a per-account offline cache. Back up the SQLite database using SQLite-aware tooling before deploying migrations.
+
+## Security and current limitations
+
+- Passwords are hashed only on the server. All private APIs share JWT verification, including account existence checks.
+- AI endpoints require authentication and enforce request limits, per-user/IP quotas, timeouts and disconnect cancellation. Missing AI configuration returns an explicit unavailable response.
+- Permanent XP is server-owned. Self-reported learning snapshots cannot increase account XP. A validated learning-event reward ledger is a follow-up.
+- Coding attempts are stored as **Unverified**. Passing local tests does not grant solved credit. A secure isolated judge and hidden-test service are not yet implemented; Express never executes submitted code.
+- Password reset remains explicitly unavailable. Email verification, revocation/refresh and HttpOnly-cookie sessions are follow-ups.
+- Rate limits are in-memory per process. Distributed deployment needs shared quotas. Bearer tokens in browser storage require careful same-origin script security.
+- Tutor/interview histories, code drafts and visualizer sessions remain account-scoped on the device. Learning progress syncs to the server.
+- Local deletion does not erase another device's history; progress merges preserve completion records. Device clocks influence selection of concurrent preference edits.
+
+See the architecture document for precise boundaries and deployment follow-ups.

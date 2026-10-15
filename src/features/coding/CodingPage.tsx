@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import useAuthStore from '../../stores/useAuthStore';
@@ -38,7 +39,7 @@ export default function CodingPage() {
     useEffect(() => setSearch(query), [query]);
     useEffect(() => { if (search === query)
         return; const timer = setTimeout(() => update({ q: search }), 200); return () => clearTimeout(timer); }, [search, query]);
-    useEffect(() => { const controller = new AbortController(); setLoading(true); setError(''); fetch('/api/problems', { signal: controller.signal }).then(async (r) => { if (!r.ok)
+    useEffect(() => { const controller = new AbortController(); setLoading(true); setError(''); apiFetch('/api/problems', { signal: controller.signal }).then(async (r) => { if (!r.ok)
         throw new Error('Unable to load problems. Please try again.'); setProblems(await r.json()); }).catch(e => { if (e.name !== 'AbortError')
         setError(e.message); }).finally(() => { if (!controller.signal.aborted)
         setLoading(false); }); return () => controller.abort(); }, [retry, workspaceOpen]);
@@ -51,7 +52,7 @@ export default function CodingPage() {
             return;
         const controller = new AbortController();
         const options = { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal };
-        Promise.all([fetch('/api/profile', options), fetch('/api/profile/favourites', options)]).then(async ([profile, favourites]) => {
+        Promise.all([apiFetch('/api/profile', options), apiFetch('/api/profile/favourites', options)]).then(async ([profile, favourites]) => {
             if (!profile.ok || !favourites.ok)
                 throw new Error('Your progress and bookmarks could not be loaded. Please sign in again or retry.');
             const data = await profile.json();
@@ -74,7 +75,7 @@ export default function CodingPage() {
     useEffect(() => { setSelected(null); if (!id) {
         setOpening(false);
         return;
-    } const controller = new AbortController(); setOpening(true); setError(''); fetch(`/api/problems/${encodeURIComponent(id)}`, { signal: controller.signal }).then(async (r) => { if (!r.ok)
+    } const controller = new AbortController(); setOpening(true); setError(''); apiFetch(`/api/problems/${encodeURIComponent(id)}`, { signal: controller.signal }).then(async (r) => { if (!r.ok)
         throw new Error('This problem could not be opened. Please try again.'); const p = await r.json(); if (!controller.signal.aborted)
         setSelected(p); }).catch(e => { if (e.name !== 'AbortError')
         setError(e.message); }).finally(() => { if (!controller.signal.aborted)
@@ -96,7 +97,7 @@ export default function CodingPage() {
         bookmarkRequests.current.add(problemId);
         const shouldSave = !bookmarks.has(problemId);
         try {
-            const response = await fetch(`/api/problems/${encodeURIComponent(problemId)}/interaction`, {
+            const response = await apiFetch(`/api/problems/${encodeURIComponent(problemId)}/interaction`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ type: 'star', action: shouldSave ? 'add' : 'remove' })

@@ -1,8 +1,11 @@
+import { apiFetch } from '../../../services/api';
 import { useEffect, useRef, useState } from 'react';
 import type { CodingProblem } from '../../../data/codingProblems';
-import { createRoomCode, DuelRoom, initialDuel, roomPattern, sessionKey, type DuelSnapshot } from './duelRoom';
+import { createRoomCode, DuelRoom, initialDuel, roomPattern, sessionKey as baseSessionKey, type DuelSnapshot } from './duelRoom';
 
+import useAuthStore from '../../../stores/useAuthStore';
 export function useDuel() {
+  const sessionKey = `${baseSessionKey}:${useAuthStore.getState().user?.id}`;
   const [state, setState] = useState<DuelSnapshot>(initialDuel);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -40,7 +43,7 @@ export function useDuel() {
     setLoading(true); setError('');
     try {
       if (typeof BroadcastChannel === 'undefined') throw new Error('This browser does not support live duels. Try an up-to-date browser.');
-      const response = await fetch('/api/problems/reverse-linked-list', { signal: controller.signal });
+      const response = await apiFetch('/api/problems/reverse-linked-list', { signal: controller.signal });
       if (!response.ok) throw new Error('The duel problem could not be loaded. Please try again.');
       const problem: CodingProblem = await response.json();
       if (!problem.testCases?.length || !problem.signature) throw new Error('This challenge is currently unavailable. Please try again later.');

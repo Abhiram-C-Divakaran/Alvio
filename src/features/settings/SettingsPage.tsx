@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { User, Mail, Camera, Save, Settings as SettingsIcon } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore';
-import { dbService } from '../../services/db';
+
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 
 export default function SettingsPage() {
-  const { user, setUser, token } = useAuthStore();
+  const { user, token } = useAuthStore();
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
@@ -21,9 +21,7 @@ export default function SettingsPage() {
     setIsSaving(true);
     setSaveMessage('');
     try {
-      await dbService.updateUserProfile(user.id, { name, email, avatar });
-      setUser({ ...user, name, email, avatar }, token);
-      setSaveMessage('Profile updated successfully!');
+      setSaveMessage('Use your Profile page to update your public profile. Account email changes are not available yet.');
     } catch (error) {
       console.error('Failed to update profile:', error);
       setSaveMessage('Failed to update profile. Please try again.');

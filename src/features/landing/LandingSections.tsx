@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/api';
 import WorldGlobe from './WorldGlobe';
 import { SortingPreview, GraphPreview } from './LandingVisualDemos';
 import { useEffect, useState } from 'react';
@@ -32,7 +33,7 @@ export function HeroSection() {
 }
 export function MetricsStrip() {
   const [count, setCount] = useState<number | null>(null); useEffect(() => {
-    const controller = new AbortController(); fetch('/api/problems', { signal: controller.signal }).then(r => r.ok ? r.json() : null).then(rows => {
+    const controller = new AbortController(); apiFetch('/api/problems', { signal: controller.signal }).then(r => r.ok ? r.json() : null).then(rows => {
       if (Array.isArray(rows))
         setCount(rows.length);
     }).catch(() => { }); return () => controller.abort();

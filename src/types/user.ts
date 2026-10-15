@@ -53,6 +53,7 @@ export interface TopicProgress {
 }
 
 export interface VideoLessonProgress {
+  updatedAt?: string;
   position:number;
   duration:number;
   speed:number;
@@ -75,6 +76,8 @@ export interface VisualizerModuleProgress {
 }
 
 export interface LearningProgress {
+  updatedAt?: string;
+  authoritativeXp?: number;
   visualizerModules?: Record<string, VisualizerModuleProgress>;
   visualizerReducedMotion?: boolean;
   videoLessons?:Record<string,VideoLessonProgress>;
