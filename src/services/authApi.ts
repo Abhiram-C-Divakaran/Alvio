@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+export { apiFetch as authenticatedFetch } from './api';
 import useAuthStore from '../stores/useAuthStore';
 import { flushProgress } from './progressSync';
 import type { User } from '../types/user';

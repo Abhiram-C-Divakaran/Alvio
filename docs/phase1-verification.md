@@ -46,3 +46,15 @@ FAIL — caused by this change: none observed.
 PRE-EXISTING FAILURE: repository lint still reports the invalid UTF-8 `temp.tsx` and syntax errors in `update_page.cjs`. App TypeScript still has the same 115 distinct diagnostics as the previous verification, with no additions. The optional full `review-fixes.test.mjs` suite has two coding-runner failures (missing browser Worker in Node and a remote-runner fixture mismatch); both reproduce on unchanged `d051c28`. Its scene relationship, matrix and replay checks pass.
 
 AI browser tests mock provider responses; live Groq output was not tested. The existing progress-store integration checks exercise Heap, quiz and video cloud restoration and account isolation; browser video checks additionally exercise real playback.
+
+## Foundation completion audit — 2026-10-17
+
+Baseline: `0dea775`. The brief's references to unprotected routes, browser password hashing, missing cloud progress and the Vite README describe the older `925c66b` snapshot. Those issues are already resolved by the committed foundation.
+
+This pass adds the requested optional-auth middleware and shared authenticatedFetch export. Optional auth delegates to the same JWT verifier and rejects invalid supplied credentials; no private route was changed to optional authentication. New tests cover missing/malformed credentials, valid optional authentication, and an actual account deletion invalidating a previously valid JWT. The normal foundation test command includes these tests.
+
+PASS: production build; server TypeScript; changed-file lint; all 28 foundation/auth/progress/model tests; all 128 navigation/layout checks and shell interactions; video, AI Tutor and AI Visualizer browser regressions; diff whitespace checks. No visual design, AppShell, navigation or learning-model change was made.
+
+NEW REGRESSION: none observed.
+
+PRE-EXISTING ISSUE: full lint fails on `temp.tsx` encoding and `update_page.cjs` syntax. Full application TypeScript still reports the same 115 distinct diagnostics, with zero additions. Existing deployment limitations and the earlier legacy coding-runner test failures remain documented above. Paid AI output was mocked in browser tests, not live-provider validated.

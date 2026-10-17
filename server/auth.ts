@@ -6,4 +6,9 @@ export function authSecret(){const secret=process.env.JWT_SECRET;if(!secret||sec
 export function signAuthToken(userId:number){return jwt.sign({},authSecret(),{subject:String(userId),algorithm:'HS256',expiresIn:'7d',issuer:'alvio',audience:'alvio-student'});}
 export function verifyAuthToken(token:string){const value=jwt.verify(token,authSecret(),{algorithms:['HS256'],issuer:'alvio',audience:'alvio-student'});if(typeof value==='string'||typeof value.sub!=='string'||!/^\d+$/.test(value.sub))throw Error('Invalid subject');const id=Number(value.sub);if(!Number.isSafeInteger(id)||id<1||!db.prepare('SELECT id FROM users WHERE id=?').get(id))throw Error('Invalid account');return id;}
 export const requireAuth:RequestHandler=(req,res,next)=>{try{const match=/^Bearer ([^\s]+)$/.exec(req.headers.authorization||'');if(!match)throw Error();req.userId=verifyAuthToken(match[1]);next();}catch{res.status(401).json({error:'Please sign in again.',code:'UNAUTHORIZED'});}};
+/** For explicitly public routes only. Supplied invalid credentials never become anonymous. */
+export const optionalAuth:RequestHandler=(req,res,next)=>{
+ if(req.headers.authorization===undefined){next();return;}
+ return requireAuth(req,res,next);
+};
 export function publicUser(user:any){return {id:String(user.id),name:user.name,email:user.email,xp:user.xp,level:user.level,avatar:user.avatar_url||undefined,createdAt:user.created_at,settings:{theme:'dark',voiceEnabled:false,animationSpeed:1,notifications:true}};}
