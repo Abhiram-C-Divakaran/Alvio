@@ -6,7 +6,7 @@ import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
 
 // Import interfaces from page
-import type { AIPrimitive } from './AIVisualizerPage';
+import type { AIPrimitive } from './aiSceneTypes';
 import { linkedListLayout, treeLayout, graphLayout, matrixLayout } from './aiScene';
 import type { SceneEdge, ScenePosition } from './aiScene';
 

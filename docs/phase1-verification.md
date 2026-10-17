@@ -34,3 +34,15 @@ The previous commit was extracted into an ignored verification directory and che
 A configured private JWT_SECRET is mandatory. Production also requires ALLOWED_ORIGINS, HTTPS and persistent SQLite storage. Explicit sign-out attempts a cloud flush for up to three seconds; failed/offline writes remain in the account cache. Page-hide delivery is best effort, with pending writes restored on the next session.
 
 Permanent XP remains server-owned, and coding attempts are unverified until a separate secure judge is implemented. Password reset/email verification, token revocation/refresh, distributed quotas and a verified learning-event reward ledger remain later milestones.
+
+## Milestone re-audit — 2026-10-17
+
+The new brief references `925c66b`; current baseline `d051c28` already implements the authentication and cloud-progress foundation. This follow-up removed the unused `/api/generate-trace` route and unrouted legacy page. Shared scene types were extracted without changing rendering, AppShell, or navigation.
+
+PASS: production build, server TypeScript, scoped lint, 26 foundation/auth/progress/model tests, three targeted scene relationship/replay tests, 128 navigation/layout checks, shell/search/mobile navigation, video playback/resume, AI Tutor and AI Visualizer browser regressions. Retired endpoint requests return 404 for both anonymous and authenticated callers.
+
+FAIL — caused by this change: none observed.
+
+PRE-EXISTING FAILURE: repository lint still reports the invalid UTF-8 `temp.tsx` and syntax errors in `update_page.cjs`. App TypeScript still has the same 115 distinct diagnostics as the previous verification, with no additions. The optional full `review-fixes.test.mjs` suite has two coding-runner failures (missing browser Worker in Node and a remote-runner fixture mismatch); both reproduce on unchanged `d051c28`. Its scene relationship, matrix and replay checks pass.
+
+AI browser tests mock provider responses; live Groq output was not tested. The existing progress-store integration checks exercise Heap, quiz and video cloud restoration and account isolation; browser video checks additionally exercise real playback.

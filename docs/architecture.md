@@ -36,7 +36,7 @@ Coding Run/Submit may execute provided tests through browser workers or configur
 
 ## API security and operations
 
-Chat, trace generation and AI visualization require authentication. Shared in-memory limits apply by IP and account (chat 25/minute, visualizer/trace 12/minute); login is 10/10 minutes and signup 5/10 minutes per IP. These limits are per process and reset on restart. Multi-instance deployments need a shared rate-limit store and appropriately configured trusted proxies; do not blindly trust forwarded IP headers.
+Chat and AI visualization require authentication. Shared in-memory limits apply by IP and account (chat 25/minute, visualizer 12/minute); login is 10/10 minutes and signup 5/10 minutes per IP. These limits are per process and reset on restart. Multi-instance deployments need a shared rate-limit store and appropriately configured trusted proxies; do not blindly trust forwarded IP headers.
 
 AI messages, history and problem statements have limits before provider calls. Provider work aborts on disconnect and after 60 seconds, including visualizer repair attempts. Failures return safe messages with a consistent string `error` and optional `code`; structured logs include request ID, route, duration, status and account ID without credentials, student conversations or raw provider errors.
 
@@ -51,3 +51,5 @@ Production requires an explicit `ALLOWED_ORIGINS` list. Development also permits
 Deployment follow-ups: verified learning rewards, isolated coding judge, password reset and email verification, token revocation/refresh and an HttpOnly-cookie session design, shared quotas, backups/monitoring and a full dependency/type-error cleanup. Bearer tokens in browser storage remain exposed to same-origin script compromise. This pass establishes consistent authorization and persistence; it does not claim those follow-ups are implemented.
 
 Dependency audit after compatible updates: no high/critical findings; four low/moderate findings remain in the Monaco DOMPurify and Tailwind selector-parser dependency chains. Resolving these may require upstream updates or separate compatibility work. Re-run `npm audit` before deployment.
+
+The obsolete `/api/generate-trace` endpoint and its unrouted page were removed. Active visualization uses `/api/visualizer`; shared scene types remain available independently of the retired page.

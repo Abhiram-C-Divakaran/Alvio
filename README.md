@@ -2,7 +2,11 @@
 
 Alvio is an interactive platform for learning data structures and algorithms through lessons, 2D/3D visualizations, quizzes, coding practice, AI tutoring and mock interviews.
 
-## Stack and architecture
+## Student experience
+
+Sign in, explore lessons and visualizers, practice, and take quizzes. Learning progress restores from the authenticated server across sessions and devices; an account-scoped device cache retains offline changes. Tutor conversations and coding drafts remain device-local.
+
+## Technology and architecture
 
 React, TypeScript, React Router and Zustand power the interface. Three.js/React Three Fiber render visualizations; Monaco provides the code editor. Express handles authentication, API authorization and Groq requests. SQLite stores accounts and learning progress; IndexedDB caches progress offline.
 
@@ -42,6 +46,16 @@ npm start
 ```
 
 Set `NODE_ENV=production` in your process manager/environment for production. Configure allowed origins, HTTPS and persistent database storage before deployment. `npm run preview` previews static assets only and does not replace the Express backend.
+
+## Authentication and progress persistence
+
+Express verifies server-issued JWTs before serving private APIs. Application startup verifies the session with `/api/auth/me` before opening protected pages and preserves the requested destination through login. Password hashing is server-only.
+
+Progress updates immediately in Zustand, persists to IndexedDB, and syncs after a two-second debounce. Completion events and explicit sign-out trigger an immediate attempt. Revision checks and three-way reconciliation protect concurrent changes; pending offline edits survive later login. Permanent account XP cannot be increased by uploading a learning snapshot.
+
+## AI services
+
+`/api/chat` and `/api/visualizer` require authentication, enforce per-account/IP quotas and bounded inputs, and cancel provider work on timeout or disconnect. The unused `/api/generate-trace` API has been retired. Groq credentials stay on the server.
 
 ## Tests
 

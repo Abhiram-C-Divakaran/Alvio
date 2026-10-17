@@ -1,4 +1,4 @@
-import type { AIPrimitive, AIStep } from './AIVisualizerPage';
+import type { AIPrimitive, AIStep } from './aiSceneTypes';
 
 export type ScenePosition = [number, number, number];
 export interface SceneEdge {

@@ -51,7 +51,7 @@ test('progress enforces ownership, revisions, server XP and idempotent snapshots
   assert.equal((await (await request('/api/auth/me', a.token)).json()).user.xp, 0);
 });
 test('AI authentication and request size limits precede provider calls', async () => {
-  for (const endpoint of ['/api/chat', '/api/visualizer', '/api/generate-trace']) assert.equal((await request(endpoint, undefined, {})).status, 401);
+  for (const endpoint of ['/api/chat', '/api/visualizer']) assert.equal((await request(endpoint, undefined, {})).status, 401);
   assert.equal((await request('/api/chat', b.token, { messages: [{ role: 'user', content: 'Hello' }], tutorMode: 'Teach me' })).status, 500); // Passed validation; no paid provider configured.
   for (const tutorMode of ['unknown', 'toString', 42]) assert.equal((await request('/api/chat', a.token, { messages: [{ role: 'user', content: 'Hello' }], tutorMode })).status, 400);
   assert.equal((await request('/api/chat', a.token, { messages: [{ role: 'user', content: 'x'.repeat(24001) }] })).status, 400);
@@ -100,4 +100,8 @@ test('submission verdicts cannot be supplied by the client', async () => {
   const saved = await (await request('/api/problems/trust-test/submissions', a.token)).json();
   assert.equal(saved.submission.status, 'Unverified'); assert.equal(saved.submission.verified, 0); assert.equal(saved.submission.passed_testcases, null);
   const profile = await (await request('/api/profile', a.token)).json(); assert.equal(profile.solvedProblems.length, 0);
+});
+
+test('obsolete trace endpoint is unavailable even to authenticated users', async () => {
+  for (const token of [undefined, a.token]) assert.equal((await request('/api/generate-trace', token, { problem: 'sort' })).status, 404);
 });
