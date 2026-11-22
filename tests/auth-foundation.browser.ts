@@ -20,7 +20,7 @@ before(async () => {
 after(async () => { await browser?.close(); server?.kill(); if (server?.exitCode === null) await new Promise(r => server.once('exit', r)); if (directory) await rm(directory, { recursive: true, force: true }); });
 test('private routes redirect with exact deep links; public routes stay public', async () => {
   const page = await browser.newPage();
-  for (const target of ['/learn/heap', '/3d-visualizer?ds=Heap', '/coding?topic=Heap#editor', '/quiz']) {
+  for (const target of ['/dashboard', '/profile', '/learn/heap', '/3d-visualizer?ds=Heap', '/coding?topic=Heap#editor', '/quiz']) {
     await page.goto(origin + target); await page.waitForURL('**/auth?**');
     assert.equal(new URL(page.url()).searchParams.get('next'), target);
   }
@@ -43,4 +43,31 @@ test('real login verifies session, restores query/hash, persists cloud, and reje
   await page.evaluate(() => localStorage.setItem('alvio-auth-storage', JSON.stringify({ state: { user: { id: '999', name: 'Forged' }, token: 'fake', isAuthenticated: true }, version: 0 })));
   await page.reload(); await page.waitForURL('**/auth?**'); assert.equal(new URL(page.url()).searchParams.get('next'), '/dashboard?source=auth#learning');
   assert.deepEqual(errors, []); await page.close();
+});
+
+test('profile sign-out and account switch replace identity and reject an external return URL', async () => {
+  const signup = await fetch(origin + '/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Second Student', email: 'second@example.test', password: 'browser-test-password' }) });
+  assert.equal(signup.status, 200);
+  const second = await signup.json();
+  const page = await browser.newPage();
+  const signIn = async (email: string) => {
+    await page.getByLabel('Email', { exact: true }).fill(email);
+    await page.getByLabel('Password', { exact: true }).fill('browser-test-password');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await page.locator('.app-shell').waitFor();
+  };
+  await page.goto(origin + '/profile'); await page.waitForURL('**/auth?**');
+  await signIn('browser@example.test');
+  await page.getByRole('heading', { name: 'My Profile', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.waitForURL('**/auth?**');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('alvio-auth-storage')!).state.user), null);
+  await page.goto(origin + '/auth?mode=login&next=' + encodeURIComponent('https://evil.example.com'));
+  await signIn('second@example.test');
+  assert.equal(new URL(page.url()).origin, origin); assert.equal(new URL(page.url()).pathname, '/dashboard');
+  const identity = await page.evaluate(() => JSON.parse(localStorage.getItem('alvio-auth-storage')!).state.user);
+  assert.equal(identity.id, second.user.id); assert.equal(identity.email, 'second@example.test');
+  await page.goto(origin + '/coding?topic=Heap'); await page.locator('.coding-page').waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('topic'), 'Heap');
+  await page.close();
 });

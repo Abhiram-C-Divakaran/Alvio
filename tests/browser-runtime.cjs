@@ -1,5 +1,5 @@
 const { chromium: engine } = require('playwright');
-const { spawn } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const { mkdtemp, rm, mkdir } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
@@ -8,6 +8,7 @@ const { createServer } = require('node:net');
 let origin;
 exports.testOrigin = () => origin;
 exports.chromium = { async launch(options = {}) {
+  const { seedProblems = false, ...browserOptions } = options;
   const directory = await mkdtemp(join(tmpdir(), 'alvio-regression-'));
   const socket = createServer(); await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
   const port = socket.address().port; await new Promise(resolve => socket.close(resolve)); origin = `http://127.0.0.1:${port}`;
@@ -18,8 +19,9 @@ exports.chromium = { async launch(options = {}) {
     const response = await fetch(origin + '/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Regression Student', email: 'regression@example.test', password: 'regression-password' }) });
     if (!response.ok) throw Error('Regression account creation failed');
     const session = await response.json();
+    if (seedProblems) execFileSync(process.execPath, ['--import', 'tsx', '-e', "import { DatabaseSync } from 'node:sqlite'; import { loadProblemCatalog, seedProblemCatalog } from './server/problemCatalog.ts'; const db = new DatabaseSync(process.argv[1]); seedProblemCatalog(db, loadProblemCatalog()); db.close();", join(directory, 'test.sqlite')], { stdio: 'pipe' });
     await mkdir('data', { recursive: true });
-    const browser = await engine.launch({ ...options, channel: undefined });
+    const browser = await engine.launch({ ...browserOptions, channel: undefined });
     const initialize = context => context.addInitScript(({ session, origin }) => {
       if (location.origin === origin && !localStorage.getItem('alvio-auth-storage')) localStorage.setItem('alvio-auth-storage', JSON.stringify({ state: { user: session.user, token: session.token }, version: 0 }));
     }, { session, origin });
