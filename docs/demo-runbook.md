@@ -77,7 +77,7 @@ Open **http://localhost:3001** (or `http://localhost:3000` if `PORT` is unset).
    - Click **Submit** to show server-side verification (`POST /api/problems/:id/submit`) against the database's provided test cases, live updated acceptance rate, and **Submissions** history tab (reopen past code).
    - Switch languages in the picker (JavaScript, TypeScript, Python 3, C++, C, Java, C#).
 8. **PvP Coding Duel (`/workspace/pvp`)**: Open two browser tabs side by side, host a room in Tab 1, join with the 6-character code in Tab 2, show live code view, freeze power-up, and solving `reverseList` to trigger the Victory screen.
-9. **AI Tutor & AI Visualizer (`/ai-tutor`, `/learn/ai-visualizer`)**: Ask a DSA question in AI Tutor (streaming Markdown + code) and generate or step through a visualization in AI Visualizer (2D/3D view, timeline scrub, code line sync).
+9. **AI Tutor, AI Visualizer & Mock Interview (`/ai-tutor`, `/learn/ai-visualizer`, `/mock-interview`)**: Ask a DSA question in AI Tutor (streaming Markdown + code), step through a visualization in AI Visualizer (2D/3D view, timeline scrub, code line sync), and open Mock Interview to show topic/difficulty setup, live Q&A rubric feedback, private scratch notes, and report generation.
 10. **Profile & Logout (`/profile`)**: Show solved problems, profile bio update, and clean sign-out returning to `/auth`.
 
 ---
@@ -86,7 +86,7 @@ Open **http://localhost:3001** (or `http://localhost:3000` if `PORT` is unset).
 
 | Service | Used By | Offline / Local Behavior |
 | --- | --- | --- |
-| **Groq API** (`GROQ_API_KEY`) | AI Tutor (`/api/chat`), AI Visualizer (`/api/visualizer`), Coding Submission AI Analysis | Not required for core DSA learning, 3D visualizers, videos, quizzes, progress, local JS Run, or PvP. |
+| **Groq API** (`GROQ_API_KEY`) | AI Tutor (`/api/chat`), Mock Interview (`/api/chat`), AI Visualizer (`/api/visualizer`), Coding Submission AI Analysis | Not required for core DSA learning, 3D visualizers, videos, quizzes, progress, local JS Run, or PvP. |
 | **Paiza API** (`https://api.paiza.io`) | Server-verified Coding Submit (all 7 languages) & non-JS Run | Local JavaScript `Run` and PvP Duel run in browser Web Workers with zero external network calls. |
 
 All 3D visualizers, Monaco Editor assets, and bundled video lessons run locally without external CDNs.
@@ -96,7 +96,7 @@ All 3D visualizers, Monaco Editor assets, and bundled video lessons run locally 
 ## 6. What to Do If AI or Execution APIs Are Unavailable
 
 - **If Groq (`GROQ_API_KEY`) is missing, rate-limited, or offline**:
-  - AI Tutor and AI Visualizer display clean inline error alerts with a **Retry** button without crashing.
+  - AI Tutor, Mock Interview, and AI Visualizer display clean inline error alerts with a **Retry** button and preserve typed answers without crashing.
   - **AI Visualizer** still opens with its built-in **Linked List: Insertion** walkthrough so you can still demonstrate 2D/3D toggle, step-by-step playback, timeline scrubbing, synchronized code highlighting, and learning modes!
 - **If Paiza (`https://api.paiza.io`) is temporarily unavailable or slow**:
   - Server `Submit` returns an explicit **Execution Service Unavailable** error (HTTP 503) rather than a false Wrong Answer.

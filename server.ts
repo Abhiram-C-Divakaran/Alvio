@@ -56,7 +56,8 @@ async function startServer() {
         'Teach me': 'Use clear examples and manageable steps.',
         'Give me a hint': 'Override the code and visualization requirements below: give one progressive hint, with no full solution, code, or revealing visualization unless explicitly requested.',
         'Quiz me': 'Override the code and visualization requirements below: ask one question and wait for the student answer; do not reveal the answer first.',
-        'Review my code': 'Review correctness, edge cases and complexity before proposing fixes.'
+        'Review my code': 'Review correctness, edge cases and complexity before proposing fixes.',
+        'Mock Interview': 'Override the default tutor personality, Markdown formatting, and animated-3d visualization requirements above: act strictly as a technical interviewer/evaluator following the interview instructions in the user prompt. When JSON is requested, return ONLY valid raw JSON with no markdown fences or extra text.'
       };
       if (tutorMode !== undefined && (typeof tutorMode !== 'string' || !Object.hasOwn(tutorModes, tutorMode))) return res.status(400).json({ error: 'Choose a supported tutor mode.' });
       const tutorInstruction = typeof tutorMode === 'string' ? tutorModes[tutorMode] || '' : '';

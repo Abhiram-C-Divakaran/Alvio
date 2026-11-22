@@ -21,7 +21,7 @@ export async function executeJavaScript(userCode:string,testCases:TestCase[],fun
  return new Promise(resolve=>{const worker=new Worker(url);const finish=(result:ExecutionResult)=>{clearTimeout(timer);worker.terminate();URL.revokeObjectURL(url);resolve(result)};const timer=setTimeout(()=>finish({status:'Error',message:'Time Limit Exceeded (3 seconds)',passedCount:0,totalCount:testCases.length,stdout:[],executionTimeMs:3000}),3000);worker.onmessage=e=>finish(e.data);worker.onerror=e=>finish({status:'Error',message:e.message||'Runtime Error',passedCount:0,totalCount:testCases.length,stdout:[],executionTimeMs:0});worker.postMessage([userCode,testCases,functionName]);});
 }
 
-async function executeJavaScriptInline(userCode: string, testCases: TestCase[], functionName: string): Promise<ExecutionResult> {
+export async function executeJavaScriptInline(userCode: string, testCases: TestCase[], functionName: string): Promise<ExecutionResult> {
   const stdout: string[] = [];
   let passedCount = 0;
   const originalLog = console.log;

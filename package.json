@@ -15,7 +15,7 @@
     "test:auth-regressions": "node tests/auth.browser.cjs && node tests/profile.browser.cjs && node tests/coding-workspace.browser.cjs && node tests/coding-language.browser.cjs",
     "test:auth-browser": "node --import tsx --test tests/auth-foundation.browser.ts",
     "test:learning-browser": "node tests/navigation-shell.browser.cjs && node tests/video-lessons.browser.cjs && node tests/tutor.browser.cjs && node tests/visualizer.browser.cjs",
-    "test:practice-browser": "node tests/quiz.browser.cjs && node tests/progress.browser.cjs && node tests/pvp.browser.cjs",
+    "test:practice-browser": "node tests/quiz.browser.cjs && node tests/progress.browser.cjs && node tests/pvp.browser.cjs && node tests/interview-live.browser.cjs",
     "test:demo": "npm run lint && npm run test:foundation && npm run test:models && npm run test:auth-browser && npm run test:auth-regressions && npm run test:learning-browser && npm run test:practice-browser"
   },
   "dependencies": {

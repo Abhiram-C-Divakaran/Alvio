@@ -10,7 +10,7 @@ Sign in, explore lessons and visualizers, practice, and take quizzes. Learning p
 
 React, TypeScript, React Router and Zustand power the interface. Three.js/React Three Fiber render visualizations; Monaco provides the code editor. Express handles authentication, API authorization and Groq requests. SQLite stores accounts and learning progress; IndexedDB caches progress offline.
 
-Read [docs/architecture.md](docs/architecture.md) for session lifecycle, account isolation, progress conflict resolution, API limits and coding submission trust. For presentation setup and fallback steps, see [docs/demo-runbook.md](docs/demo-runbook.md).
+Read [docs/architecture.md](docs/architecture.md) for session lifecycle, account isolation, progress conflict resolution, API limits and coding submission trust. For presentation setup and fallback steps, see [docs/demo-runbook.md](docs/demo-runbook.md), [docs/project-presentation-outline.md](docs/project-presentation-outline.md), and [docs/viva-preparation.md](docs/viva-preparation.md).
 
 ## Local setup
 
@@ -30,7 +30,14 @@ Copy `.env.example` to `.env`, then explicitly configure `JWT_SECRET` with a pri
 | DATABASE_PATH | SQLite file; default `./data/database.sqlite` |
 | GROQ_API_KEY | Server-only AI provider key; optional for non-AI learning |
 | GROQ_VISUALIZER_MODEL | Visualizer model override |
+| PAIZA_API_KEY | Optional external code runner key (defaults to `guest`) |
 | NODE_ENV | Set `production` when serving the built app |
+
+Seed the coding problem catalog once on a fresh database (runs SQLite migrations automatically and loads all 472 problems):
+
+```sh
+npx tsx server/migrateProblems.ts
+```
 
 ```sh
 npm run dev
@@ -59,7 +66,7 @@ Progress updates immediately in Zustand, persists to IndexedDB, and syncs after 
 
 ## Tests
 
-Run the full college-demo verification suite (lint, production build, backend foundation & server-verified submissions, model/unit tests, and Playwright browser regressions for auth, profile, coding, navigation, videos, AI tutor, AI visualizer, quiz, progress, and PvP — no paid API keys required):
+Run the full college-demo verification suite (lint, production build, backend foundation & server-verified submissions, model/unit tests, and Playwright browser regressions for auth, profile, coding, navigation, videos, AI tutor, AI visualizer, quiz, progress, PvP, and mock interview — no paid API keys required):
 
 ```sh
 npm run test:demo
