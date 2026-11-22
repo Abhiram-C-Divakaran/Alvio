@@ -58,3 +58,25 @@ PASS: production build; server TypeScript; changed-file lint; all 28 foundation/
 NEW REGRESSION: none observed.
 
 PRE-EXISTING ISSUE: full lint fails on `temp.tsx` encoding and `update_page.cjs` syntax. Full application TypeScript still reports the same 115 distinct diagnostics, with zero additions. Existing deployment limitations and the earlier legacy coding-runner test failures remain documented above. Paid AI output was mocked in browser tests, not live-provider validated.
+
+## Final College Demo Readiness Audit — 2026-11-22
+
+Baseline: `efc3220` (server-verified coding submissions).
+
+### Updates verified in this pass
+
+- **Coding submissions are now server-verified**: `POST /api/problems/:problemId/submit` loads each problem's provided test cases from SQLite, executes submitted code through the external Paiza provider (`server/submissionRunner.ts`), computes authoritative `Passed` / `Failed` / `Error` verdicts, records signed-in attempts (`verified=1`), updates `problem_stats` only from server verdicts, and supports Guest Mode via `optionalAuth`. Earlier statements describing submissions as unverified are superseded.
+- **Offline/CDN resilience fixes**:
+  - Replaced external HDR `<Environment preset="city" | "night" />` network fetches in `Visualization3D.tsx`, `AnimatedGenerativeVisualizer.tsx`, `SkillTreeMap.tsx`, and `AlgorithmsWorkspace.tsx` with local procedural `<Lightformer>` environments so 3D scenes do not crash when offline or when external HDR CDNs fail.
+  - Added shared bundled Monaco loader setup (`src/services/monacoSetup.ts`) to `DataStructurePageLayout.tsx`, `AlgorithmPageLayout.tsx`, `AnimatedGenerativeVisualizer.tsx`, and `WorkspacePage.tsx` so learn pages do not depend on `cdn.jsdelivr.net` or throw unhandled script-load rejections offline.
+  - Fixed `CodingWorkspace.tsx` `runAiAnalysis` to parse `/api/chat` Server-Sent Events (`text/event-stream`) and display clean fallback text when AI is unavailable.
+- **Repository cleanup**: Removed obsolete, unreferenced `temp.tsx` (invalid UTF-8) and `update_page.cjs` (syntax errors targeting a retired file path). Repository-wide `npm run lint` now passes with **0 errors**.
+- **Test coverage & unified demo script**: Migrated `tests/quiz.browser.cjs`, `tests/progress.browser.cjs`, and `tests/pvp.browser.cjs` to isolated authenticated `browser-runtime.cjs` fixtures, added server-Submit and Submission History verification to `tests/coding-workspace.browser.cjs`, and added `npm run test:demo` plus `docs/demo-runbook.md`.
+
+### Remaining known issues (honest scope boundaries)
+
+- Full application TypeScript check (`npx tsc -p tsconfig.app.json --noEmit`) still reports pre-existing legacy diagnostics in untouched files; Vite production build and `esbuild` server bundle succeed cleanly.
+- Coding Playground evaluates only provided/visible SQLite test cases via Paiza (no hidden-test LeetCode judge, Docker sandbox, or measured memory/percentiles).
+- Live Groq AI and live Paiza APIs are mocked in automated tests and require network access / `GROQ_API_KEY` during live demos (offline fallback documented in `docs/demo-runbook.md`).
+- Legacy `tests/review-fixes.test.mjs` still has two Node-environment coding-runner assertions that assume browser `Worker`/`window` globals.
+

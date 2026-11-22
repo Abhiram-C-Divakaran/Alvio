@@ -2,6 +2,7 @@ import { TopicOrientation, TopicNextStep, topicNavigation } from '../../../navig
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import AlgorithmsWorkspace from '../../workspace/AlgorithmsWorkspace';
+import '../../../services/monacoSetup';
 import Editor from '@monaco-editor/react';
 import { Code2, Clock, Maximize2, Minimize2, HelpCircle, Terminal, Activity, ArrowLeft } from 'lucide-react';
 import type { AlgoType } from '../../workspace/AlgorithmsWorkspace';

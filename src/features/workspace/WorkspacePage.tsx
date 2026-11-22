@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
+import '../../services/monacoSetup';
 import Editor from '@monaco-editor/react';
 import useVisualizationStore from '../../stores/useVisualizationStore';
 import { createDefaultStructure, insertValue, deleteValue, searchValue, structureMeta } from './dataStructureOps';

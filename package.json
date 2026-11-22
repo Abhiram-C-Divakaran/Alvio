@@ -11,9 +11,12 @@
     "preview": "vite preview",
     "test:foundation": "npm run build && node --import tsx --test tests/backend-foundation.test.ts tests/progress-sync.test.ts tests/optional-auth.test.ts tests/coding-submissions.test.ts",
     "test:submissions": "node --import tsx --test tests/coding-submissions.test.ts",
+    "test:models": "node --import tsx --test tests/auth-destination.test.mjs tests/dashboard-data.test.mjs tests/practice-model.test.mjs tests/progress-model.test.mjs tests/quiz-model.test.mjs tests/heap-operations.test.ts tests/visualizer-progress.test.ts",
     "test:auth-regressions": "node tests/auth.browser.cjs && node tests/profile.browser.cjs && node tests/coding-workspace.browser.cjs && node tests/coding-language.browser.cjs",
     "test:auth-browser": "node --import tsx --test tests/auth-foundation.browser.ts",
-    "test:learning-browser": "node tests/navigation-shell.browser.cjs && node tests/video-lessons.browser.cjs && node tests/tutor.browser.cjs && node tests/visualizer.browser.cjs"
+    "test:learning-browser": "node tests/navigation-shell.browser.cjs && node tests/video-lessons.browser.cjs && node tests/tutor.browser.cjs && node tests/visualizer.browser.cjs",
+    "test:practice-browser": "node tests/quiz.browser.cjs && node tests/progress.browser.cjs && node tests/pvp.browser.cjs",
+    "test:demo": "npm run lint && npm run test:foundation && npm run test:models && npm run test:auth-browser && npm run test:auth-regressions && npm run test:learning-browser && npm run test:practice-browser"
   },
   "dependencies": {
     "@google/genai": "^2.12.0",

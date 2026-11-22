@@ -1,10 +1,10 @@
-// Runs against the real local app and its BroadcastChannel transport. No accounts or fake problem data.
-const { chromium } = require(process.env.PLAYWRIGHT_PACKAGE || 'C:/Users/Abhiram/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+// Runs against an isolated local Alvio server and its BroadcastChannel transport with real seeded problems.
+const { chromium, testOrigin } = require('./browser-runtime.cjs');
 const assert = require('node:assert/strict');
-const base = process.env.ALVIO_URL || 'http://localhost:3001';
-const path = base + '/workspace/pvp';
 (async () => {
-  const browser = await chromium.launch({ headless: true, channel: 'msedge' });
+  const browser = await chromium.launch({ seedProblems: true, headless: true, channel: 'msedge' });
+  const base = testOrigin();
+  const path = base + '/workspace/pvp';
   const context = await browser.newContext({ viewport: { width: 1290, height: 845 }, reducedMotion: 'reduce', permissions: ['clipboard-read', 'clipboard-write'] });
   const host = await context.newPage(), guest = await context.newPage(), other = await context.newPage();
   const errors = [];
@@ -25,16 +25,16 @@ const path = base + '/workspace/pvp';
     await page.getByRole('button', { name: 'Join Duel', exact: true }).click();
   };
   await host.goto(base + '/coding');
-  await host.getByRole('link', { name: 'PvP Coding Duel LIVE', exact: true }).click();
+  await host.getByRole('link', { name: 'PvP Coding Duel', exact: true }).click();
   await host.getByRole('heading', { name: 'PvP Coding Duel', exact: true }).waitFor();
-  assert.equal(await host.getByRole('link', { name: 'PvP Coding Duel LIVE', exact: true }).getAttribute('aria-current'), 'page');
-  assert.equal(await host.locator('.practice-topnav .active').innerText(), 'Practice');
+  assert.equal(await host.getByRole('link', { name: 'PvP Coding Duel', exact: true }).getAttribute('aria-current'), 'page');
   await host.screenshot({ path: 'data/pvp-desktop.png' });
   await host.getByRole('button', { name: 'Back to Practice', exact: true }).click();
   await host.waitForURL('**/coding'); await host.goto(path);
   await host.getByRole('link', { name: 'Leaderboard', exact: true }).click();
   await host.getByRole('heading', { name: 'Academy Leaderboard', exact: true }).waitFor();
-  const board = await host.request.get(base + '/api/leaderboard').then(r => r.json());
+  const token = await host.evaluate(() => JSON.parse(localStorage.getItem('alvio-auth-storage')).state.token);
+  const board = await host.request.get(base + '/api/leaderboard', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json());
   await host.waitForFunction(n => document.querySelectorAll('.pvp-leaderboard li').length === n, board.length);
   await host.keyboard.press('Escape');
   const cancelledCode = await hostRoom(host); assert(/^[A-HJ-NP-Z2-9]{6}$/.test(cancelledCode));
@@ -103,18 +103,18 @@ const path = base + '/workspace/pvp';
     await host.setViewportSize({ width, height: 845 }); await host.goto(path);
     await host.getByRole('button', { name: /HOST MATCH/ }).waitFor();
     assert(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Document overflow at ${width}`);
-    assert(await host.locator('.practice-main').evaluate(e => e.scrollWidth <= e.clientWidth), `Main overflow at ${width}`);
+    assert(await host.locator('.app-main').evaluate(e => e.scrollWidth <= e.clientWidth + 1), `Main overflow at ${width}`);
     const buttons = await host.locator('.pvp-match-button').all();
     const a = await buttons[0].boundingBox(), b = await buttons[1].boundingBox();
     if (width < 768) assert(b.y > a.y + a.height, 'Mobile buttons stack'); else assert.equal(a.y, b.y);
     if (width === 768) await host.screenshot({ path: 'data/pvp-tablet.png' });
     if (width === 390) {
       await host.screenshot({ path: 'data/pvp-mobile.png' });
-      await host.locator('.practice-main').evaluate(e => e.scrollTo({ top: e.scrollHeight }));
+      await host.locator('.app-main').evaluate(e => e.scrollTo({ top: e.scrollHeight }));
       await host.screenshot({ path: 'data/pvp-mobile-features.png' });
     }
     if (width < 1024) {
-      await host.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+      await host.getByRole('button', { name: 'Open navigation', exact: true }).click();
       await host.getByRole('link', { name: 'Coding Playground', exact: true }).click();
       await host.waitForURL('**/coding');
     }

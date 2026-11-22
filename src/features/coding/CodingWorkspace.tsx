@@ -313,24 +313,45 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tutorMode: 'Review my code',
           messages: [
             {
-              role: 'system',
-              content: 'You are an expert DSA tutor. Analyze the submitted code and return ONLY: 1) Time Complexity 2) Space Complexity 3) One concise improvement tip. Format with clear labels. Be precise.'
-            },
-            {
               role: 'user',
-              content: `Problem: ${problem.title}\nLanguage: ${lang}\nCode:\n${submittedCode}\n\nProvide time complexity, space complexity, and one improvement tip.`
+              content: `Problem: ${problem.title}\nLanguage: ${lang}\nCode:\n${submittedCode}\n\nProvide 1) Time Complexity 2) Space Complexity 3) One concise improvement tip.`
             }
           ]
         })
       });
-      if (res.ok) {
-        const data = await res.json();
-        setAiAnalysis(data.text?.trim() || null);
+      if (!res.ok) {
+        setAiAnalysis('AI analysis is currently unavailable. Please verify your connection or GROQ_API_KEY and try again.');
+        return;
       }
-    } catch (e) {
-      console.error('Error fetching analysis:', e);
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream')) {
+        const raw = await res.text();
+        let combined = '';
+        let finalText = '';
+        for (const line of raw.split(/\r?\n/)) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const payload = JSON.parse(line.slice(6));
+            if (payload.error) {
+              setAiAnalysis(payload.error);
+              return;
+            }
+            if (typeof payload.delta === 'string') combined += payload.delta;
+            if (payload.done && typeof payload.text === 'string') finalText = payload.text;
+          } catch {
+            // Ignore malformed SSE chunk
+          }
+        }
+        setAiAnalysis((finalText || combined).trim() || 'No analysis returned.');
+      } else {
+        const data = await res.json();
+        setAiAnalysis(data.text?.trim() || 'No analysis returned.');
+      }
+    } catch {
+      setAiAnalysis('AI analysis could not be loaded right now. Please try again.');
     } finally {
       setLoadingAnalysis(false);
     }

@@ -5,6 +5,7 @@ import { createDefaultStructure, insertValue, deleteValue, searchValue } from '.
 import Visualization3D from '../../workspace/Visualization3D';
 import Visualization2D from '../../workspace/Visualization2D';
 import VisualizerToolbar from '../../visualizer/VisualizerToolbar';
+import '../../../services/monacoSetup';
 import Editor from '@monaco-editor/react';
 import { codeSnippets } from '../../workspace/codeSnippets';
 import type { DataStructureType, DataStructure } from '../../../types/dataStructures';

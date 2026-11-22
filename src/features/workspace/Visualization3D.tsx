@@ -5,7 +5,7 @@
 // ============================================================
 import { useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text, Line, Float, Environment, RoundedBox, MeshDistortMaterial, Sphere } from '@react-three/drei';
+import { OrbitControls, Text, Line, Float, Environment, Lightformer, RoundedBox, MeshDistortMaterial, Sphere } from '@react-three/drei';
 import * as THREE from 'three';
 import type {
   DataStructure,
@@ -384,7 +384,11 @@ export default function Visualization3D({ structure }: { structure: DataStructur
         <pointLight position={[0, 6, -4]} intensity={0.5} color="#818cf8" />
 
         {/* HDR environment for reflections */}
-        <Environment preset="city" />
+        <Environment resolution={128} frames={1}>
+          <Lightformer position={[0, 5, -5]} scale={[12, 5, 1]} intensity={3} color="#b7cdff" />
+          <Lightformer position={[-5, 1, 3]} rotation={[0, Math.PI / 2, 0]} scale={[5, 8, 1]} intensity={4} color="#7257ff" />
+          <Lightformer position={[5, 2, 3]} rotation={[0, -Math.PI / 2, 0]} scale={[5, 8, 1]} intensity={3} color="#55cfff" />
+        </Environment>
 
         {/* Ground */}
         <Ground />

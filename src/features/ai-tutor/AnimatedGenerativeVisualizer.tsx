@@ -1,8 +1,9 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Environment, Stars, Sparkles, ContactShadows } from '@react-three/drei';
+import { OrbitControls, Environment, Lightformer, Stars, Sparkles, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import { Play, Pause, ChevronLeft, ChevronRight, Volume2, VolumeX } from 'lucide-react';
+import '../../services/monacoSetup';
 import Editor, { useMonaco } from '@monaco-editor/react';
 import { initAudio, playPing, playSwoosh } from '../../utils/audio';
 import Asteroids from '../visualizer/Asteroids';
@@ -307,7 +308,11 @@ export function AnimatedGenerativeVisualizer({ data }: AnimatedGenerativeVisuali
             <ambientLight intensity={0.5} />
             <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
             <pointLight position={[-10, 10, -10]} intensity={0.5} />
-            <Environment preset="city" />
+            <Environment resolution={128} frames={1}>
+              <Lightformer position={[0, 5, -5]} scale={[12, 5, 1]} intensity={3} color="#b7cdff" />
+              <Lightformer position={[-5, 1, 3]} rotation={[0, Math.PI / 2, 0]} scale={[5, 8, 1]} intensity={4} color="#7257ff" />
+              <Lightformer position={[5, 2, 3]} rotation={[0, -Math.PI / 2, 0]} scale={[5, 8, 1]} intensity={3} color="#55cfff" />
+            </Environment>
             
             <Stars radius={50} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
             <Asteroids count={100} />

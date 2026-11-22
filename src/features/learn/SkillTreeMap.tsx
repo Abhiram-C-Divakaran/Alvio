@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Stars, Text, Html, Environment, ContactShadows, Sparkles, Billboard } from '@react-three/drei';
+import { OrbitControls, Stars, Text, Html, Environment, Lightformer, ContactShadows, Sparkles, Billboard } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import Asteroids from '../visualizer/Asteroids';
 import { useNavigate } from 'react-router-dom';
@@ -336,7 +336,11 @@ export default function SkillTreeMap() {
           <ambientLight intensity={0.2} />
           <directionalLight position={[10, 10, 5]} intensity={0.5} castShadow />
           <pointLight position={[-10, 10, -10]} intensity={0.5} color="#818cf8" />
-          <Environment preset="night" />
+          <Environment resolution={128} frames={1}>
+            <Lightformer position={[0, 6, -6]} scale={[14, 6, 1]} intensity={2.2} color="#818cf8" />
+            <Lightformer position={[-6, 2, 4]} rotation={[0, Math.PI / 2, 0]} scale={[6, 8, 1]} intensity={2.5} color="#4f46e5" />
+            <Lightformer position={[6, 2, 4]} rotation={[0, -Math.PI / 2, 0]} scale={[6, 8, 1]} intensity={2} color="#38bdf8" />
+          </Environment>
 
           {/* Ambient Particles for Premium Feel */}
           <Stars radius={50} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />

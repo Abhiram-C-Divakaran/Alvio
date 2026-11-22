@@ -10,7 +10,7 @@ Sign in, explore lessons and visualizers, practice, and take quizzes. Learning p
 
 React, TypeScript, React Router and Zustand power the interface. Three.js/React Three Fiber render visualizations; Monaco provides the code editor. Express handles authentication, API authorization and Groq requests. SQLite stores accounts and learning progress; IndexedDB caches progress offline.
 
-Read [docs/architecture.md](docs/architecture.md) for session lifecycle, account isolation, progress conflict resolution, API limits and coding submission trust.
+Read [docs/architecture.md](docs/architecture.md) for session lifecycle, account isolation, progress conflict resolution, API limits and coding submission trust. For presentation setup and fallback steps, see [docs/demo-runbook.md](docs/demo-runbook.md).
 
 ## Local setup
 
@@ -59,15 +59,27 @@ Progress updates immediately in Zustand, persists to IndexedDB, and syncs after 
 
 ## Tests
 
+Run the full college-demo verification suite (lint, production build, backend foundation & server-verified submissions, model/unit tests, and Playwright browser regressions for auth, profile, coding, navigation, videos, AI tutor, AI visualizer, quiz, progress, and PvP — no paid API keys required):
+
 ```sh
+npm run test:demo
+```
+
+Or run individual suites:
+
+```sh
+npm run lint
 npm run test:foundation
+npm run test:submissions
+npm run test:models
 npx playwright install chromium
 npm run test:auth-browser
 npm run test:auth-regressions
 npm run test:learning-browser
+npm run test:practice-browser
 ```
 
-The browser tests require the build produced by `test:foundation` or `npm run build`. Tests use temporary databases and disposable secrets; they do not contact Groq. They use portable package imports and can run in CI. Navigation, video, tutor and AI visualizer regressions use isolated authenticated test accounts. Other existing feature checks live under `tests/`; some older browser scripts still need authenticated fixtures. See [docs/phase1-verification.md](docs/phase1-verification.md) for this change’s results. `npm run lint` and `npx tsc -p tsconfig.app.json --noEmit` expose broader existing repository issues and are not currently clean global gates.
+The browser tests require the build produced by `test:foundation` or `npm run build`. Tests use temporary databases and disposable secrets; they do not contact Groq or Paiza live. See [docs/phase1-verification.md](docs/phase1-verification.md) for verification results. `npx tsc -p tsconfig.app.json --noEmit` still reports pre-existing legacy TypeScript diagnostics across older UI files; `npm run lint` passes with 0 errors.
 
 ## Database and migration
 

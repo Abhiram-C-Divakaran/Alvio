@@ -1400,7 +1400,11 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
                     <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
                     <pointLight position={[-10, 10, -10]} intensity={0.5} />
                     <OrbitControls makeDefault enablePan={false} minDistance={5} maxDistance={20} maxPolarAngle={Math.PI / 2 + 0.1} />
-                    <Environment preset="city" />
+                    <Environment resolution={128} frames={1}>
+                      <Lightformer position={[0, 5, -5]} scale={[12, 5, 1]} intensity={3} color="#b7cdff" />
+                      <Lightformer position={[-5, 1, 3]} rotation={[0, Math.PI / 2, 0]} scale={[5, 8, 1]} intensity={4} color="#7257ff" />
+                      <Lightformer position={[5, 2, 3]} rotation={[0, -Math.PI / 2, 0]} scale={[5, 8, 1]} intensity={3} color="#55cfff" />
+                    </Environment>
 
                     <Stars radius={50} depth={50} count={2000} factor={4} saturation={0} fade speed={reducedMotion ? 0 : 1} />
                     <DreiSparkles count={50} scale={12} size={2} speed={reducedMotion ? 0 : 0.4} opacity={0.2} color="#818cf8" />
