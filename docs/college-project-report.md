@@ -403,7 +403,7 @@ To guarantee reliability without spending money on live AI or execution APIs dur
 
 ## 16. Verified Test Results
 
-All results below were verified on **2026-11-22** on commit `e124262` (`main` branch) running **Node.js `v24.13.0`** and **npm `11.19.0`**, as recorded in [docs/final-verification-results.md](file:///c:/Users/Abhiram/Downloads/al/docs/final-verification-results.md).
+All results below were verified on **2026-11-22** on commit `e124262` (`main` branch) running **Node.js `v24.13.0`** and **npm `11.19.0`**, as recorded in [docs/final-verification-results.md](./final-verification-results.md).
 
 | Stage / Verification Check | Command | Status | Verified Result |
 | --- | --- | --- | --- |
@@ -429,20 +429,57 @@ All results below were verified on **2026-11-22** on commit `e124262` (`main` br
 
 ## 17. Screenshots
 
-> **[Instructions for Student]:** Capture clean, high-resolution (`1440×900` or `1920×1080`) screenshots from the running application (`http://localhost:3001`) using a demo account with some populated progress, save them in `docs/screenshots/`, and replace each placeholder image link below before printing/exporting your report.
+The ten screenshots below were captured directly from the running Alvio production build (`NODE_ENV=production node dist/server.cjs`) against an isolated temporary SQLite database seeded with all 472 coding problems using a demo account (`Demo Student`, `demo@alvio.edu`) with sample progress (no private personal details, real passwords, or API keys are exposed).
 
-| Fig. No. | Screenshot Target | Route / Action to Capture | Placeholder |
-| --- | --- | --- | --- |
-| **Fig. 17.1** | Landing Page | Open `/` (logged out) showing Alvio branding, feature highlights, and the `472` problems metric. | `![Figure 17.1: Alvio Landing Page](./screenshots/01-landing.png)` |
-| **Fig. 17.2** | Authentication Page | Open `/auth` showing Sign In / Sign Up form with validation. | `![Figure 17.2: Authentication Page](./screenshots/02-auth.png)` |
-| **Fig. 17.3** | Student Dashboard & Global Search | Open `/dashboard` after signing in; optionally open `Ctrl+K` quick search overlay. | `![Figure 17.3: Student Dashboard](./screenshots/03-dashboard.png)` |
-| **Fig. 17.4** | Interactive 3D Heap / Algorithm Visualizer | Open `/3d-visualizer?ds=Heap` (after inserting 3–4 nodes) or `/algorithms-visualizer?algo=merge-sort` mid-animation. | `![Figure 17.4: 3D Data Structure Visualizer](./screenshots/04-3d-visualizer.png)` |
-| **Fig. 17.5** | Video Learning with Timestamped Notes | Open `/video-learning` with a bundled video playing and at least one saved timestamped note visible. | `![Figure 17.5: Video Learning Module](./screenshots/05-video-learning.png)` |
-| **Fig. 17.6** | Coding Playground — Run & Server-Verified Submit | Open `/coding?problem=number-of-digit-one` showing Monaco Editor, language picker, Passed verdict, and Submissions history tab. | `![Figure 17.6: Coding Playground and Server-Verified Submit](./screenshots/06-coding-playground.png)` |
-| **Fig. 17.7** | Quiz Review & Progress Command Center | Open `/progress` after completing a 5-question Arrays quiz to show mastery charts, streak, and cloud sync badge. | `![Figure 17.7: Progress Command Center](./screenshots/07-progress-analytics.png)` |
-| **Fig. 17.8** | Two-Tab PvP Coding Duel | Place two browser windows side by side on `/workspace/pvp` showing room sync, live opponent code view, or Victory banner. | `![Figure 17.8: PvP Coding Duel](./screenshots/08-pvp-duel.png)` |
-| **Fig. 17.9** | AI Tutor / AI Visualizer / Mock Interview | Open `/learn/ai-visualizer` (showing 2D/3D toggle, timeline, and code line sync) and/or `/ai-tutor` with a streaming response. | `![Figure 17.9: AI Visualizer and AI Tutor](./screenshots/09-ai-tools.png)` |
-| **Fig. 17.10** | Student Profile & Terminal Test Proof | Open `/profile` showing solved problems and bio; optionally include a screenshot of `npm run test:demo` passing in the terminal. | `![Figure 17.10: Profile Page and Automated Test Verification](./screenshots/10-profile-and-tests.png)` |
+### Figure 17.1: Landing Page (`/`)
+Public landing page displaying Alvio branding, feature highlights, and the live **472** coding problems metric.
+
+![Figure 17.1: Alvio Landing Page](./screenshots/01-landing.png)
+
+### Figure 17.2: Authentication Page (`/auth`)
+Public Sign Up / Sign In page backed by server-side `bcryptjs` password hashing and HS256 JWT issuance.
+
+![Figure 17.2: Authentication Page](./screenshots/02-auth.png)
+
+### Figure 17.3: Student Dashboard (`/dashboard`)
+Authenticated student dashboard showing the four-pillar navigation shell, global search (`Ctrl+K`), streak, Arrays skill mastery (`80%`), recent quiz activity, and synced cloud status.
+
+![Figure 17.3: Student Dashboard](./screenshots/03-dashboard.png)
+
+### Figure 17.4: Interactive 3D Heap Visualizer (`/3d-visualizer?ds=Heap`)
+Interactive Three.js / React Three Fiber Max Heap scene rendered offline with local procedural lighting alongside time-complexity details and insert/delete controls.
+
+![Figure 17.4: 3D Data Structure Visualizer](./screenshots/04-3d-visualizer.png)
+
+### Figure 17.5: Video Learning with Timestamped Notes (`/video-learning`)
+Bundled local DSA video lesson (*Understanding Arrays*) at `1.50x` playback speed with lesson completion (`1/6`) and a persisted timestamped note.
+
+![Figure 17.5: Video Learning Module](./screenshots/05-video-learning.png)
+
+### Figure 17.6: Coding Playground (`/coding?problem=number-of-digit-one`)
+Resizable split workspace featuring locally bundled Monaco Editor, language picker, Run/Submit controls, passing local Web Worker test output (`Passed: 4/4`), and the documented server-verification scope notice.
+
+![Figure 17.6: Coding Playground](./screenshots/06-coding-playground.png)
+
+### Figure 17.7: Progress Command Center (`/progress`)
+Cloud-synced learning analytics displaying streak, average quiz score (`80%`), weekly momentum, learning path progression, and synced status.
+
+![Figure 17.7: Progress Command Center](./screenshots/07-progress-analytics.png)
+
+### Figure 17.8: Two-Tab PvP Coding Duel (`/workspace/pvp`)
+Active two-player local duel synchronized across two tabs in the same browser (`Live Players: 2 in this browser`) via `BroadcastChannel`, showing the shared *Reverse Linked List* challenge, live opponent tab, Monaco Editor, and Freeze Keyboard power-up.
+
+![Figure 17.8: PvP Coding Duel](./screenshots/08-pvp-duel.png)
+
+### Figure 17.9: AI Visualizer (`/learn/ai-visualizer`)
+Built-in offline *Linked List: Insertion at Position 3* 3D/2D walkthrough displaying interactive 3D nodes, playback timeline (`Step 3 of 4`), explanation panel, complexity summary, and synchronized code snippet.
+
+![Figure 17.9: AI Visualizer](./screenshots/09-ai-tools.png)
+
+### Figure 17.10: Student Profile Page (`/profile`)
+Authenticated student profile view (`Demo Student`) showing active days, quizzes taken, 30-day activity calendar, streak tracking, and synced progress status.
+
+![Figure 17.10: Student Profile Page](./screenshots/10-profile-and-tests.png)
 
 ---
 

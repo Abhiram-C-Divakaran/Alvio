@@ -1,6 +1,6 @@
 # Alvio — Final College Project Presentation
 
-> **Companion PowerPoint File:** Also generated at [docs/alvio-final-presentation.pptx](file:///c:/Users/Abhiram/Downloads/al/docs/alvio-final-presentation.pptx) (12 academic slides with embedded speaker notes). Replace the placeholders on Slide 1 with your name, roll number, college, department, and faculty guide before presenting.
+> **Companion PowerPoint File:** Also generated at [docs/alvio-final-presentation.pptx](./alvio-final-presentation.pptx) (12 academic slides with embedded speaker notes). Replace the placeholders on Slide 1 with your name, roll number, college, department, and faculty guide before presenting.
 
 ---
 

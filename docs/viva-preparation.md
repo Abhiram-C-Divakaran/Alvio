@@ -1,6 +1,6 @@
 # Alvio — Viva Preparation Guide
 
-30 likely college viva questions with clear, concise, technically accurate answers grounded in the actual Alvio codebase and [docs/final-verification-results.md](file:///c:/Users/Abhiram/Downloads/al/docs/final-verification-results.md).
+30 likely college viva questions with clear, concise, technically accurate answers grounded in the actual Alvio codebase and [docs/final-verification-results.md](./final-verification-results.md).
 
 ---
 

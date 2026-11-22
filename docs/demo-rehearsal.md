@@ -2,7 +2,7 @@
 
 This script guides you step by step through a smooth, reliable **10-minute live college evaluation demo**, plus a **5-minute offline fallback**, pre-demo checklists, and API failure backup plans.
 
-> **Reference:** All routes, features, and verified behaviors align with [docs/final-verification-results.md](file:///c:/Users/Abhiram/Downloads/al/docs/final-verification-results.md) and [docs/demo-runbook.md](file:///c:/Users/Abhiram/Downloads/al/docs/demo-runbook.md).
+> **Reference:** All routes, features, and verified behaviors align with [docs/final-verification-results.md](./final-verification-results.md) and [docs/demo-runbook.md](./demo-runbook.md).
 
 ---
 
