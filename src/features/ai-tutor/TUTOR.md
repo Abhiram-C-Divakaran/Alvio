@@ -1,6 +1,6 @@
 # AI Tutor
 
-The canonical `/ai-tutor` route uses the shared AI Tools shell. The Tutor keeps the existing Groq streaming `/api/chat` endpoint and generated animated-3d renderer. The current backend model is `llama-3.3-70b-versatile`.
+The canonical `/ai-tutor` route uses the shared AI Tools shell. The Tutor keeps the existing Groq streaming `/api/chat` endpoint and generated animated-3d renderer. The default backend model is `openai/gpt-oss-120b` (configurable via `GROQ_CHAT_MODEL`).
 
 `useTutor` manages streamed SSE deltas, cancellation, messages, per-user local conversation history, ratings, speech input, and text attachments. `TutorMarkdown` renders Markdown, tables, highlighted code with copy controls, and interactive examples. The resource drawer replaces the rail on narrow screens.
 

@@ -2,15 +2,15 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import cors from "cors";
-import Groq from "groq-sdk";
 import "dotenv/config";
 import bcrypt from "bcryptjs";
 import {authSecret,requireAuth,signAuthToken,publicUser} from "./server/auth";
-import {rateLimit,securityHeaders,safeErrors,logFailure,providerCancellation} from "./server/security";
+import {rateLimit,securityHeaders,safeErrors,logFailure} from "./server/security";
 import {registerProgress} from "./server/progress";
 import {registerSubmissions} from "./server/submissions";
 import db from "./server/db";
 import { registerVisualizer } from './server/visualizer';
+import { registerChat } from './server/chat';
 
 authSecret();
 
@@ -45,115 +45,7 @@ async function startServer() {
   registerProgress(app);
   registerVisualizer(app);
   registerSubmissions(app);
-
-  // API routes FIRST
-  app.post("/api/chat", requireAuth, rateLimit(25,60000,"chat",true), async (req, res) => {
-    const request=providerCancellation(res);
-    try {
-      const { messages, tutorMode } = req.body;
-      if(!Array.isArray(messages)||messages.length<1||messages.length>40||messages.some((m:any)=>!m||!['user','assistant','system'].includes(m.role)||typeof m.content!=='string'||m.content.length>24000)||messages.reduce((n:number,m:any)=>n+m.content.length,0)>100000)return res.status(400).json({error:'Please shorten the conversation or attachment.'});
-      const tutorModes: Record<string,string> = {
-        'Teach me': 'Use clear examples and manageable steps.',
-        'Give me a hint': 'Override the code and visualization requirements below: give one progressive hint, with no full solution, code, or revealing visualization unless explicitly requested.',
-        'Quiz me': 'Override the code and visualization requirements below: ask one question and wait for the student answer; do not reveal the answer first.',
-        'Review my code': 'Review correctness, edge cases and complexity before proposing fixes.',
-        'Mock Interview': 'Override the default tutor personality, Markdown formatting, and animated-3d visualization requirements above: act strictly as a technical interviewer/evaluator following the interview instructions in the user prompt. When JSON is requested, return ONLY valid raw JSON with no markdown fences or extra text.'
-      };
-      if (tutorMode !== undefined && (typeof tutorMode !== 'string' || !Object.hasOwn(tutorModes, tutorMode))) return res.status(400).json({ error: 'Choose a supported tutor mode.' });
-      const tutorInstruction = typeof tutorMode === 'string' ? tutorModes[tutorMode] || '' : '';
-      const apiKey = process.env.GROQ_API_KEY;
-
-      if (!apiKey) {
-        res.status(500).json({ error: "AI assistance is temporarily unavailable." });
-        return;
-      }
-
-      const groq = new Groq({ apiKey,timeout:60000,maxRetries:0 });
-
-      // Server-side system prompt — enforced regardless of what the frontend sends.
-      // This ensures consistent, high-quality tutor behavior even if the client-side
-      // SYSTEM_PROMPT is stripped or modified.
-      const SERVER_SYSTEM_PROMPT = `You are Alvio — a brilliant, friendly, and patient Data Structures & Algorithms (DSA) tutor powered by Generative AI.
-Your mission is to help students truly understand CS concepts through clear explanations, analogies, and interactive 3D visualizations.
-
-PERSONALITY:
-- Warm, encouraging, and engaging. Celebrate student progress.
-- Use plain English first, then introduce technical terms with definitions.
-- Always ask "Does that make sense?" or offer a follow-up question at the end.
-
-CONTENT RULES:
-1. Always use Markdown for formatting. Use headers, bullet points, and code blocks liberally.
-2. When explaining an algorithm or data structure, ALWAYS provide a working code example.
-3. Prefer JavaScript or Python examples. Match the language the user prefers if they mention one.
-4. NEVER give vague answers. Be concrete, precise, and thorough.
-
-VISUALIZATION RULES (CRITICAL):
-Whenever you explain a data structure or algorithm execution, you MUST include an interactive animated 3D visualization using this exact format:
-
-\`\`\`animated-3d
-{
-  "type": "array" | "graph" | "binary-tree" | "linked-list",
-  "code": "<optional: the solution code as a string>",
-  "steps": [
-    {
-      "values": [<numbers or strings for arrays/linked-lists>],
-      "highlight": [<indices or node IDs to highlight>],
-      "activeLine": <1-indexed line number in code>,
-      "description": "<one sentence describing this step>"
-    }
-  ]
-}
-\`\`\`
-
-For GRAPH type, each step uses:
-{ "nodes": ["A","B","C"], "edges": [["A","B"]], "highlight": ["A"], "description": "..." }
-
-For BINARY-TREE type, each step uses:
-{ "values": [50, 30, 70, 20, 40], "highlight": [0], "description": "..." }
-
-IMPORTANT:
-- Include at least 4 steps per visualization (more is better).
-- "highlight" must use the SAME values as the actual data, not made-up ones.
-- Steps must progress logically (e.g., a sort must actually sort).
-- ONLY include ONE animated-3d block per response. Place it after the explanation.`;
-
-      // Merge: always use server system prompt as the first message.
-      // Filter out any system messages the client sent (they may be outdated),
-      // then prepend the server-authoritative one.
-      const userMessages = messages.filter((m: any) => m.role !== 'system');
-
-      // Use streaming so the response feels fast and live
-      const stream = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: SERVER_SYSTEM_PROMPT + (tutorInstruction ? "\n\nCURRENT TUTORING MODE (takes precedence over default response formatting): " + tutorInstruction : "") },
-          ...userMessages.map((m: any) => ({ role: m.role, content: m.content }))
-        ],
-        temperature: 0.7,
-        max_tokens: 4096,
-        stream: true,
-      },{signal:request.signal});
-
-      // Stream the response back as Server-Sent Events
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-
-      let fullText = "";
-      for await (const chunk of stream) {
-        const delta = chunk.choices[0]?.delta?.content || "";
-        if (delta) {
-          fullText += delta;
-          res.write(`data: ${JSON.stringify({ delta })}\n\n`);
-        }
-      }
-      res.write(`data: ${JSON.stringify({ done: true, text: fullText })}\n\n`);
-      res.end();
-    } catch (error: any) {
-      logFailure(req,'chat_failed');
-      if(res.headersSent){res.write(`data: ${JSON.stringify({error:'AI assistance was interrupted. Please retry.'})}\n\n`);res.end();}else res.status(502).json({error:'AI assistance is temporarily unavailable.'});
-    }finally{request.dispose()}
-  });
+  registerChat(app);
 
 
 
