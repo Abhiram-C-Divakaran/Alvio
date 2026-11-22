@@ -12,6 +12,7 @@ export interface ExecutionResult {
   totalCount: number;
   stdout: string[];
   executionTimeMs: number;
+  errorType?: 'compilation' | 'runtime' | 'timeout' | 'provider' | 'unsupported' | null;
 }
 
 export async function executeJavaScript(userCode:string,testCases:TestCase[],functionName:string):Promise<ExecutionResult>{

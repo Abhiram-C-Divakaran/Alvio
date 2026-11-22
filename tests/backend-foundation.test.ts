@@ -96,9 +96,11 @@ test('submission verdicts cannot be supplied by the client', async () => {
   const db = new DatabaseSync(join(directory, 'test.sqlite'));
   db.prepare("INSERT INTO problems(id,title,difficulty,description,examples,constraints,signature,starterCode,testCases) VALUES(?,?,?,?,?,?,?,?,?)").run('trust-test','Trust test','Easy','Test','[]','[]','{}','{}','[]'); db.close();
   const response = await request('/api/problems/trust-test/submit', a.token, { code: 'return 1', language: 'javascript', status: 'Passed', passedTestcases: 999, totalTestcases: 999 });
-  assert.equal(response.status, 202);
+  assert.equal(response.status, 200);
+  const verdict = await response.json();
+  assert.equal(verdict.status, 'Error'); assert.equal(verdict.passedCount, 0); assert.equal(verdict.totalCount, 0); assert.equal(verdict.verified, false);
   const saved = await (await request('/api/problems/trust-test/submissions', a.token)).json();
-  assert.equal(saved.submission.status, 'Unverified'); assert.equal(saved.submission.verified, 0); assert.equal(saved.submission.passed_testcases, null);
+  assert.equal(saved.submission, null);
   const profile = await (await request('/api/profile', a.token)).json(); assert.equal(profile.solvedProblems.length, 0);
 });
 

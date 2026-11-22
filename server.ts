@@ -8,6 +8,7 @@ import bcrypt from "bcryptjs";
 import {authSecret,requireAuth,signAuthToken,publicUser} from "./server/auth";
 import {rateLimit,securityHeaders,safeErrors,logFailure,providerCancellation} from "./server/security";
 import {registerProgress} from "./server/progress";
+import {registerSubmissions} from "./server/submissions";
 import db from "./server/db";
 import { registerVisualizer } from './server/visualizer';
 
@@ -43,6 +44,7 @@ async function startServer() {
   app.use(express.json({limit:'512kb'}));
   registerProgress(app);
   registerVisualizer(app);
+  registerSubmissions(app);
 
   // API routes FIRST
   app.post("/api/chat", requireAuth, rateLimit(25,60000,"chat",true), async (req, res) => {
@@ -401,39 +403,7 @@ IMPORTANT:
     }
   });
 
-  // Judge boundary: code/language only. A future isolated worker owns all verdicts.
-  app.post('/api/problems/:problemId/submit',requireAuth,rateLimit(30,60000,'submit',true),(req,res)=>{
-    const {code,language}=req.body;
-    if(typeof code!=='string'||code.length>100000||!['javascript','python','java','cpp','c','typescript','python3','csharp'].includes(language))return res.status(400).json({error:'Invalid code or language.'});
-    if(!db.prepare('SELECT id FROM problems WHERE id=?').get(String(req.params.problemId)))return res.status(404).json({error:'Problem not found.'});
-    db.prepare("INSERT INTO user_submissions(user_id,problem_id,status,language,code,verified) VALUES(?,?,?,?,?,0)").run(req.userId,String(req.params.problemId),'Unverified',language,code);
-    res.status(202).json({success:true,status:'Unverified',verified:false,message:'Saved as an unverified attempt. Server judging is not yet available.'});
-  });
-
-  app.get("/api/problems/:problemId/submissions", requireAuth, (req, res) => {
-    try {
-
-      const problemId = String(req.params.problemId);
-
-      const submission = db.prepare(`
-        SELECT us.*, u.name as user_name
-        FROM user_submissions us
-        JOIN users u ON us.user_id = u.id
-        WHERE us.problem_id = ? AND us.user_id = ?
-        ORDER BY us.created_at DESC
-        LIMIT 1
-      `).get(problemId, req.userId);
-
-      if (submission) {
-        res.json({ submission, submissions: db.prepare("SELECT * FROM user_submissions WHERE user_id = ? AND problem_id = ? ORDER BY created_at DESC, id DESC LIMIT 50").all(req.userId,problemId) });
-      } else {
-        res.json({ submission: null });
-      }
-    } catch (error) {
-      logFailure(req,'backend_error');
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
+  // Coding submission routes are registered by registerSubmissions(app) above.
 
   app.post("/api/problems/:problemId/interaction", requireAuth, (req, res) => {
     try {

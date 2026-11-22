@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 export function rateLimit(limit:number,windowMs:number,scope:string,byUser=false):RequestHandler{
  const entries=new Map<string,{count:number;until:number}>();
  return(req,res,next)=>{const now=Date.now();for(const [key,v] of entries)if(v.until<=now)entries.delete(key);
- const keys=[`${scope}:ip:${req.ip}`,...(byUser?[`${scope}:user:${req.userId}`]:[])];
+ const keys=[`${scope}:ip:${req.ip}`,...(byUser&&req.userId!==undefined?[`${scope}:user:${req.userId}`]:[])];
  for(const key of keys){const value=entries.get(key);if((value&&value.count>=limit)||entries.size>10000){res.setHeader('Retry-After',String(Math.max(1,Math.ceil(((value?.until||now+windowMs)-now)/1000))));res.status(429).json({error:"You're sending requests too quickly. Try again in a moment.",code:'RATE_LIMITED'});return;}}
  for(const key of keys){const value=entries.get(key)||{count:0,until:now+windowMs};value.count++;entries.set(key,value)}next();};
 }

@@ -187,8 +187,19 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [lastAction, setLastAction] = useState<'run' | 'submit' | null>(null);
+  const [problemStats, setProblemStats] = useState(problem.stats ?? { accepted: 0, submissions: 0 });
+  const [solvedLocal, setSolvedLocal] = useState(isSolved);
   const [showTopics, setShowTopics] = useState(false);
   const [showHints, setShowHints] = useState(false);
+
+  useEffect(() => {
+    setProblemStats(problem.stats ?? { accepted: 0, submissions: 0 });
+  }, [problem.id, problem.stats?.accepted, problem.stats?.submissions]);
+
+  useEffect(() => {
+    setSolvedLocal(isSolved);
+  }, [isSolved, problem.id]);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
@@ -249,9 +260,10 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
 
     // Fetch interaction data
     const fetchInteractions = async () => {
+      if (!token) return;
       try {
         const res = await apiFetch(`/api/problems/${problem.id}/interaction`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
+          headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
           const data = await res.json();
@@ -338,6 +350,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     if(isExecuting||isSubmitting)return;
     setIsExecuting(true);
     setResult(null);
+    setLastAction('run');
     setRightBottomTab('results');
 
     if (language === 'javascript') {
@@ -376,70 +389,109 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
   };
 
   const handleSubmit = async () => {
-    if(isExecuting||isSubmitting)return;
+    if (isExecuting || isSubmitting) return;
     saveDraft();
     setIsSubmitting(true);
     setResult(null);
+    setSubmitSuccess(false);
+    setLastAction('submit');
     setRightBottomTab('results');
+    setExecutedCases(problem.testCases);
+    setSelectedCaseIdx(0);
 
-    if (language === 'javascript') {
-      await new Promise(r => setTimeout(r, 600));
-    }
+    try {
+      const submissionResponse = await apiFetch(`/api/problems/${encodeURIComponent(problem.id)}/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          code,
+          language
+        })
+      });
 
-    const functionName = extractFunctionName(code, problem.signature?.name);
-    let execResult: ExecutionResult;
+      const data = await submissionResponse.json().catch(() => null);
+      if (!data || !['Passed', 'Failed', 'Error'].includes(data.status)) {
+        const errorMessage = data?.error || `Submission failed (HTTP ${submissionResponse.status}).`;
+        setResult({
+          status: 'Error',
+          passedCount: 0,
+          totalCount: problem.testCases.length,
+          executionTimeMs: 0,
+          stdout: [],
+          message: errorMessage,
+          errorType: submissionResponse.status >= 500 ? 'provider' : 'runtime'
+        });
+        setSaved(errorMessage);
+        return;
+      }
 
-    const parsedTestCases = problem.testCases;
-    setExecutedCases(parsedTestCases);
+      const serverResult: ExecutionResult = {
+        status: data.status,
+        passedCount: typeof data.passedCount === 'number' ? data.passedCount : 0,
+        totalCount: typeof data.totalCount === 'number' ? data.totalCount : problem.testCases.length,
+        executionTimeMs: typeof data.executionTimeMs === 'number' ? data.executionTimeMs : 0,
+        stdout: Array.isArray(data.stdout) ? data.stdout : [],
+        message: data.message || data.error,
+        errorType: data.errorType ?? null
+      };
 
-    if (language === 'javascript') {
-      execResult = await executeJavaScript(code, parsedTestCases, functionName);
-    } else if (language === 'python' || language === 'python3') {
-      execResult = await executePython(code, parsedTestCases, functionName);
-    } else if (language === 'java') {
-      execResult = await executeJava(code, { ...problem, testCases: parsedTestCases });
-    } else if (language === 'typescript') {
-      execResult = await executeTypescript(code, parsedTestCases, functionName);
-    } else if (language === 'csharp') {
-      execResult = await executeCsharp(code, { ...problem, testCases: parsedTestCases });
-    } else if (language === 'c') {
-      execResult = await executeC(code, { ...problem, testCases: parsedTestCases });
-    } else {
-      execResult = await executeCpp(code, { ...problem, testCases: parsedTestCases });
-    }
+      setResult(serverResult);
+      if (serverResult.status === 'Failed') {
+        setSelectedCaseIdx(Math.min(serverResult.passedCount, Math.max(0, problem.testCases.length - 1)));
+      }
+      if (data.stats && typeof data.stats.accepted === 'number' && typeof data.stats.submissions === 'number') {
+        setProblemStats(data.stats);
+      }
+      if (data.verified && serverResult.status === 'Passed') {
+        setSolvedLocal(true);
+      }
 
-    setResult(execResult);
-    setIsSubmitting(false);
-
-    if (execResult) {
-      if (token) {
+      if (token && data.saved) {
+        setSubmitSuccess(true);
+        setSaved(
+          serverResult.status === 'Passed'
+            ? 'Submission verified on server: all provided tests passed.'
+            : `Submission recorded on server (${serverResult.status}).`
+        );
         try {
-          const submissionResponse = await apiFetch(`/api/problems/${problem.id}/submit`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              language, code
-            })
-          });
-
-          if(!submissionResponse.ok){setSaved('Submission could not be saved. Please retry.');return;}
-          // Refresh submission data
-          const resSub = await apiFetch(`/api/problems/${problem.id}/submissions`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+          const resSub = await apiFetch(`/api/problems/${encodeURIComponent(problem.id)}/submissions`, {
+            headers: { Authorization: `Bearer ${token}` }
           });
           if (resSub.ok) {
             const dataSub = await resSub.json();
-            setLatestSubmission(dataSub.submission);setSubmissionHistory(dataSub.submissions||[]);
+            setLatestSubmission(dataSub.submission);
+            setSubmissionHistory(dataSub.submissions || []);
           }
         } catch {
-          setSaved('Could not confirm the saved attempt. Please retry.'); return;
+          if (data.submission) {
+            setLatestSubmission(data.submission);
+            setSubmissionHistory(prev => [data.submission, ...prev]);
+          }
         }
-      } else { setSaved('Sign in to save this attempt.'); return; }
-      setSubmitSuccess(true); setSaved('Attempt saved as unverified. Local test results do not award solved credit.');
-
+      } else if (!token) {
+        setSaved('Verdict calculated on server. Sign in to save submission history.');
+      } else if (data.errorType === 'provider') {
+        setSaved('Execution service unavailable. Please retry.');
+      } else if (data.errorType === 'unsupported') {
+        setSaved('Server submission is not supported for this language on this problem.');
+      }
+    } catch (err: any) {
+      const errorMessage = err?.message || 'Unable to reach the submission service. Please retry.';
+      setResult({
+        status: 'Error',
+        passedCount: 0,
+        totalCount: problem.testCases.length,
+        executionTimeMs: 0,
+        stdout: [],
+        message: errorMessage,
+        errorType: 'provider'
+      });
+      setSaved(errorMessage);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -564,7 +616,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                       <h1 className="text-[24px] font-bold text-white mb-4">
                         {problemNumber}. {problem.title}
                       </h1>
-                      {isSolved ? (
+                      {solvedLocal ? (
                         <div className="flex items-center gap-1.5 text-sm text-[#2cbb5d] font-semibold mt-1">
                           Solved <CheckCircle2 size={16} />
                         </div>
@@ -582,8 +634,8 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
 
                       <span className="text-[12px] text-gray-400 font-medium bg-white/5 px-2.5 py-0.5 rounded-full">
                         Acceptance Rate: {(() => {
-                          const sub = problem.stats?.submissions || 0;
-                          const acc = problem.stats?.accepted || 0;
+                          const sub = problemStats.submissions || 0;
+                          const acc = problemStats.accepted || 0;
                           return sub > 0 ? ((acc / sub) * 100).toFixed(1) + '%' : '0.0%';
                         })()}
                       </span>
@@ -782,13 +834,13 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                     </button>
                     <div className="ml-auto flex items-center text-[12px] font-medium text-gray-500">
                       <span>
-                        Accepted <strong className="text-gray-200">{(problem.stats?.accepted ?? 0).toLocaleString()}</strong>
+                        Accepted <strong className="text-gray-200">{(problemStats.accepted ?? 0).toLocaleString()}</strong>
                         <span className="text-gray-500">/</span>
                         <span className="text-gray-500 text-[11px] ml-[1px]">
                           {(() => {
-                            const sub = problem.stats?.submissions ?? 0;
-                            if (sub >= 1000000) return (sub / 1000000).toFixed(1).replace(/\\.0$/, '') + 'M';
-                            if (sub >= 1000) return (sub / 1000).toFixed(1).replace(/\\.0$/, '') + 'K';
+                            const sub = problemStats.submissions ?? 0;
+                            if (sub >= 1000000) return (sub / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                            if (sub >= 1000) return (sub / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
                             return sub.toString();
                           })()}
                         </span>
@@ -796,7 +848,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                       <span className="mx-2.5 text-gray-700">|</span>
                       <span>
                         Acceptance Rate <strong className="text-gray-200">
-                          {problem.stats?.submissions ? (((problem.stats?.accepted || 0) / (problem.stats?.submissions || 1)) * 100).toFixed(1) : '0.0'}%
+                          {problemStats.submissions ? (((problemStats.accepted || 0) / (problemStats.submissions || 1)) * 100).toFixed(1) : '0.0'}%
                         </strong>
                       </span>
                     </div>
@@ -804,7 +856,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                 </motion.div>
               )}
 
-              {leftTab==='submissions'&&submissionHistory.length>0&&<div className="cw-history">{submissionHistory.map(sub=><button key={sub.id} onClick={()=>setLatestSubmission(sub)}>{sub.verified&&sub.status==='Passed'?'Accepted':'Unverified'} · {sub.language} · {sub.runtime_ms} ms · {sub.created_at}</button>)}</div>}
+              {leftTab==='submissions'&&submissionHistory.length>0&&<div className="cw-history">{submissionHistory.map(sub=>{const label=!sub.verified?'Unverified':sub.status==='Passed'?'Passed':sub.status==='Failed'?'Failed':'Error';const countLabel=sub.total_testcases!=null?` · ${sub.passed_testcases??0}/${sub.total_testcases}`:'';return <button key={sub.id} onClick={()=>setLatestSubmission(sub)}>{label}{countLabel} · {sub.language} · {sub.runtime_ms??0} ms · {sub.created_at}</button>;})}</div>}
               {leftTab === 'submissions' && (
                 <motion.div
                   initial={{ opacity: 0, y: 5 }}
@@ -815,14 +867,14 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                   {loadingSubmission ? (
                     <div className="text-gray-500 text-sm mt-4">Loading submission data...</div>
                   ) : !latestSubmission ? (
-                    <div className="text-gray-500 text-sm mt-4">No successful submissions yet. Submit a solution to see it here!</div>
+                    <div className="text-gray-500 text-sm mt-4">No submissions yet. Submit a solution to see your history here!</div>
                   ) : (
                     <>
                       {/* Header */}
                       <div className="flex items-center justify-between">
                         <div className="space-y-1">
-                          <div className={`text-[22px] font-bold tracking-tight ${latestSubmission.status === 'Passed' ? 'text-[#2cbb5d]' : 'text-rose-400'}`}>
-                            {latestSubmission.verified && latestSubmission.status === 'Passed' ? 'Accepted' : 'Unverified'}
+                          <div className={`text-[22px] font-bold tracking-tight ${!latestSubmission.verified ? 'text-amber-400' : latestSubmission.status === 'Passed' ? 'text-[#2cbb5d]' : latestSubmission.status === 'Failed' ? 'text-rose-400' : 'text-amber-400'}`}>
+                            {!latestSubmission.verified ? 'Unverified' : latestSubmission.status === 'Passed' ? 'Passed' : latestSubmission.status === 'Failed' ? 'Failed' : 'Error'}
                           </div>
                           <div className="flex items-center gap-2 text-xs text-gray-400">
                             <User size={12} />
@@ -848,7 +900,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                               <Clock size={14} /> Runtime
                             </div>
                             <div className="text-[26px] font-bold text-white">
-                              {latestSubmission.runtime_ms} <span className="text-[14px] font-normal text-gray-400">ms</span>
+                              {latestSubmission.runtime_ms ?? 0} <span className="text-[14px] font-normal text-gray-400">ms</span>
                             </div>
                             <div className="text-[12px] text-amber-400 mt-1 font-semibold">
                               Percentile unavailable
@@ -884,8 +936,8 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                         )}
 
                         <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-white/5">
-                          <span>Test cases passed: {latestSubmission.passed_testcases}/{latestSubmission.total_testcases}</span>
-                          <span>Acceptance: {(problem.stats?.submissions || 0) > 0 ? (((problem.stats?.accepted || 0) / (problem.stats?.submissions || 1)) * 100).toFixed(1) : '0.0'}%</span>
+                          <span>Test cases passed: {latestSubmission.passed_testcases ?? 0}/{latestSubmission.total_testcases ?? problem.testCases.length}</span>
+                          <span>Acceptance: {(problemStats.submissions || 0) > 0 ? (((problemStats.accepted || 0) / (problemStats.submissions || 1)) * 100).toFixed(1) : '0.0'}%</span>
                         </div>
                       </div>
                     </>
@@ -1103,28 +1155,43 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
 
                 {rightBottomTab==='testcases'&&localTestCases[selectedCaseIdx]&&<label className="cw-expected">Expected output (JSON)<input aria-label="Expected output" value={typeof localTestCases[selectedCaseIdx].expected==='string'?localTestCases[selectedCaseIdx].expected:JSON.stringify(localTestCases[selectedCaseIdx].expected)} onChange={e=>setLocalTestCases(prev=>prev.map((tc,i)=>i===selectedCaseIdx?{...tc,expected:e.target.value}:tc))}/></label>}
                 {rightBottomTab==='testcases'&&<div className="cw-run-case"><a href="/ai-tutor">✦ Ask Alvio</a> <a href="/learn/complexity">Visualize Complexity →</a><button disabled={isExecuting||isSubmitting} onClick={()=>handleRun(true)}><Play size={14}/>Run Testcase</button><p>Use Run to see output for this testcase</p></div>}
-                <p className="cw-judge-note">Submit checks the problem’s provided tests. Hidden-test judging and measured memory/percentiles are not available.</p>{submitSuccess&&<p role="status">Attempt saved as unverified. Local results do not award solved credit.</p>}
+                <p className="cw-judge-note">Submit verifies your code on the server against the problem’s provided test cases. Hidden-test judging and measured memory/percentiles are not available.</p>{submitSuccess&&saved&&<p role="status">{saved}</p>}
                 {rightBottomTab === 'results' && (
                   <div className="h-full">
-                    {!result && !isExecuting && (
+                    {!result && !isExecuting && !isSubmitting && (
                       <div className="text-gray-500 flex h-full items-center justify-center italic">
                         You must run your code first.
                       </div>
                     )}
-                    {isExecuting && (
+                    {(isExecuting || isSubmitting) && (
                       <div className="text-gray-300 flex items-center justify-center gap-2 h-full">
                         <Loader2 size={16} className="animate-spin text-blue-500" />
-                        Evaluating test cases...
+                        {isSubmitting ? 'Submitting and verifying on server...' : 'Evaluating test cases...'}
                       </div>
                     )}
                     {result && (
                       <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-                        <div className="flex items-baseline gap-3 mb-2">
+                        <div className="flex flex-wrap items-baseline gap-3 mb-2">
                           <span className={`text-[22px] font-semibold tracking-tight ${
                             result.status === 'Passed' ? 'text-emerald-500' :
                             result.status === 'Failed' ? 'text-rose-500' : 'text-amber-500'
                           }`}>
-                            {result.status === 'Passed' ? 'Local tests passed' : result.status === 'Failed' ? 'Wrong Answer' : result.message?.includes('Time Limit')?'Time Limit Exceeded':result.message?.includes('Syntax')?'Compilation Error':'Runtime Error'}
+                            {result.status === 'Passed'
+                              ? (lastAction === 'submit' ? 'Passed' : 'Local tests passed')
+                              : result.status === 'Failed'
+                                ? 'Wrong Answer'
+                                : result.errorType === 'provider'
+                                  ? 'Execution Service Unavailable'
+                                  : result.errorType === 'unsupported'
+                                    ? 'Unsupported for Server Submit'
+                                    : result.errorType === 'timeout' || /Time Limit|timed out/i.test(result.message || '')
+                                      ? 'Time Limit Exceeded'
+                                      : result.errorType === 'compilation' || /Compilation Error|SyntaxError/i.test(result.message || '')
+                                        ? 'Compilation Error'
+                                        : 'Runtime Error'}
+                          </span>
+                          <span className="text-gray-300 text-[13px] font-medium">
+                            Passed: {result.passedCount}/{result.totalCount}
                           </span>
                           <span className="text-gray-400 text-[13px] font-medium">
                             Runtime: {result.executionTimeMs} ms
@@ -1178,7 +1245,9 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                                   ? JSON.stringify(executedCases[selectedCaseIdx].expected)
                                   : result.status === 'Failed' && selectedCaseIdx === result.passedCount && result.message?.includes('Output: ')
                                     ? result.message.split('Output: ')[1]?.split('\n')[0] || '...'
-                                    : '...'}
+                                    : result.status === 'Failed' && selectedCaseIdx === result.passedCount && result.message
+                                      ? result.message
+                                      : '...'}
                               </div>
                             </div>
                             <div className="space-y-2">
@@ -1195,7 +1264,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
                             {result.message}
                           </div>
                         )}
-                        {result.status === 'Error' && result.stdout && result.stdout.length > 0 && (
+                        {result.stdout && result.stdout.length > 0 && (
                           <div className="space-y-1.5 mt-4">
                             <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Stdout</span>
                             <div className="bg-white/5 text-gray-300 p-3.5 rounded-xl text-xs font-medium whitespace-pre-wrap border border-[#242428]">

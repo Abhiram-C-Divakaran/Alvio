@@ -63,6 +63,7 @@ Progress updates immediately in Zustand, persists to IndexedDB, and syncs after 
 npm run test:foundation
 npx playwright install chromium
 npm run test:auth-browser
+npm run test:auth-regressions
 npm run test:learning-browser
 ```
 
@@ -77,7 +78,7 @@ SQLite migrations run on server startup and are tracked in `schema_migrations`. 
 - Passwords are hashed only on the server. All private APIs share JWT verification, including account existence checks.
 - AI endpoints require authentication and enforce request limits, per-user/IP quotas, timeouts and disconnect cancellation. Missing AI configuration returns an explicit unavailable response.
 - Permanent XP is server-owned. Self-reported learning snapshots cannot increase account XP. A validated learning-event reward ledger is a follow-up.
-- Coding attempts are stored as **Unverified**. Passing local tests does not grant solved credit. A secure isolated judge and hidden-test service are not yet implemented; Express never executes submitted code.
+- Coding submissions are verified server-side against each problem's provided SQLite test cases using the external Paiza execution provider (`server/submissionRunner.ts`). Client-supplied verdicts and test cases are ignored, and Express never executes student code locally. There is no hidden-test LeetCode-style judge or measured memory/percentiles. See [src/features/coding/WORKSPACE.md](src/features/coding/WORKSPACE.md) for supported languages and limitations.
 - Password reset remains explicitly unavailable. Email verification, revocation/refresh and HttpOnly-cookie sessions are follow-ups.
 - Rate limits are in-memory per process. Distributed deployment needs shared quotas. Bearer tokens in browser storage require careful same-origin script security.
 - Tutor/interview histories, code drafts and visualizer sessions remain account-scoped on the device. Learning progress syncs to the server.
