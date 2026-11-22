@@ -1,89 +1,113 @@
 # Alvio — Viva Preparation Guide
 
-25 likely college viva questions with clear, concise answers grounded in the actual Alvio codebase.
+30 likely college viva questions with clear, concise, technically accurate answers grounded in the actual Alvio codebase and [docs/final-verification-results.md](file:///c:/Users/Abhiram/Downloads/al/docs/final-verification-results.md).
 
 ---
 
 ### 1. What is Alvio and what problem does it solve?
-Alvio is a full-stack web platform for learning Data Structures and Algorithms (DSA). Students normally have to switch between static notes, separate visualization sites, quiz tools, and coding platforms. Alvio combines interactive 2D/3D visualizations, bundled video lessons, quizzes, cloud-synced progress tracking, a multi-language coding playground with server-verified submissions, PvP practice duels, and AI tutoring in one interface.
+Alvio is a full-stack web platform for learning Data Structures and Algorithms (DSA). Students normally switch between static textbooks, separate video websites, animation tools, quiz sites, and coding platforms. Alvio unifies interactive 2D/3D visualizations, bundled video lessons, configurable quizzes, cloud-synced progress tracking, a 472-problem multi-language Coding Playground with server-verified submissions, local PvP practice duels, and optional AI tutoring inside one workspace.
 
-### 2. Why did you choose React and TypeScript for the frontend?
-React lets us build reusable, state-driven UI components for complex workspaces like the Coding Playground, 3D visualizers, and quizzes. TypeScript adds compile-time type checking on shared data models (such as `CodingProblem`, `LearningProgress`, and `ExecutionResult`), which helps catch interface mismatches early during development.
+### 2. Why did you choose React for the frontend?
+React lets us build modular, reusable, state-driven components for complex interactive pages like the split-pane Coding Playground, 3D visualizers, video player with notes, and quiz engine. Combined with `React.lazy` and `Suspense`, routes load on demand so the initial page remains fast.
 
-### 3. What role does Vite play in this project?
-Vite is our frontend build tool and development server. During development (`npm run dev`), Express mounts Vite in middleware mode for fast Hot Module Replacement on a single port. For production (`npm run build`), Vite bundles and code-splits the React app into `dist/`, while `esbuild` bundles `server.ts` into `dist/server.cjs`.
+### 3. Why did you use TypeScript instead of plain JavaScript?
+TypeScript adds compile-time static typing across shared domain models such as `CodingProblem`, `LearningProgress`, `ExecutionResult`, and API request/response contracts. This catches mismatched property names, invalid status strings, and missing parameters early during development before they become runtime bugs.
 
-### 4. Why did you use Express on the backend?
-Express provides a lightweight, easy-to-understand REST API layer for authentication, SQLite database access, learning progress synchronization, coding submission verification, and proxying AI requests. Putting AI and execution provider calls behind Express keeps API keys and verification logic off the client.
+### 4. What role does Vite play in Alvio?
+Vite is our frontend build tool and development server. During development (`npm run dev`), Express mounts Vite in middleware mode so the React UI (with Hot Module Replacement) and `/api/*` endpoints share a single port. For production (`npm run build`), Vite bundles and code-splits the React client into `dist/` (built in ~2.79s), while `esbuild` bundles `server.ts` into `dist/server.cjs` (101.0 kb).
 
-### 5. Why SQLite instead of PostgreSQL or MongoDB?
-For a college project, Node.js 24's built-in `node:sqlite` (`DatabaseSync`) requires zero external database server setup, stores everything in a single portable file (`data/database.sqlite`), and supports foreign keys, WAL mode, and ACID transactions. Our schema is relational (users, problems, submissions, stats, interactions), so SQLite fits cleanly and runs reliably on any demo machine.
+### 5. Why did you choose Express on the backend?
+Express 5 provides a clean, lightweight middleware and routing layer for authentication, SQLite queries, cloud progress synchronization, server-verified coding submissions, and proxying external AI requests. Keeping verification logic and API keys (`JWT_SECRET`, `GROQ_API_KEY`) on Express establishes a clear client-server trust boundary.
 
-### 6. How are database schema updates handled safely?
-`server/migrations.ts` runs numbered, transactional migrations tracked in a `schema_migrations` table on startup. Each migration runs inside `BEGIN IMMEDIATE` / `COMMIT` (with rollback on error) and checks existing columns before altering tables, so restarting the server never wipes existing accounts or submissions.
+### 6. Why did you use SQLite instead of PostgreSQL or MongoDB?
+Node.js 24 includes built-in SQLite (`node:sqlite` / `DatabaseSync`), which requires zero external database server installation, stores all data in one portable file (`data/database.sqlite`), and supports ACID transactions, foreign keys, and Write-Ahead Logging (WAL). Because our data is relational (users, problems, submissions, stats, interactions), SQLite is reliable and effortless to run on any college demo machine.
 
-### 7. How does authentication work in Alvio?
-When a student signs up (`POST /api/auth/signup`), Express normalizes the email, validates field lengths, hashes the password with `bcryptjs` (cost factor 10), and stores only the hash in SQLite. On login (`POST /api/auth/login`), Express verifies the password with `bcrypt.compare` and issues a signed JWT. Every protected API route validates that JWT via `requireAuth` in `server/auth.ts`.
+### 7. How are database schema changes and problem seeding handled safely?
+`server/migrations.ts` runs numbered, transactional migrations (`BEGIN IMMEDIATE` / `COMMIT`, rolling back on error) tracked in a `schema_migrations` table on startup. It inspects existing columns before altering tables, preserving existing accounts and submissions. To populate the 472 coding challenges on a fresh setup, we run `npx tsx server/migrateProblems.ts`, which invokes `server/db.ts` and `seedProblemCatalog()`.
 
-### 8. What is inside the JWT and how do you verify it?
-Our JWT uses HS256 with `sub` set to the numeric user ID, `issuer: 'alvio'`, `audience: 'alvio-student'`, and a 7-day expiry. `server/auth.ts` verifies the signature, algorithm, issuer, audience, and expiry using the mandatory `JWT_SECRET` environment variable (minimum 32 characters, no fallback), and also checks SQLite to confirm the user account still exists.
+### 8. How does user authentication work end-to-end in Alvio?
+On signup (`POST /api/auth/signup`), Express normalizes the email, validates field lengths, hashes the password with `bcryptjs`, saves the user in SQLite, and returns a signed JWT. On login (`POST /api/auth/login`), Express compares the password against the stored hash with `bcrypt.compare` and issues a JWT. On the frontend, `AuthGuard` verifies the stored token via `GET /api/auth/me` before rendering protected pages and preserves deep links via a validated `next` parameter.
 
-### 9. Why do you hash passwords with bcrypt instead of encrypting or using SHA-256?
-Hashing is one-way, so even if the database file is read, plain passwords cannot be recovered. Unlike fast hashes like SHA-256, `bcryptjs` is intentionally slow and includes a unique random salt per password, protecting against rainbow-table and brute-force attacks.
+### 9. What is inside the JWT and how does `server/auth.ts` verify it?
+Our JWT uses the `HS256` algorithm with `sub` set to the numeric user ID, `issuer: 'alvio'`, `audience: 'alvio-student'`, and a 7-day expiration. `server/auth.ts` requires an explicit `JWT_SECRET` environment variable of at least 32 characters (server startup fails without it—no hardcoded fallback). On every protected request, `requireAuth` verifies the signature, algorithm, issuer, audience, expiry, and checks SQLite to confirm the user account still exists.
 
-### 10. How is client-side state managed with Zustand?
-Zustand manages lightweight global stores such as `useAuthStore` (user session and token) and `useProgressStore` (learning progress, video lessons, quiz mastery, and sync status). It avoids boilerplate while allowing both React components and helper services (`apiFetch`, `progressSync`) to read and update state cleanly.
+### 10. Why do you hash passwords with bcrypt instead of encrypting them or using SHA-256?
+Hashing is one-way, so plaintext passwords cannot be decrypted even if someone reads `database.sqlite`. Unlike fast cryptographic hashes such as SHA-256, `bcryptjs` is intentionally computationally slow and embeds a unique random salt per password, defending against rainbow-table and brute-force attacks.
 
-### 11. Why did you use IndexedDB in addition to SQLite?
-IndexedDB (via `src/services/db.ts` and `progressSync.ts`) acts as an account-scoped offline cache in the browser. Progress updates happen immediately in the UI and persist locally even if the network drops, then sync to SQLite in the background when connectivity returns.
+### 11. What happens when a user's session expires or receives an HTTP 401 response?
+All authenticated frontend requests pass through a single shared transport (`apiFetch` / `authenticatedFetch` in `authApi.ts`), which attaches bearer credentials only to same-origin `/api/` URLs. If any endpoint returns HTTP `401`, `apiFetch` invalidates that exact session, aborts in-flight fetches and SSE streams, clears visible progress state, and redirects the student back through `AuthGuard` to `/auth`.
 
-### 12. How does cloud progress synchronization prevent overwriting data across tabs or devices?
-Each user's `learning_progress` row stores a numeric `revision`. When the client sends `PUT /api/progress`, the server checks that the submitted `revision` matches the current DB revision (compare-and-swap). If another session saved newer data, the server returns HTTP `409 Conflict` with the latest cloud snapshot, and the client performs a three-way merge (`mergeProgress.ts`) against the last acknowledged base before retrying.
+### 12. How is client-side state managed with Zustand?
+Zustand provides minimal, reactive global stores—primarily `useAuthStore` (authenticated user profile and bearer token) and `useProgressStore` (topic progress, video positions/notes, quiz attempts, visualizer metrics, and sync status). Unlike heavier state libraries, Zustand requires very little boilerplate and can be accessed cleanly from both React components and service modules like `apiFetch` and `progressSync`.
 
-### 13. How are the 3D visualizations built with Three.js?
-We use Three.js through React Three Fiber (`@react-three/fiber`) and `@react-three/drei` to render interactive 3D arrays, linked lists, trees, graphs, heaps, and sorting algorithms. All 3D scenes use local procedural `<Environment><Lightformer /></Environment>` lighting instead of external HDR files, so they work smoothly even completely offline.
+### 13. Why do you use IndexedDB on the client if SQLite already stores data on the server?
+IndexedDB (`src/services/db.ts`, version 2, paired with a synchronous `localStorage` fallback) serves as an account-scoped offline cache in the browser. When a student watches a video, adds a note, or completes a quiz, the UI updates immediately and persists locally even if the network drops, then syncs to SQLite once connectivity is available. Version 2 also removed legacy credential/session stores so passwords are never stored locally.
 
-### 14. How is Monaco Editor integrated into Alvio?
-We use `@monaco-editor/react` configured with bundled local `monaco-editor` packages and a local Vite Web Worker (`src/services/monacoSetup.ts` and `CodingWorkspace.tsx`). Bundling Monaco locally avoids external CDN failures during offline demos while providing syntax highlighting, line numbers, themes, and keyboard shortcuts.
+### 14. How does cloud progress synchronization work, and how do you avoid overwriting concurrent edits?
+`progressSync.ts` debounces routine progress writes for 2 seconds and flushes immediately on completion events, reconnects, visibility changes, or sign-out. Each user's `learning_progress` row has a numeric `revision`. When `PUT /api/progress` runs, Express checks that the submitted `revision` matches the database (compare-and-swap). If another tab or device saved newer data first, the server returns **HTTP `409 Conflict`** with the latest cloud snapshot, and the client performs a **three-way merge** (`mergeProgress.ts`) against its last acknowledged base—unioning completion sets, adding only unsynced counter deltas, and deduplicating quiz attempts by stable ID—before retrying.
 
-### 15. How do the AI features communicate with the backend?
-The frontend never holds `GROQ_API_KEY`. Instead, it sends authenticated requests to Express:
-- `POST /api/chat` enforces a server-side DSA tutor system prompt, validates message lengths, and streams responses from Groq (`llama-3.3-70b-versatile`) back to the browser as Server-Sent Events (`text/event-stream`).
-- `POST /api/visualizer` validates problem statements, requests structured JSON visualization scenes from Groq, validates/repairs the schema server-side, and returns renderable 2D/3D steps.
+### 15. How do you protect permanent account XP from being faked by the client?
+Permanent account XP lives strictly in `users.xp` on the server. Whenever progress syncs via `/api/progress`, Express overwrites `authoritativeXp` with `users.xp` and never converts self-reported snapshot counters into trusted XP. Legacy client reward endpoints (`POST /api/activity`) explicitly return **HTTP `410 Gone`**.
 
-### 16. What happens if Groq API is unavailable or `GROQ_API_KEY` is missing during a demo?
-The backend returns a safe HTTP 500/502 error without leaking secrets or stack traces. AI Tutor, Video Ask-AI, Mock Interview, and AI Visualizer display clean inline error alerts with a **Retry** button, preserve the student's typed text, and never crash the page. AI Visualizer also loads a built-in default Linked List walkthrough locally.
+### 16. How are the 3D visualizations built with Three.js, and why do they work offline?
+We use Three.js through React Three Fiber (`@react-three/fiber`) and `@react-three/drei` to build interactive 3D scenes for data structures (such as Heaps, Trees, Arrays, Linked Lists, Stacks, Queues, Graphs) and sorting algorithms. Instead of downloading remote HDR environment maps, all scenes use local procedural `<Environment><Lightformer /></Environment>` lighting, so they render reliably with zero external network requests.
 
-### 17. How does Coding Playground "Run" differ from "Submit"?
-**Run** is for quick local testing against editable or custom test cases (JavaScript executes in a browser Web Worker with a 3-second timeout; other languages use Paiza) and does not alter submission history or problem statistics. **Submit** sends only `{ code, language }` to `POST /api/problems/:problemId/submit`, where the server loads the problem's authoritative test cases from SQLite, executes the code externally, calculates the verdict, updates `problem_stats`, and records the submission for signed-in users.
+### 17. How is Monaco Editor integrated without breaking during offline demos?
+We integrate `@monaco-editor/react` using locally bundled `monaco-editor` packages and a local Vite Web Worker (`src/services/monacoSetup.ts`). Bundling Monaco locally avoids external CDN failures while giving students syntax highlighting, line numbers, dark theme support, keyboard shortcuts, and per-problem/per-language auto-saved drafts.
 
-### 18. Why does the server never run student code directly with `eval` or `child_process`?
-Executing untrusted student code directly inside the Node.js Express process would allow infinite loops to freeze the server or malicious code to read `.env`, modify `database.sqlite`, or access the host machine. Delegating execution to an external sandboxed provider (Paiza) keeps the Alvio server isolated and safe.
+### 18. How do the AI features communicate with Groq securely?
+The browser never sees `GROQ_API_KEY`. Authenticated frontend requests call Express:
+- `POST /api/chat` (rate-limited at 25/min per IP & account) enforces a server-side DSA tutor prompt (or a dedicated `'Mock Interview'` `tutorMode` for interviews), validates input bounds, and streams responses from Groq (`llama-3.3-70b-versatile`) back via Server-Sent Events (`text/event-stream`).
+- `POST /api/visualizer` (rate-limited at 12/min per IP & account) requests structured JSON scenes (`openai/gpt-oss-120b` by default), validates and repairs the scene schema server-side, and returns renderable 2D/3D steps with synchronized code line numbers.
 
-### 19. How does the server prevent a student from faking a "Passed" submission?
-First, `POST /api/problems/:problemId/submit` ignores any client-supplied `status`, `passedCount`, `totalCount`, `runtimeMs`, or `testCases` fields—it reads test cases only from SQLite. Second, `server/submissionRunner.ts` embeds a unique random nonce marker into each generated runner script, so even if student code prints `"Passed|5"` to stdout, the server rejects output without that exact run's marker.
+### 19. How does Mock Interview handle prompts, rubrics, and private scratch notes?
+Mock Interview sends requests to `POST /api/chat` with `tutorMode: 'Mock Interview'` so Express preserves the interview persona and rubric evaluation prompt instead of overriding it with the standard DSA Tutor prompt, and parses the SSE stream cleanly in `useInterviewSession.ts`. Private scratch notes typed by the student stay purely in client state and are never transmitted to the backend or Groq API.
 
-### 20. Which programming languages work for server-verified Submit, and how does Paiza execute them?
-JavaScript, TypeScript, Python/Python 3, C++, C, Java, and C# all run via the Paiza.IO API (`POST /runners/create` followed by polling `GET /runners/get_details` with a 15-second timeout). JavaScript, TypeScript, and Python work across all 472 problems; C++, Java, C#, and C explicitly return an `Unsupported` error on problems whose signatures use types their wrapper cannot serialize (such as `TreeNode` or nullable integer arrays), rather than falsely reporting Passed.
+### 20. What happens if Groq API is unavailable or `GROQ_API_KEY` is not set during the demo?
+Express returns a safe HTTP `500`/`502` error without exposing secrets or stack traces. AI Tutor, Mock Interview, and AI Visualizer display clean inline error alerts with a **Retry** button while keeping the user's typed text intact. Additionally, AI Visualizer automatically loads a built-in local **Linked List: Insertion** walkthrough so 2D/3D toggling, timeline scrubbing, and code-line highlighting still work completely offline.
 
-### 21. How does Guest Mode work on coding submissions?
-`POST /api/problems/:problemId/submit` uses `optionalAuth`. If no `Authorization` header is sent, the server still validates the request, executes the code, and returns the full verdict (`saved: false`) without creating a fake user or `user_submissions` row. If an invalid or expired token *is* sent, `optionalAuth` rejects it with HTTP `401` rather than silently downgrading to guest.
+### 21. What is the difference between "Run" and "Submit" in the Coding Playground?
+**Run** (and **Run Testcase**) is for quick experimentation against editable or custom test cases: JavaScript runs locally in a browser Web Worker with a 3-second infinite-loop timeout, while the other six languages run via Paiza. Run never saves a submission or changes problem statistics. **Submit** (`POST /api/problems/:problemId/submit`) sends only `{ code, language }` to Express, evaluates the code against the authoritative test cases stored in SQLite, computes the verdict on the server, records signed-in attempts (`verified=1`), and updates `problem_stats`.
 
-### 22. How does the PvP Coding Duel work without a WebSocket server?
-PvP Coding Duel uses the browser's `BroadcastChannel` API to synchronize room codes, live opponent code previews, freeze power-ups, and match outcomes across tabs in the same browser, and runs submitted JavaScript solutions in a dedicated Web Worker (`duelRunner.worker.ts`) with a timeout. It is clearly documented as a local practice duel rather than a ranked online server.
+### 22. Why does the Express server never execute student code locally with `eval` or `child_process`?
+Executing untrusted code inside the Node.js process or host shell would allow infinite loops to freeze the server or malicious code to read `.env`, corrupt `database.sqlite`, or compromise the host OS. Offloading execution to the external sandboxed Paiza.IO API keeps the Alvio backend isolated and safe.
 
-### 23. How did you test the application without spending money on live AI or execution APIs?
-We built a unified `npm run test:demo` script that runs `oxlint`, the production Vite + esbuild build, 37 backend/submission integration tests (using in-memory/temporary SQLite databases and mocked Paiza providers), 10 domain model/unit tests across 7 files, and 13 Playwright end-to-end browser test scripts (mocking `/api/chat` and `/api/visualizer` responses and using disposable server accounts).
+### 23. How does `server/submissionRunner.ts` prevent students from spoofing a "Passed" verdict?
+Two safeguards prevent spoofing:
+1. Express ignores any client-supplied `status`, `passedCount`, `totalCount`, `runtimeMs`, or `testCases`—it loads test cases strictly from SQLite.
+2. `submissionRunner.ts` embeds a fresh cryptographic random **nonce marker** (generated via `node:crypto` `randomBytes`) into each generated runner wrapper. Even if student code prints `"Passed"` to stdout, the server rejects output lacking that exact run's nonce.
 
-### 24. What security measures are implemented in the Express API?
-- Strict JWT validation (`HS256`, issuer/audience/expiry, account existence check, mandatory 32+ char secret).
-- Server-only secrets (`GROQ_API_KEY`, `JWT_SECRET`) never exposed to the browser.
-- Security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, and production CSP) plus explicit `ALLOWED_ORIGINS` CORS checks in production.
-- Request body size limits (`512 KB`), code length limits (`64 KB`), strict schema validation, prototype-pollution key rejection, and per-IP/per-user rate limiting.
-- Server-owned permanent XP (client `/api/activity` reward writes return `410 Gone`).
+### 24. Which languages are supported for coding execution, and how are unsupported types handled?
+All seven workspace languages (**JavaScript, TypeScript, Python/Python 3, C++, C, Java, C#**) are wired into both Run and server-verified Submit via Paiza.IO (`POST /runners/create` + polling `GET /runners/get_details` with a 15-second timeout). JavaScript, TypeScript, and Python support all 472 problems. C++, Java, C#, and C handle standard primitive/array signatures and return an explicit `Unsupported` error on complex signatures (such as `TreeNode` or nullable integer arrays) rather than falsely reporting Passed.
 
-### 25. What are the honest limitations of the project, and what would you improve next?
-- **No hidden-test container judge**: Submissions check the visible SQLite test cases through Paiza rather than a private Docker judge with hidden stress tests, and memory/percentiles are not measured.
-- **External API dependency**: Live AI Tutor/Visualizer need `GROQ_API_KEY` + internet, and live server Submit depends on Paiza's availability.
-- **Single-process limits**: Rate limits are stored in memory and reset on server restart; auth uses bearer tokens in browser storage rather than HttpOnly cookies with refresh/revocation.
-- **Next improvements**: Docker-based hidden-test judge, WebSocket multiplayer PvP, email verification/password reset, and a server-verified learning-event XP ledger.
+### 25. What happens if Paiza.IO is unreachable during a Submit, and how does Guest Mode work?
+If Paiza is unavailable, Express returns **HTTP `503`** (`status: 'Error'`, `errorType: 'provider'`, `saved: false`) so an outage is never misreported as Wrong Answer or corrupts `problem_stats`. For Guest Mode, `POST /api/problems/:problemId/submit` uses `optionalAuth`: unauthenticated requests still receive the full server-calculated verdict without creating fake accounts or DB rows, whereas invalid/expired supplied tokens are strictly rejected with HTTP `401`.
+
+### 26. How does the PvP Coding Duel work without a WebSocket backend?
+PvP Coding Duel uses the browser's native **`BroadcastChannel`** API to synchronize room codes, live opponent code previews, freeze power-ups, and victory events across two tabs in the same browser, and executes JavaScript submissions inside a dedicated Web Worker (`duelRunner.worker.ts` calling `executeJavaScriptInline()` directly with a 3-second timeout). We document it honestly as a local practice duel rather than an online multiplayer server.
+
+### 27. How did you test the application thoroughly without paying for live AI or Paiza APIs?
+Our unified verification script `npm run test:demo` runs completely locally using isolated temporary SQLite databases, disposable JWT secrets, and mocked Groq/Paiza providers:
+- `oxlint`: **0 errors**; `npm run build`: clean Vite + `esbuild` output.
+- `test:foundation` (`node:test`): **37/37 tests passed** (auth, headers, rate/body limits, migrations, progress conflict merge, optional auth, and all server-verified coding submission flows).
+- `test:models` (`node:test`): **10/10 tests passed** across 7 files (including 480 heap operations).
+- Playwright E2E browser suites: **13 test scripts passed**, including **128/128** desktop-to-mobile viewport × route checks and all major student workflows.
+
+### 28. What key security measures are implemented across the Express API?
+- Server-only `bcryptjs` password hashing and strict HS256 JWT verification (`JWT_SECRET >= 32` chars, issuer/audience/expiry + DB account existence check).
+- Server-only AI credentials (`GROQ_API_KEY`) and 60-second abort/disconnect cancellation.
+- Strict payload caps (`512 KB` body limit, `64 KB` code limit), schema validation, and prototype-pollution key rejection.
+- Per-IP / per-account rate limits (e.g., login 10/10min, signup 5/10min, chat 25/min, visualizer 12/min, progress 120/min).
+- Security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, scoped CSP) and mandatory `ALLOWED_ORIGINS` in production.
+
+### 29. What are the honest limitations of Alvio as a college project?
+- **No hidden-test container judge:** Server Submit checks the visible SQLite test cases through Paiza rather than a private Docker judge with hidden stress tests, and does not measure memory usage or runtime percentiles.
+- **External API dependency:** Live AI features require `GROQ_API_KEY` + internet, and live multi-language Submit depends on Paiza.IO.
+- **Local-only PvP & single-process backend:** PvP Duel uses `BroadcastChannel` (same browser), rate limits are stored in memory per process, and auth uses bearer tokens in browser storage without email password reset.
+- **Legacy UI type diagnostics:** Running full `npx tsc -p tsconfig.app.json --noEmit` still flags pre-existing diagnostics in untouched older UI files (though `oxlint`, `vite build`, `esbuild`, and all tests pass with 0 errors).
+
+### 30. If you had more time after college submission, what would you add next?
+1. A containerized **Docker/Firecracker coding judge** with hidden test suites and real memory/CPU telemetry.
+2. **WebSocket multiplayer** for real-time cross-device PvP coding duels.
+3. **HttpOnly cookie sessions** with token refresh/revocation plus SMTP-backed email verification and password reset.
+4. A **server-verified learning-event XP ledger** and instructor analytics dashboards for classroom deployment.
