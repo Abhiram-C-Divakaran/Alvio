@@ -1,55 +1,85 @@
-# Alvio backend foundation
+# Alvio Architecture & Security Design
 
 ```text
-Browser → React → AppShell → Feature modules → Zustand
-                                               ↓
-                                      IndexedDB offline cache
-                                               ↕
-                                      Authenticated Express API
-                                               ↓
-                                             SQLite
+Browser → React 19 (ErrorBoundary) → AppShell → Feature modules → Zustand
+                                                                    ↓
+                                                           IndexedDB offline cache
+                                                                    ↕
+                                         Authenticated Express 5 API (Cookies/Bearer + CSRF)
+                                                                    ↓
+                                                          SQLite (WAL + Transactions)
 ```
 
 ## Authentication and session lifecycle
 
-Express owns accounts and bcrypt password hashes in SQLite. Signup normalizes email and validates lengths; login uses the same normalization. `server/auth.ts` is the only JWT implementation. Its optional-auth helper permits omitted credentials only on intentionally public routes and rejects invalid supplied tokens; private routes continue to use requireAuth. Tokens use HS256, a numeric account ID in `sub`, issuer `alvio`, audience `alvio-student`, and a seven-day expiration. Every protected request also checks that the account still exists. `JWT_SECRET` must be explicitly configured with at least 32 characters; startup fails without it. There is no generated or hardcoded default.
+Express owns accounts and bcrypt password hashes in SQLite. Signup normalizes email and validates lengths; login uses the same normalization. `server/auth.ts` is the sole authentication, cookie, and CSRF implementation.
 
-The browser persists a bearer token and public account details through Zustand. It never stores passwords or password hashes. IndexedDB version 2 removes obsolete user/session stores while retaining learning progress. Unused AuthModal and its alternate authentication path are removed.
+- **Session-backed JWTs & rotating refresh tokens**:
+  - `POST /api/auth/signup` and `POST /api/auth/login` create a server-side session record in `auth_sessions` (`id`, `user_id`, `refresh_token_hash`, `user_agent`, `expires_at`, `revoked_at`, `created_at`, `last_used_at`).
+  - Access JWTs use HS256 with numeric `sub`, `jti` (session ID), `ver` (`users.token_version`), issuer `alvio`, audience `alvio-student`, and a short expiration (`JWT_ACCESS_TTL`, default `15m`).
+  - Refresh tokens are opaque (`<sessionId>.<256-bit-random>`), stored only as SHA-256 hashes in SQLite (`JWT_REFRESH_DAYS`, default `7` days).
+  - `JWT_SECRET` must be explicitly configured with at least 32 characters; startup fails without it.
+- **HttpOnly cookies + Bearer coexistence**:
+  - Login, signup, and refresh set `alvio_access` (`HttpOnly`, `SameSite=Lax`, `Path=/api`), `alvio_refresh` (`HttpOnly`, `SameSite=Lax`, `Path=/api/auth`), and `alvio_csrf` (`SameSite=Lax`, `Path=/`). `Secure` is enabled automatically on HTTPS requests or when `COOKIE_SECURE=true`.
+  - `requireAuth` and `optionalAuth` accept either an explicit `Authorization: Bearer <token>` header or the `alvio_access` HttpOnly cookie. Supplied invalid credentials never fall back to cookies or anonymous access.
+  - Every authenticated request verifies signature, expiry, account existence, `users.token_version`, and that the `auth_sessions` row is neither revoked nor expired.
+- **CSRF protection**:
+  - `csrfProtection(allowedOrigins)` guards cookie-authenticated state-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`) by enforcing allowed `Origin`/`Referer` headers and timing-safe double-submit matching between the `alvio_csrf` cookie and `X-CSRF-Token` header.
+  - Requests carrying an explicit `Authorization: Bearer` header are immune to ambient browser CSRF and bypass cookie double-submit checks.
+- **Token refresh & replay detection**:
+  - When an authentic, non-revoked access JWT expires, `requireAuth` returns `401` with `code: 'TOKEN_EXPIRED'` and `X-Auth-Expired: 1`. Forged or revoked tokens return `UNAUTHORIZED` or `SESSION_REVOKED` without `X-Auth-Expired`, ensuring `apiFetch` never silently refreshes a forged or revoked session.
+  - `POST /api/auth/refresh` atomically rotates the refresh token in a SQLite transaction. If an already-rotated or revoked refresh token is replayed, the server revokes all sessions for that account (`revokeAllUserSessions`) and clears cookies.
+- **Revocation & multi-device isolation**:
+  - `POST /api/auth/logout` revokes only the current session in SQLite and clears cookies, leaving other devices signed in.
+  - `POST /api/auth/logout-all` increments `users.token_version` and marks every active `auth_sessions` row for the user revoked inside a transaction, immediately invalidating all devices.
+- **Client bootstrap & offline cache**:
+  - `AuthGuard` keeps private pages behind `bootstrapSession()`, which verifies `/api/auth/me` (or refreshes a cookie-only session via `/api/auth/refresh` when `alvio_csrf` is present) before mounting private routes.
+  - When the backend is unreachable, only a previously verified, unexpired session with an account-scoped progress cache can open offline cached learning UI.
+  - Explicit sign-out flushes pending progress (up to 3 seconds), calls `/api/auth/logout` best-effort, cancels in-flight requests, and clears visible account state while preserving device-local progress cache for future sign-in.
 
-AuthGuard keeps private pages behind a bootstrap state. `/api/auth/me` verifies the persisted token, then progress initializes before rendering the application. Redirects retain pathname, query and hash in `next`; `authDestination` rejects external redirects. `/` and `/auth` stay public. When verification is unavailable, only a previously verified, unexpired session with an account cache can use cached learning offline. This is offline UI access, not proof of authorization to any server endpoint. Unknown sessions remain at a retry screen.
+### Planned password reset & email verification architecture (requires external email infrastructure)
 
-`authApi.ts` also exports authenticatedFetch as the shared apiFetch transport, without a second credential-handling implementation. `apiFetch` attaches credentials only to same-origin `/api/` requests. A 401 invalidates that exact session, aborts its outstanding fetches and streams, clears visible progress, and sends the user back through AuthGuard. `authApi.ts` centralizes signup, login and session lookup. Explicit sign-out waits up to three seconds for pending progress, then cancels progress work and unmounts private feature components; cached learning history remains available for later login. Requests from a previous account cannot update the new account's progress. Tutor/interview/quiz/visualizer histories, PvP sessions and coding drafts use account-specific keys. Non-sensitive layout preferences remain shared.
+Password reset and email verification are intentionally **not** mocked or simulated because secure delivery requires an external transactional email provider (SMTP/Resend/SES/Postmark):
+
+- **Password reset**: Add a `password_reset_tokens(id, user_id, token_hash, expires_at, used_at)` table (15-minute TTL, SHA-256 hashed single-use token). `POST /api/auth/forgot-password` always returns a generic `200` response to prevent account enumeration, rate-limited by IP and email. `POST /api/auth/reset-password` validates the token inside a transaction, updates `users.password_hash`, marks `used_at`, and calls `revokeAllUserSessions(userId)`.
+- **Email verification**: Add `email_verified_at TEXT` to `users` and an `email_verification_tokens` table (24-hour TTL, single-use hashed token). Verification links confirm ownership before enabling email-based recovery or notifications.
 
 ## Progress persistence
 
-The existing LearningProgress model remains intact: topics, video position/speed/notes/watched seconds, quiz attempts and credited IDs, visualizer modules/steps/operations/exploration, and daily/weekly learning time. SQLite `learning_progress` stores one validated JSON snapshot per authenticated user, a revision and a server timestamp. GET/PUT `/api/progress` derive ownership from the JWT; a mismatched body owner is rejected. Input validation bounds nesting, maps, arrays, string lengths, numeric values and percentages. Bodies are limited to 512 KB.
+The `LearningProgress` model tracks topics, video position/speed/notes/watched seconds, quiz attempts and credited IDs, visualizer modules/steps/operations/exploration, and daily/weekly learning time. SQLite `learning_progress` stores one validated JSON snapshot per authenticated user with a monotonic revision and server timestamp.
 
-All learning writes pass through `progressSync.ts`. A per-account synchronous localStorage fallback plus transactional IndexedDB cache retains a snapshot, its last acknowledged cloud base/revision, and a pending flag. Ordinary writes debounce for two seconds. Completions, navigation, focus, reconnect and page hide and visibility changes trigger an attempt; failed requests retain the pending snapshot and retry. Logout does not discard cached work. The sidebar exposes syncing, synced, unavailable and storage-error states, with a retry action. A closed tab cannot guarantee delivery; pending work resumes on the next authenticated visit.
+All learning writes pass through `progressSync.ts` with a synchronous per-account `localStorage` fallback plus transactional IndexedDB cache. `PUT /api/progress` uses compare-and-swap revisions inside `BEGIN IMMEDIATE` transactions; a `409` conflict triggers a three-way merge against the last acknowledged cloud base.
 
-PUT uses compare-and-swap revisions. A stale revision returns 409, never silently overwrites. The client refreshes and three-way merges against the acknowledged base. Unchanged fields follow cloud; concurrent cumulative counters add only unsynced local deltas. Completion/visited sets are unioned; playback position and preferences follow the newer snapshot and can decrease. Quiz attempts merge by stable ID, preventing replay rewards. Legacy caches without a common base use the newer snapshot's counters rather than adding two unknown totals. Completion/history records are retained. Clock skew can affect last-edit selection for preferences and notes; CAS still prevents blind overwrites. This snapshot protocol is not a collaborative text editor or an audited activity ledger.
+## XP and coding playground security
 
-## XP and coding trust
+Permanent XP is exclusively `users.xp`. `/api/progress` always overwrites `authoritativeXp` from SQLite, and `/api/activity` returns `410`.
 
-Permanent XP is exclusively `users.xp`. The progress endpoint always replaces `authoritativeXp` from that server record and never converts client `totalXp`, quiz scores or completed topics into trusted XP. Legacy practice values remain in the learning snapshot; the signed-in display uses permanent XP. Client `/api/activity` reward writes return 410. A future server-validated event ledger with unique event IDs is needed to award new permanent learning XP. Current learning statistics are self-reported, not examination evidence.
+Coding `Run` executes editable test cases in browser Web Workers (JavaScript) or Paiza (non-JS languages). `POST /api/problems/:problemId/submit` ignores any client-supplied verdicts or test cases, loads the problem's provided test cases from SQLite, validates function and parameter identifiers (`isSafeIdentifier`), wraps user code with a per-run random 48-bit hex stdout marker, executes via Paiza (`server/submissionRunner.ts`), and computes `Passed`/`Failed`/`Error` on the server. Signed-in submissions and `problem_stats` updates commit atomically in a single SQLite `BEGIN IMMEDIATE` transaction (`verified = 1`). Guest submissions use `optionalAuth` and never create fake accounts or history rows.
 
-Coding Run evaluates editable tests through browser workers (JavaScript) or the external Paiza execution API (Python, TypeScript, C++, C, Java, C#). Express never evaluates submitted student code locally (`eval`, `new Function`, or child processes are never used on submissions). POST `/api/problems/:id/submit` accepts only `code` and `language`, ignores any client-supplied verdicts or test cases, loads the problem's provided test cases from SQLite, executes the generated wrapper through the external Paiza provider with timeouts and rate limiting, and calculates `Passed`, `Failed`, or `Error` on the server. Signed-in attempts (including failed and error attempts) are saved with `verified=1`, passed/total counts, and runtime; `problem_stats` updates only from server-calculated verdicts. Guest requests use `optionalAuth` and receive verdicts without creating fake accounts or history rows. Legacy client-reported submissions remain `verified=0`. There is still no hidden-test judge, Docker sandbox, or measured memory/percentiles; PvP remains a local browser demo.
+### Security limitations of Paiza.IO & future isolated hidden-test judge blueprint
 
-## API security and operations
+Paiza.IO is appropriate for a practical college platform because Express never executes untrusted student code locally, but it has clear production boundaries:
+1. **Shared external provider**: Execution availability, latency, compiler versions, and rate limits depend on `api.paiza.io`.
+2. **Visible test cases only**: Provided test cases are stored in `problems.testCases` and returned to the editor; there is no secret hidden-test evaluation preventing hard-coded answers.
+3. **Single-process harness**: Generated wrappers run inside the same process as user code (mitigated against casual stdout spoofing via random per-run markers, not OS-level isolation).
+4. **No measured memory or percentile telemetry**: Resource usage metrics are not fabricated.
 
-Chat and AI visualization require authentication. Shared in-memory limits apply by IP and account (chat 25/minute, visualizer 12/minute); login is 10/10 minutes and signup 5/10 minutes per IP. These limits are per process and reset on restart. Multi-instance deployments need a shared rate-limit store and appropriately configured trusted proxies; do not blindly trust forwarded IP headers.
+**Planned production judge architecture (future milestone):**
+- Store hidden test cases in a separate `problem_hidden_tests` table never queried by `GET /api/problems/:id`.
+- Enqueue submissions to a dedicated asynchronous worker service (not the web Express process).
+- Execute each submission inside an ephemeral, unprivileged container/microVM (e.g. gVisor/Firecracker or rootless Docker/nsjail) with `--network=none`, read-only root filesystem, strict cgroups v2 CPU/RAM/PID/disk limits, and wall-clock kill timers.
+- Keep the evaluator harness outside user-writable files, pass test inputs over stdin/pipes, and compare outputs strictly in the host/worker process.
 
-AI messages, history and problem statements have limits before provider calls. Provider work aborts on disconnect and after 60 seconds, including visualizer repair attempts. Failures return safe messages with a consistent string `error` and optional `code`; structured logs include request ID, route, duration, status and account ID without credentials, student conversations or raw provider errors.
+## Backend reliability, API security, and operations
 
-Production requires an explicit `ALLOWED_ORIGINS` list. Development also permits localhost origins. CORS is a browser control, not authorization. Security headers include nosniff, referrer policy, frame denial and a CSP with scoped external sources for fonts, Monaco and execution providers. Monaco/local teaching workers currently require evaluation permissions. Serve production over HTTPS. Secrets stay server-side. Password reset remains explicitly unavailable until real email/reset infrastructure exists.
+- **Readiness probe**: `GET /api/health` executes `SELECT 1` against SQLite and returns `{ status, database, uptimeSeconds, timestamp }` (`200` healthy / `503` degraded) without leaking environment secrets.
+- **Graceful shutdown**: `SIGINT` and `SIGTERM` close the HTTP listener, cleanly close the SQLite handle (WAL mode), and exit with a 5-second forced-exit failsafe.
+- **Transactions & validation**: Multi-statement writes (submissions + `problem_stats`, `like`/`dislike` interaction toggles, progress CAS writes, session rotation/revocation) run inside `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK`. Unknown problem IDs return `404` before FK writes; non-object JSON payloads return `400`.
+- **Rate limits & headers**: In-memory per-IP/account rate limits guard signup (5/10m), login (10/10m), refresh (30/10m), profile updates (30/10m), feedback (20/10m), interactions (60/m), progress (120/m), submit (20/m), chat (25/m), and visualizer (12/m). Multi-instance deployments require a shared Redis store and `TRUST_PROXY=true`. Security headers include `X-Request-ID`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `X-Frame-Options: DENY`, `X-Permitted-Cross-Domain-Policies: none`, and production CSP.
+- **SQLite migrations**: `server/migrations.ts` runs 5 numbered, transactional, idempotent migrations (`schema_migrations`), preserving existing user data on every upgrade. Production deployments must mount persistent storage and run SQLite-aware backups (`.backup` / WAL-safe snapshots).
 
-`server/migrations.ts` applies numbered, transactional, repeatable migrations tracked in `schema_migrations`. It preserves existing users, adds missing profile columns, creates cloud progress, marks submission verification explicitly, and migrates progress ownership to an ON DELETE CASCADE foreign key without discarding snapshots. `DATABASE_PATH` defaults to `data/database.sqlite`; WAL and foreign keys are enabled. Back up the database with SQLite-aware tooling before deployment and retain a tested restore procedure. Use persistent storage; ephemeral hosting will lose accounts.
+## Frontend resilience
 
-## Verification and remaining work
-
-`npm run test:foundation` builds and tests JWT rejection/ownership, CORS/headers, rate and body limits, migrations, cloud conflicts, legacy migration, offline/interrupted sync, video/Heap restore, quiz idempotency, account switching and API 401 cleanup. `npm run test:auth-browser` uses standard Playwright Chromium and an isolated temporary database to exercise real login/deep-link protection. Tests do not call paid AI providers or use real student accounts. Existing feature tests remain alongside these tests; some older browser fixtures still assume unauthenticated pages and require migration.
-
-Deployment follow-ups: verified learning rewards, isolated coding judge, password reset and email verification, token revocation/refresh and an HttpOnly-cookie session design, shared quotas, backups/monitoring and a full dependency/type-error cleanup. Bearer tokens in browser storage remain exposed to same-origin script compromise. This pass establishes consistent authorization and persistence; it does not claim those follow-ups are implemented.
-
-Dependency audit after compatible updates: no high/critical findings; four low/moderate findings remain in the Monaco DOMPurify and Tailwind selector-parser dependency chains. Resolving these may require upstream updates or separate compatibility work. Re-run `npm audit` before deployment.
-
-The obsolete `/api/generate-trace` endpoint and its unrouted page were removed. Active visualization uses `/api/visualizer`; shared scene types remain available independently of the retired page.
+- Root and route-scoped React `ErrorBoundary` components (`src/components/ui/ErrorBoundary.tsx`) catch unexpected render or lazy-chunk failures and offer recovery actions without blank screens.
+- `localStorage` access in `CodingWorkspace` and `ProfilePage` is wrapped in safe `try/catch` guards so restricted/full browser storage degrades gracefully.
+- All TypeScript checks (`npx tsc -p tsconfig.app.json --noEmit`) and lint checks (`npm run lint`) pass with 0 errors.

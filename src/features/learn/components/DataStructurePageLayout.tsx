@@ -36,9 +36,9 @@ export default function DataStructurePageLayout({
   content,
 }: DataStructurePageLayoutProps) {
   const navigate = useNavigate();
-  const topicLinks=topicNavigation(useLocation().pathname);
-  const {hash}=useLocation();
-  useLayoutEffect(()=>{if(!hash)return;const target=document.getElementById(hash.slice(1));target?.scrollIntoView({block:'start',behavior:'instant'});target?.focus({preventScroll:true});},[hash]);
+  const topicLinks = topicNavigation(useLocation().pathname);
+  const { hash } = useLocation();
+  useLayoutEffect(() => { if (!hash) return; const target = document.getElementById(hash.slice(1)); target?.scrollIntoView({ block: 'start', behavior: 'instant' }); target?.focus({ preventScroll: true }); }, [hash]);
   const [structure, setStructure] = useState<DataStructure | null>(null);
   const [language, setLanguage] = useState<'python' | 'javascript' | 'java' | 'cpp'>('python');
   const [isVisualizerExpanded, setIsVisualizerExpanded] = useState(false);
@@ -92,7 +92,7 @@ export default function DataStructurePageLayout({
 
       <div className="app-lesson-body">
 
-        <TopicOrientation/>
+        <TopicOrientation />
         {/* Header */}
         <header className="space-y-6 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-[var(--color-border-subtle)] pb-6">
           <div className="space-y-4">
@@ -120,7 +120,7 @@ export default function DataStructurePageLayout({
 
         {/* 2D Visualization (Big and Prominent) */}
         <div className={`bg-[var(--color-surface-glass)] rounded-2xl border border-[var(--color-border-subtle)] overflow-hidden flex flex-col shadow-xl ${isVisualizerExpanded ? 'fixed inset-4 z-50 shadow-2xl bg-[var(--color-bg-primary)] border-indigo-500/50' : 'h-[600px] w-full'}`}>
-           <div className="border-b border-[var(--color-border-subtle)] bg-black/20 p-4 flex justify-between items-center">
+          <div className="border-b border-[var(--color-border-subtle)] bg-black/20 p-4 flex justify-between items-center">
             <h2 className="text-xl font-bold flex items-center gap-2 m-0">
               <Box className="text-blue-400" size={24} />
               Interactive {type === 'heap' ? '2D' : '3D'} Visualization
@@ -134,7 +134,7 @@ export default function DataStructurePageLayout({
             </button>
           </div>
           <div className="w-full flex-1 flex flex-col p-6 bg-[var(--color-bg-primary)] relative">
-             <div className="flex justify-center mb-6">
+            <div className="flex justify-center mb-6">
               <VisualizerToolbar
                 activeDs={visualizerDsName}
                 onInsert={(val) => handleInsert(val)}
@@ -222,11 +222,10 @@ export default function DataStructurePageLayout({
               <button
                 key={lang}
                 onClick={() => setLanguage(lang)}
-                className={`px-8 py-4 text-sm font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${
-                  language === lang
-                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5'
-                    : 'text-[var(--color-text-muted)] hover:text-white hover:bg-white/5'
-                }`}
+                className={`px-8 py-4 text-sm font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${language === lang
+                  ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5'
+                  : 'text-[var(--color-text-muted)] hover:text-white hover:bg-white/5'
+                  }`}
               >
                 {lang === 'cpp' ? 'C++' : lang}
               </button>
@@ -262,7 +261,7 @@ export default function DataStructurePageLayout({
                 <HelpCircle size={32} />
               </div>
               <div className="text-left">
-                <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-indigo-400 transition-colors">{topicLinks?.quiz?'Take a Quiz':'Quiz unavailable'}</h3>
+                <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-indigo-400 transition-colors">{topicLinks?.quiz ? 'Take a Quiz' : 'Quiz unavailable'}</h3>
                 <p className="text-base text-[var(--color-text-muted)]">Test your knowledge on {title}s.</p>
               </div>
             </div>
@@ -284,11 +283,11 @@ export default function DataStructurePageLayout({
               </div>
             </div>
             <div className="text-blue-400 opacity-0 group-hover:opacity-100 transform translate-x-[-15px] group-hover:translate-x-0 transition-all">
-               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
             </div>
           </button>
         </div>
-        <TopicNextStep/>
+        <TopicNextStep />
       </div>
     </div>
   );
