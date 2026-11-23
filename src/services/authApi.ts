@@ -1,4 +1,4 @@
-import { apiFetch } from './api';
+import { apiFetch, readCsrfToken } from './api';
 export { apiFetch as authenticatedFetch } from './api';
 import useAuthStore from '../stores/useAuthStore';
 import { flushProgress } from './progressSync';
@@ -18,7 +18,24 @@ export const login = (credentials: Credentials) => authRequest<Session>('login',
 export const signup = (credentials: Credentials & { name: string }) => authRequest<Session>('signup', body(credentials));
 export const getCurrentUser = () => authRequest<{ user: ServerUser }>('me', { signal: AbortSignal.timeout(10000) });
 
-/** Best-effort cloud flush; offline changes remain in the account's device cache. */
+async function revokeOnServer(path: 'logout' | 'logout-all', token: string | null) {
+  try {
+    const headers = new Headers();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    const csrf = readCsrfToken();
+    if (csrf) headers.set('X-CSRF-Token', csrf);
+    await fetch(`/api/auth/${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      signal: AbortSignal.timeout(2000),
+    });
+  } catch {
+    // Best-effort revocation; local logout still proceeds when offline.
+  }
+}
+
+/** Best-effort cloud flush + server session revocation; offline changes remain in the account's device cache. */
 export async function logoutLocalSession() {
   const token = useAuthStore.getState().token;
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -31,8 +48,20 @@ export async function logoutLocalSession() {
       })(),
       new Promise<void>(resolve => { timeout = setTimeout(resolve, 3000); }),
     ]);
+    await revokeOnServer('logout', token);
   } finally {
     clearTimeout(timeout);
+    if (useAuthStore.getState().token === token) useAuthStore.getState().logout();
+  }
+}
+
+/** Revoke all active sessions across every device for the signed-in account. */
+export async function logoutAllSessions() {
+  const token = useAuthStore.getState().token;
+  try {
+    await flushProgress();
+    await revokeOnServer('logout-all', token);
+  } finally {
     if (useAuthStore.getState().token === token) useAuthStore.getState().logout();
   }
 }

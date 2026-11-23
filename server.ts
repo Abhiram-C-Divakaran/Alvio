@@ -4,7 +4,21 @@ import { createServer as createViteServer } from "vite";
 import cors from "cors";
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import {authSecret,requireAuth,signAuthToken,publicUser} from "./server/auth";
+import {
+  authSecret,
+  clearAuthCookies,
+  createAuthSession,
+  csrfProtection,
+  extractSessionIdFromRequest,
+  parseCookies,
+  publicUser,
+  REFRESH_COOKIE_NAME,
+  requireAuth,
+  revokeAllUserSessions,
+  revokeSessionById,
+  rotateRefreshSession,
+  setAuthCookies,
+} from "./server/auth";
 import {rateLimit,securityHeaders,safeErrors,logFailure} from "./server/security";
 import {registerProgress} from "./server/progress";
 import {registerSubmissions} from "./server/submissions";
@@ -36,11 +50,19 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
   app.disable('x-powered-by');
+  if (process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1') {
+    app.set('trust proxy', 1);
+  }
   const origins=(process.env.ALLOWED_ORIGINS||'').split(',').map(v=>v.trim()).filter(Boolean);
   if(process.env.NODE_ENV==='production'&&!origins.length)throw Error('ALLOWED_ORIGINS is required in production.');
   app.use(securityHeaders);
-  app.use(cors({origin:(origin,done)=>done(null,!origin||origins.includes(origin)||(process.env.NODE_ENV!=='production'&&/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)))}));
+  app.use(cors({
+    origin:(origin,done)=>done(null,!origin||origins.includes(origin)||(process.env.NODE_ENV!=='production'&&/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))),
+    credentials: true,
+    exposedHeaders: ['X-Auth-Expired', 'X-Request-ID'],
+  }));
   app.use('/api',(_req,res,next)=>{res.setHeader('Cache-Control','no-store');next()});
+  app.use('/api', csrfProtection(origins));
   app.use(express.json({limit:'512kb'}));
   registerProgress(app);
   registerVisualizer(app);
@@ -68,13 +90,14 @@ async function startServer() {
       const result = insert.run(name, email, hash);
 
       const user = { id: Number(result.lastInsertRowid), name, email, xp: 0, level: "Apprentice" };
-      const token = signAuthToken(Number(user.id));
+      const session = createAuthSession(Number(user.id), String(req.headers['user-agent'] || ''));
 
       // Add a welcome activity
       db.prepare("INSERT INTO user_activity (user_id, activity_type, points) VALUES (?, ?, ?)").run(user.id, "Joined Alvio", 0);
 
-      res.json({ user: publicUser(user), token });
-    } catch (error: any) {
+      setAuthCookies(req, res, session);
+      res.json({ user: publicUser(user), token: session.accessToken });
+    } catch {
       logFailure(req,'backend_error');
       res.status(500).json({ error: "Failed to create account" });
     }
@@ -98,12 +121,61 @@ async function startServer() {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
-      const token = signAuthToken(Number(user.id));
+      const session = createAuthSession(Number(user.id), String(req.headers['user-agent'] || ''));
+      setAuthCookies(req, res, session);
 
-      res.json({ user: publicUser(user), token });
-    } catch (error: any) {
+      res.json({ user: publicUser(user), token: session.accessToken });
+    } catch {
       logFailure(req,'backend_error');
       res.status(500).json({ error: "Failed to log in" });
+    }
+  });
+
+  app.post("/api/auth/refresh", rateLimit(30, 600000, "refresh"), (req, res) => {
+    try {
+      const cookies = parseCookies(req.headers.cookie);
+      const rawRefresh = cookies[REFRESH_COOKIE_NAME];
+      if (!rawRefresh) {
+        clearAuthCookies(req, res);
+        return res.status(401).json({ error: "Please sign in again.", code: "UNAUTHORIZED" });
+      }
+      const rotated = rotateRefreshSession(rawRefresh, String(req.headers['user-agent'] || ''));
+      if (!rotated) {
+        clearAuthCookies(req, res);
+        logFailure(req, 'auth_refresh_rejected');
+        return res.status(401).json({ error: "Please sign in again.", code: "SESSION_REVOKED" });
+      }
+      setAuthCookies(req, res, rotated);
+      res.json({ user: publicUser(rotated.user), token: rotated.accessToken });
+    } catch {
+      logFailure(req, 'backend_error');
+      res.status(500).json({ error: "Failed to refresh session" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    try {
+      const sessionId = extractSessionIdFromRequest(req);
+      if (sessionId) {
+        revokeSessionById(sessionId);
+      }
+      clearAuthCookies(req, res);
+      res.json({ success: true });
+    } catch {
+      logFailure(req, 'backend_error');
+      clearAuthCookies(req, res);
+      res.status(500).json({ error: "Failed to log out" });
+    }
+  });
+
+  app.post("/api/auth/logout-all", requireAuth, (req, res) => {
+    try {
+      revokeAllUserSessions(req.userId);
+      clearAuthCookies(req, res);
+      res.json({ success: true });
+    } catch {
+      logFailure(req, 'backend_error');
+      res.status(500).json({ error: "Failed to revoke sessions" });
     }
   });
 

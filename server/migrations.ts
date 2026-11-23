@@ -93,6 +93,21 @@ CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT N
   INSERT INTO learning_progress_cascade SELECT user_id,progress_json,revision,updated_at FROM learning_progress;
   DROP TABLE learning_progress;
   ALTER TABLE learning_progress_cascade RENAME TO learning_progress;`);
+},(db:DatabaseSync)=>{
+  const userFields=new Set((db.prepare('PRAGMA table_info(users)').all() as any[]).map(x=>x.name));
+  if(!userFields.has('token_version'))db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1');
+  db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    refresh_token_hash TEXT NOT NULL,
+    user_agent TEXT DEFAULT '',
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);`);
 }];
 for(let i=0;i<migrations.length;i++){if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1))continue;db.exec('BEGIN IMMEDIATE');try{migrations[i](db);db.prepare('INSERT INTO schema_migrations(version) VALUES(?)').run(i+1);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
 }

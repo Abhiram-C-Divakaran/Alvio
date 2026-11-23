@@ -11,6 +11,8 @@ interface AuthActions {
   sessionStatus: 'checking' | 'ready' | 'anonymous' | 'unavailable';
   /** Set user data after login/register */
   setUser: (user: User, token: string) => void;
+  /** Silently update rotated access token without interrupting active requests */
+  updateSessionToken: (user: User, token: string) => void;
   /** Clear auth state on logout */
   logout: () => void;
   /** Set loading state */
@@ -40,6 +42,15 @@ const useAuthStore = create<AuthState & AuthActions>()(
         const sameSession = useAuthStore.getState().token === token;
         if (!sameSession) cancelSessionRequests();
         set({ user: { ...user, id: String(user.id) }, token, ...(sameSession ? {} : { sessionStatus: 'checking' as const, isAuthenticated: false }), isLoading: false, error: null });
+      },
+
+      updateSessionToken: (user: User, token: string) => {
+        set((state) => ({
+          user: { ...state.user, ...user, id: String(user.id) },
+          token,
+          verifiedToken: token,
+          error: null,
+        }));
       },
 
       logout: () => {
