@@ -64,6 +64,23 @@ async function startServer() {
   app.use('/api',(_req,res,next)=>{res.setHeader('Cache-Control','no-store');next()});
   app.use('/api', csrfProtection(origins));
   app.use(express.json({limit:'512kb'}));
+
+  app.get('/api/health', (req, res) => {
+    try {
+      const check = db.prepare('SELECT 1 as ok').get() as { ok?: number } | undefined;
+      if (check?.ok !== 1) throw new Error('Database readiness probe failed');
+      res.json({
+        status: 'ok',
+        database: 'ok',
+        uptimeSeconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      logFailure(req, 'health_check_failed');
+      res.status(503).json({ status: 'degraded', database: 'unavailable' });
+    }
+  });
+
   registerProgress(app);
   registerVisualizer(app);
   registerSubmissions(app);
@@ -74,7 +91,8 @@ async function startServer() {
   // --- Auth Routes ---
   app.post("/api/auth/signup", rateLimit(5,600000,"signup"), async (req, res) => {
     try {
-      const {password}=req.body;const name=typeof req.body.name==='string'?req.body.name.trim():'';const email=typeof req.body.email==='string'?req.body.email.trim().toLowerCase():'';
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+      const {password}=body;const name=typeof body.name==='string'?body.name.trim():'';const email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
       if(name.length<2||name.length>80||email.length>254||!/^\S+@\S+\.\S+$/.test(email)||typeof password!=='string'||password.length<8||Buffer.byteLength(password)>72)return res.status(400).json({error:'Use a valid name, email, and a password of 8–72 bytes.'});
       if (!name || !email || !password) {
         return res.status(400).json({ error: "Missing required fields" });
@@ -105,7 +123,8 @@ async function startServer() {
 
   app.post("/api/auth/login", rateLimit(10,600000,"login"), async (req, res) => {
     try {
-      const {password}=req.body;const email=typeof req.body.email==='string'?req.body.email.trim().toLowerCase():'';
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+      const {password}=body;const email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
       if(!email||email.length>254||typeof password!=='string'||Buffer.byteLength(password)>72)return res.status(400).json({error:'Enter a valid email and password.'});
       if (!email || !password) {
         return res.status(400).json({ error: "Missing required fields" });
@@ -246,7 +265,7 @@ async function startServer() {
         activity,
         allDates: allDates.map(d => d.d),
       });
-    } catch (error: any) {
+    } catch {
       logFailure(req,'backend_error');
       res.status(500).json({ error: "Unable to load your account. Please try again." });
     }
@@ -277,7 +296,7 @@ async function startServer() {
         title: p.title.replace(/^Problem\s+\d+:\s*/i, '')
       }));
       res.json(cleanedProblems);
-    } catch (error) {
+    } catch {
       logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
@@ -310,22 +329,26 @@ async function startServer() {
           accepted: 0,
           submissions: 0
         };
-        db.prepare("INSERT INTO problem_stats (problem_id, accepted, submissions) VALUES (?, ?, ?)").run(String(req.params.problemId), initialStats.accepted, initialStats.submissions);
+        db.prepare("INSERT OR IGNORE INTO problem_stats (problem_id, accepted, submissions) VALUES (?, ?, ?)").run(String(req.params.problemId), initialStats.accepted, initialStats.submissions);
         problem.stats = initialStats;
       }
 
       res.json(problem);
-    } catch (error) {
+    } catch {
       logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
   // --- Problem Interaction Routes ---
-  app.post("/api/problems/:problemId/feedback", requireAuth, (req, res) => {
+  app.post("/api/problems/:problemId/feedback", requireAuth, rateLimit(20, 600000, "feedback", true), (req, res) => {
     try {
-      const problemId = String(req.params.problemId);
-      const { issues, additionalFeedback, rating } = req.body;
+      const problemId = String(req.params.problemId).trim();
+      if (!problemId || problemId.length > 128 || !db.prepare("SELECT id FROM problems WHERE id = ?").get(problemId)) {
+        return res.status(404).json({ error: "Problem not found" });
+      }
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+      const { issues, additionalFeedback, rating } = body;
 
       const userId=req.userId;
       if(!Array.isArray(issues)||issues.length>20||issues.some((x:any)=>typeof x!=="string"||x.length>200)||typeof additionalFeedback!=="string"||additionalFeedback.length>5000||!Number.isInteger(rating)||rating<0||rating>5)return res.status(400).json({error:"Invalid feedback."});
@@ -338,7 +361,7 @@ async function startServer() {
       );
 
       res.json({ success: true });
-    } catch (error) {
+    } catch {
       logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
@@ -362,7 +385,7 @@ async function startServer() {
       const totalLikes = totalLikesQuery ? totalLikesQuery.c : 0;
 
       res.json({ ...state, totalLikes });
-    } catch (error) {
+    } catch {
       logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
@@ -370,29 +393,39 @@ async function startServer() {
 
   // Coding submission routes are registered by registerSubmissions(app) above.
 
-  app.post("/api/problems/:problemId/interaction", requireAuth, (req, res) => {
+  app.post("/api/problems/:problemId/interaction", requireAuth, rateLimit(60, 60000, "interaction", true), (req, res) => {
     try {
-
-      const problemId = String(req.params.problemId);
-      const { type, action } = req.body;
+      const problemId = String(req.params.problemId).trim();
+      if (!problemId || problemId.length > 128 || !db.prepare("SELECT id FROM problems WHERE id = ?").get(problemId)) {
+        return res.status(404).json({ error: "Problem not found" });
+      }
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+      const { type, action } = body;
       if(!['like','dislike','star'].includes(type)||!['add','remove'].includes(action))return res.status(400).json({error:'Invalid interaction.'}); // type: 'like' | 'dislike' | 'star', action: 'add' | 'remove'
 
-      if (action === 'add') {
-        // If adding a like, remove dislike (and vice versa)
-        if (type === 'like') {
-          db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'dislike'").run(req.userId, problemId);
-        } else if (type === 'dislike') {
-          db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'like'").run(req.userId, problemId);
-        }
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        if (action === 'add') {
+          // If adding a like, remove dislike (and vice versa) atomically
+          if (type === 'like') {
+            db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'dislike'").run(req.userId, problemId);
+          } else if (type === 'dislike') {
+            db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'like'").run(req.userId, problemId);
+          }
 
-        // Insert new interaction (ignore if exists due to unique constraint)
-        db.prepare("INSERT OR IGNORE INTO user_problem_interactions (user_id, problem_id, interaction_type) VALUES (?, ?, ?)").run(req.userId, problemId, type);
-      } else if (action === 'remove') {
-        db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = ?").run(req.userId, problemId, type);
+          // Insert new interaction (ignore if exists due to unique constraint)
+          db.prepare("INSERT OR IGNORE INTO user_problem_interactions (user_id, problem_id, interaction_type) VALUES (?, ?, ?)").run(req.userId, problemId, type);
+        } else if (action === 'remove') {
+          db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = ?").run(req.userId, problemId, type);
+        }
+        db.exec('COMMIT');
+      } catch (txErr) {
+        db.exec('ROLLBACK');
+        throw txErr;
       }
 
       res.json({ success: true });
-    } catch (error) {
+    } catch {
       logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
@@ -404,7 +437,7 @@ async function startServer() {
 
       const favourites = db.prepare("SELECT problem_id, created_at FROM user_problem_interactions WHERE user_id = ? AND interaction_type = 'star' ORDER BY created_at DESC").all(req.userId);
       res.json(favourites);
-    } catch (error) {
+    } catch {
       logFailure(req,'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
@@ -415,7 +448,7 @@ async function startServer() {
     try {
       const topUsers = db.prepare("SELECT name, xp FROM users ORDER BY xp DESC LIMIT 5").all();
       res.json(topUsers);
-    } catch (error) {
+    } catch {
       logFailure(req,'backend_error');
       res.status(500).json({ error: "Failed to fetch leaderboard" });
     }
@@ -426,7 +459,7 @@ async function startServer() {
     try {
 
 
-      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.userId);
+      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.userId) as any;
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
@@ -450,23 +483,25 @@ async function startServer() {
         ORDER BY recordedAt
       `).all(req.userId);
       res.json({ user: { ...publicUser(user), location:user.location, university:user.university, github:user.github, linkedin:user.linkedin, avatar_url:user.avatar_url }, activity, courses, solvedProblems, attemptedProblems, practiceActivity });
-    } catch (error) {
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "The service is temporarily unavailable." });
     }
   });
 
-  app.post("/api/profile/update", requireAuth, (req, res) => {
+  app.post("/api/profile/update", requireAuth, rateLimit(30, 600000, "profile_update", true), (req, res) => {
     try {
-
-
-      const {location='',university='',github='',linkedin='',avatar_url=''}=req.body;
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : null;
+      if (!body) return res.status(400).json({ error: 'Invalid profile details.' });
+      const {location='',university='',github='',linkedin='',avatar_url=''}=body;
       if([location,university,github,linkedin,avatar_url].some(v=>typeof v!=='string'||v.length>2000)||[github,linkedin,avatar_url].some(v=>v&&!/^https?:\/\//i.test(v)))return res.status(400).json({error:'Invalid profile details.'});
 
       db.prepare("UPDATE users SET location = ?, university = ?, github = ?, linkedin = ?, avatar_url = ? WHERE id = ?")
         .run(location, university, github, linkedin, avatar_url, req.userId);
 
       res.json({ success: true });
-    } catch (error) {
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "The service is temporarily unavailable." });
     }
   });
@@ -486,14 +521,34 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath, { redirect: false }));
-    app.get("/*splat", (req, res) => {
+    app.get("/*splat", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const httpServer = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.info(JSON.stringify({ event: 'server_shutdown', signal }));
+    const forceTimer = setTimeout(() => process.exit(1), 5000);
+    forceTimer.unref();
+    httpServer.close(() => {
+      try {
+        db.close();
+      } catch {
+        // Ignore if already closed
+      }
+      process.exit(0);
+    });
+  };
+
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 startServer();

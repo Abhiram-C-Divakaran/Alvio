@@ -120,42 +120,50 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
         });
       }
 
-      // Record server-calculated problem statistics.
+      // Atomically record server-calculated problem statistics and (if signed in) user submission history.
       const acceptedDelta = verdict.status === 'Passed' ? 1 : 0;
-      db.prepare(`
-        INSERT INTO problem_stats (problem_id, accepted, submissions)
-        VALUES (?, ?, 1)
-        ON CONFLICT(problem_id) DO UPDATE SET
-          accepted = accepted + excluded.accepted,
-          submissions = submissions + 1
-      `).run(problemId, acceptedDelta);
-
-      const updatedStats = db
-        .prepare('SELECT accepted, submissions FROM problem_stats WHERE problem_id = ?')
-        .get(problemId) as { accepted: number; submissions: number } | undefined;
-
+      let updatedStats: { accepted: number; submissions: number } | undefined;
       let saved = false;
       let savedSubmission: any = null;
 
-      if (req.userId !== undefined) {
-        const insertResult = db.prepare(`
-          INSERT INTO user_submissions
-            (user_id, problem_id, status, language, code, runtime_ms, passed_testcases, total_testcases, verified)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-        `).run(
-          req.userId,
-          problemId,
-          verdict.status,
-          language,
-          code,
-          verdict.executionTimeMs,
-          verdict.passedCount,
-          verdict.totalCount
-        );
-        saved = true;
-        savedSubmission = db
-          .prepare('SELECT * FROM user_submissions WHERE id = ?')
-          .get(Number(insertResult.lastInsertRowid));
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`
+          INSERT INTO problem_stats (problem_id, accepted, submissions)
+          VALUES (?, ?, 1)
+          ON CONFLICT(problem_id) DO UPDATE SET
+            accepted = accepted + excluded.accepted,
+            submissions = submissions + 1
+        `).run(problemId, acceptedDelta);
+
+        updatedStats = db
+          .prepare('SELECT accepted, submissions FROM problem_stats WHERE problem_id = ?')
+          .get(problemId) as { accepted: number; submissions: number } | undefined;
+
+        if (req.userId !== undefined) {
+          const insertResult = db.prepare(`
+            INSERT INTO user_submissions
+              (user_id, problem_id, status, language, code, runtime_ms, passed_testcases, total_testcases, verified)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+          `).run(
+            req.userId,
+            problemId,
+            verdict.status,
+            language,
+            code,
+            verdict.executionTimeMs,
+            verdict.passedCount,
+            verdict.totalCount
+          );
+          saved = true;
+          savedSubmission = db
+            .prepare('SELECT * FROM user_submissions WHERE id = ?')
+            .get(Number(insertResult.lastInsertRowid));
+        }
+        db.exec('COMMIT');
+      } catch (txErr) {
+        db.exec('ROLLBACK');
+        throw txErr;
       }
 
       return res.status(200).json({

@@ -1,7 +1,7 @@
 import type { Express } from 'express';
 import db from './db';
 import { requireAuth } from './auth';
-import { rateLimit } from './security';
+import { logFailure, rateLimit } from './security';
 import type { LearningProgress } from '../src/types/user';
 const object=(v:any)=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const number=(v:any,max=10_000_000)=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=max;
@@ -40,16 +40,26 @@ export function validateProgress(value:any,userId:number):LearningProgress {
  return value;
 }
 export function registerProgress(app:Express){
- app.get('/api/progress',requireAuth,(req,res)=>{const row=db.prepare('SELECT * FROM learning_progress WHERE user_id=?').get(req.userId) as any;res.json(row?{progress:JSON.parse(row.progress_json),revision:row.revision}:{progress:null,revision:0});});
+ app.get('/api/progress',requireAuth,(req,res)=>{
+  try{
+   const row=db.prepare('SELECT * FROM learning_progress WHERE user_id=?').get(req.userId) as any;
+   res.json(row?{progress:JSON.parse(row.progress_json),revision:row.revision}:{progress:null,revision:0});
+  }catch{
+   logFailure(req,'progress_read_failed');
+   res.status(500).json({error:'Unable to load learning progress.',code:'BACKEND_ERROR'});
+  }
+ });
  app.put('/api/progress',requireAuth,rateLimit(120,60000,'progress',true),(req,res)=>{
- let progress:LearningProgress;try{progress=validateProgress(req.body.progress,req.userId);if(!Number.isSafeInteger(req.body.revision)||req.body.revision<0)throw Error();}catch{return res.status(400).json({error:'Invalid learning progress.',code:'INVALID_PROGRESS'});}
+ let progress:LearningProgress;
+ const body=req.body&&typeof req.body==='object'&&!Array.isArray(req.body)?req.body:null;
+ try{if(!body)throw Error();progress=validateProgress(body.progress,req.userId);if(!Number.isSafeInteger(body.revision)||body.revision<0)throw Error();}catch{return res.status(400).json({error:'Invalid learning progress.',code:'INVALID_PROGRESS'});}
  db.exec('BEGIN IMMEDIATE');try{
  const row=db.prepare('SELECT * FROM learning_progress WHERE user_id=?').get(req.userId) as any;
- if((row?.revision||0)!==req.body.revision){db.exec('ROLLBACK');return res.status(409).json({error:'Progress changed on another device.',code:'PROGRESS_CONFLICT',progress:row?JSON.parse(row.progress_json):null,revision:row?.revision||0});}
+ if((row?.revision||0)!==body.revision){db.exec('ROLLBACK');return res.status(409).json({error:'Progress changed on another device.',code:'PROGRESS_CONFLICT',progress:row?JSON.parse(row.progress_json):null,revision:row?.revision||0});}
  const user=db.prepare('SELECT xp FROM users WHERE id=?').get(req.userId) as any;
  // Learning records remain self-reported. They NEVER update permanent user XP.
  const saved={...progress,userId:String(req.userId),authoritativeXp:user.xp,updatedAt:new Date().toISOString()};const revision=(row?.revision||0)+1;
  db.prepare('INSERT INTO learning_progress(user_id,progress_json,revision,updated_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET progress_json=excluded.progress_json,revision=excluded.revision,updated_at=excluded.updated_at').run(req.userId,JSON.stringify(saved),revision,saved.updatedAt);db.exec('COMMIT');res.json({progress:saved,revision});
- }catch(e){db.exec('ROLLBACK');throw e;}
+ }catch(e){db.exec('ROLLBACK');logFailure(req,'progress_save_failed');throw e;}
  });
 }
