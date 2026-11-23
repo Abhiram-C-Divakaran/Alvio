@@ -159,17 +159,24 @@ interface CodingWorkspaceProps {
   onShuffle: () => void;
 }
 
+function safeGetStorage(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeSetStorage(key: string, value: string): boolean {
+  try { localStorage.setItem(key, value); return true; } catch { return false; }
+}
+
 export default function CodingWorkspace({ problem, problemNumber, isSolved, onBack, onNext, onPrev }: CodingWorkspaceProps) {
   const [language, setLanguage] = useState<'javascript' | 'python' | 'python3' | 'cpp' | 'c' | 'java' | 'typescript' | 'csharp'>('javascript');
-  const [code, setCode] = useState(()=>localStorage.getItem(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:javascript`) ?? problem.starterCode.javascript);
-  const [autoSave,setAutoSave]=useState(()=>localStorage.getItem('alvio-autosave')!=='false');
+  const [code, setCode] = useState(()=>safeGetStorage(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:javascript`) ?? problem.starterCode.javascript);
+  const [autoSave,setAutoSave]=useState(()=>safeGetStorage('alvio-autosave')!=='false');
   const [expanded,setExpanded]=useState(false);
   const [saved,setSaved]=useState('');
   const [editorLight,setEditorLight]=useState(false);
   const draftOwner=useRef(problem.id);
-  const saveDraft=()=>{localStorage.setItem(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${language}`,code);setSaved('Saved locally');};
-  useEffect(()=>{localStorage.setItem('alvio-autosave',String(autoSave));if(autoSave&&draftOwner.current===problem.id)localStorage.setItem(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${language}`,code);},[code,language,autoSave,problem.id]);
-  useEffect(()=>{draftOwner.current=problem.id;setCode(localStorage.getItem(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${language}`)??generateStarterCode(problem,language));setResult(null);setSubmitSuccess(false);},[problem.id]);
+  const saveDraft=()=>{const ok=safeSetStorage(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${language}`,code);setSaved(ok?'Saved locally':'Storage unavailable');};
+  useEffect(()=>{safeSetStorage('alvio-autosave',String(autoSave));if(autoSave&&draftOwner.current===problem.id)safeSetStorage(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${language}`,code);},[code,language,autoSave,problem.id]);
+  useEffect(()=>{draftOwner.current=problem.id;setCode(safeGetStorage(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${language}`)??generateStarterCode(problem,language));setResult(null);setSubmitSuccess(false);},[problem.id]);
 
 
   const [isExecuting, setIsExecuting] = useState(false);
@@ -192,8 +199,8 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const isDraggingVertical = useRef(false);
-  const [rightSplitPercent, setRightSplitPercent] = useState(()=>Number(localStorage.getItem('alvio-editor-split'))||60);
-  useEffect(()=>localStorage.setItem('alvio-editor-split',String(rightSplitPercent)),[rightSplitPercent]);
+  const [rightSplitPercent, setRightSplitPercent] = useState(()=>Number(safeGetStorage('alvio-editor-split'))||60);
+  useEffect(()=>{safeSetStorage('alvio-editor-split',String(rightSplitPercent));},[rightSplitPercent]);
 
   const handleVerticalDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();

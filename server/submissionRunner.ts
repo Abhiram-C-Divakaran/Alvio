@@ -878,7 +878,13 @@ export async function evaluateSubmission(params: {
     };
   }
 
-  if (!problem.signature || !isSafeIdentifier(problem.signature.name) || !Array.isArray(problem.signature.params) || typeof problem.signature.returns !== 'string') {
+  if (
+    !problem.signature ||
+    !isSafeIdentifier(problem.signature.name) ||
+    !Array.isArray(problem.signature.params) ||
+    !problem.signature.params.every((p) => p && isSafeIdentifier(p.name) && typeof p.type === 'string') ||
+    typeof problem.signature.returns !== 'string'
+  ) {
     return {
       status: 'Error',
       passedCount: 0,
