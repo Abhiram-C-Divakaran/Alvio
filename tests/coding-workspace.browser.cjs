@@ -82,6 +82,15 @@ const { chromium, testOrigin } = require('./browser-runtime.cjs');
   await p.getByRole('button', { name: 'Submissions', exact: true }).click();
   await p.getByText('Test cases passed: 4/4', { exact: true }).waitFor();
 
+  // Verify Coding AI Analysis never exposes internal secret names on provider failure
+  await p.route('**/api/chat', route =>
+    route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'GROQ_API_KEY missing' }) })
+  );
+  await p.getByRole('button', { name: 'Analysis', exact: true }).click();
+  await p.getByText('AI analysis is currently unavailable. Please try again in a moment.', { exact: true }).waitFor();
+  assert(!(await p.locator('body').innerText()).includes('GROQ_API_KEY'));
+  await p.unroute('**/api/chat');
+
   // Verify Run timeout protection
   await p.evaluate(() =>
     localStorage.setItem(

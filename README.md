@@ -29,7 +29,8 @@ Copy `.env.example` to `.env`, then explicitly configure `JWT_SECRET` with a pri
 | ALLOWED_ORIGINS | Comma-separated exact origins; mandatory in production |
 | DATABASE_PATH | SQLite file; default `./data/database.sqlite` |
 | GROQ_API_KEY | Server-only AI provider key; optional for non-AI learning |
-| GROQ_VISUALIZER_MODEL | Visualizer model override |
+| GROQ_CHAT_MODEL | Chat/interview model override (default `openai/gpt-oss-120b`) |
+| GROQ_VISUALIZER_MODEL | Visualizer model override (default `openai/gpt-oss-120b`) |
 | PAIZA_API_KEY | Optional external code runner key (defaults to `guest`) |
 | NODE_ENV | Set `production` when serving the built app |
 

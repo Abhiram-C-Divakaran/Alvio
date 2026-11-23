@@ -47,7 +47,8 @@ Open **http://localhost:3001** (or `http://localhost:3000` if `PORT` is unset).
 | `PORT` | Optional | HTTP port (`.env.example` uses `3001`; default is `3000`). |
 | `ALLOWED_ORIGINS` | **Required in production** | Comma-separated exact origins, e.g. `http://localhost:3001`. |
 | `DATABASE_PATH` | Optional | Path to SQLite database (defaults to `./data/database.sqlite`). |
-| `GROQ_API_KEY` | Optional (needed for live AI) | Server-only API key for AI Tutor, AI Visualizer, and Coding AI Analysis. Non-AI features work fully without it. |
+| `GROQ_API_KEY` | Optional (needed for live AI) | Server-only API key for AI Tutor, AI Visualizer, Mock Interview, Video Ask-AI, and Coding AI Analysis. Non-AI features work fully without it. |
+| `GROQ_CHAT_MODEL` | Optional | Model override for `/api/chat` (default `openai/gpt-oss-120b`). |
 | `GROQ_VISUALIZER_MODEL` | Optional | Model override for `/api/visualizer` (default `openai/gpt-oss-120b`). |
 | `PAIZA_API_KEY` | Optional | Defaults to Paiza's `guest` key for external code execution. |
 | `NODE_ENV` | Optional | Set to `production` when running `npm start`. |

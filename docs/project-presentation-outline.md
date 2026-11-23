@@ -106,7 +106,7 @@ Express Backend (server.ts + server/*)
 - **Verified coverage**:
   - **Lint (`npm run lint`)**: 0 errors across the repository.
   - **Production build (`npm run build`)**: Vite client bundle + esbuild Express bundle pass cleanly.
-  - **Backend & submission tests (`test:foundation`)**: 37 tests passing (JWT auth, rate/body limits, migrations, cloud progress sync & conflict merge, optional auth, and all server-verified coding submission cases).
+  - **Backend, AI & submission tests (`test:foundation`)**: 49 tests passing (JWT auth, rate/body limits, migrations, cloud progress sync & conflict merge, optional auth, AI chat/visualizer error & parser tests, and all server-verified coding submission cases).
   - **Domain model tests (`test:models`)**: 10 model/unit tests across 7 files passing (auth redirects, dashboard, practice filters, progress, quiz engine, 480 heap operations, visualizer progress).
   - **End-to-end Playwright browser tests (13 test files)**: Auth foundation & auth UI, profile, coding workspace (Run + Submit + History + 8 picker language symbols), 128 navigation/viewport checks (desktop & mobile), video learning, AI Tutor, AI Visualizer, Quiz, Progress, PvP Duel, and Mock Interview.
 

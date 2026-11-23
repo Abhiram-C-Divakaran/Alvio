@@ -12,7 +12,13 @@ import {
   type ChatCompletionParams,
 } from '../server/chat';
 import { parseInterviewEvaluation } from '../src/features/ai-tutor/interviewParser';
-import { DEFAULT_GROQ_VISUALIZER_MODEL, resolveVisualizerModel } from '../server/visualizer';
+import {
+  DEFAULT_GROQ_VISUALIZER_MODEL,
+  resolveVisualizerModel,
+  registerVisualizer,
+  type VisualizerCompletionParams,
+} from '../server/visualizer';
+import { example as visualizerExample } from '../src/features/ai-visualizer/example';
 
 async function withMockChatServer(
   options: Parameters<typeof registerChat>[1],
@@ -239,11 +245,160 @@ test('parseInterviewEvaluation parses raw JSON, fenced JSON, prose-wrapped JSON,
   assert.equal(finalQ.nextQuestion, '');
 });
 
+async function withMockVisualizerServer(
+  options: Parameters<typeof registerVisualizer>[1],
+  fn: (origin: string) => Promise<void>
+) {
+  const app = express();
+  app.use(express.json({ limit: '512kb' }));
+  registerVisualizer(app, {
+    authMiddleware: (req, _res, next) => {
+      req.userId = 1;
+      req.requestId = 'test-vis-req';
+      next();
+    },
+    rateLimitMiddleware: (_req, _res, next) => next(),
+    ...options,
+  });
+
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as { port: number };
+  const origin = `http://127.0.0.1:${port}`;
+  try {
+    await fn(origin);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
 test('visualizer model defaults to openai/gpt-oss-120b and respects GROQ_VISUALIZER_MODEL', () => {
   assert.equal(DEFAULT_GROQ_VISUALIZER_MODEL, 'openai/gpt-oss-120b');
   assert.equal(resolveVisualizerModel({}), 'openai/gpt-oss-120b');
   assert.equal(resolveVisualizerModel({ GROQ_VISUALIZER_MODEL: '  ' }), 'openai/gpt-oss-120b');
   assert.equal(resolveVisualizerModel({ GROQ_VISUALIZER_MODEL: ' openai/gpt-oss-20b ' }), 'openai/gpt-oss-20b');
+});
+
+test('/api/visualizer rejects malformed inputs and invalid follow-up context with 400', async () => {
+  await withMockVisualizerServer({ getEnv: () => ({ GROQ_API_KEY: 'test-key' }) }, async (origin) => {
+    const emptyRes = await fetch(origin + '/api/visualizer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ problem: '   ', language: 'python' }),
+    });
+    assert.equal(emptyRes.status, 400);
+
+    const badLang = await fetch(origin + '/api/visualizer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ problem: 'Sort [3,1,2]', language: 'rust' }),
+    });
+    assert.equal(badLang.status, 400);
+
+    const badMode = await fetch(origin + '/api/visualizer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ problem: 'Sort [3,1,2]', language: 'python', mode: 'Invalid Mode' }),
+    });
+    assert.equal(badMode.status, 400);
+
+    const badFollowup = await fetch(origin + '/api/visualizer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ problem: 'Insert 30', question: 'Why?', context: { spec: { broken: true }, index: 0 } }),
+    });
+    assert.equal(badFollowup.status, 400);
+  });
+});
+
+test('/api/visualizer forwards HTTP 429 rate-limit and isolates follow-up provider errors cleanly', async () => {
+  const rateErr = Object.assign(new Error('rate_limit_exceeded'), { status: 429 });
+  await withMockVisualizerServer(
+    {
+      getEnv: () => ({ GROQ_API_KEY: 'gsk_secret_vis_never_leak' }),
+      createCompletion: async () => {
+        throw rateErr;
+      },
+    },
+    async (origin) => {
+      const genRes = await fetch(origin + '/api/visualizer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ problem: 'Bubble sort [4, 2, 1]', language: 'python', mode: 'Explain Solution' }),
+      });
+      assert.equal(genRes.status, 429);
+      const genText = await genRes.text();
+      assert.match(genText, /AI_RATE_LIMITED/);
+      assert.doesNotMatch(genText, /gsk_secret_vis/);
+
+      const folRes = await fetch(origin + '/api/visualizer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          problem: 'Insert 30',
+          question: 'Why update pointers?',
+          context: { spec: visualizerExample, index: 2 },
+          mode: 'Explain Solution',
+        }),
+      });
+      assert.equal(folRes.status, 429);
+    }
+  );
+
+  // Generic provider error during follow-up returns follow-up-specific error message (not "generate this visualization")
+  await withMockVisualizerServer(
+    {
+      getEnv: () => ({ GROQ_API_KEY: 'test-key' }),
+      createCompletion: async () => {
+        throw new Error('provider network error');
+      },
+    },
+    async (origin) => {
+      const folRes = await fetch(origin + '/api/visualizer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          problem: 'Insert 30',
+          question: 'Why update pointers?',
+          context: { spec: visualizerExample, index: 2 },
+          mode: 'Explain Solution',
+        }),
+      });
+      assert.equal(folRes.status, 502);
+      const body = await folRes.json();
+      assert.match(body.error, /explain this step/i);
+      assert.doesNotMatch(body.error, /generate this visualization/i);
+    }
+  );
+});
+
+test('/api/visualizer follow-up passes 4096 max_tokens and returns answer cleanly', async () => {
+  let captured: VisualizerCompletionParams | null = null;
+  await withMockVisualizerServer(
+    {
+      getEnv: () => ({ GROQ_API_KEY: 'test-key' }),
+      createCompletion: async (params) => {
+        captured = params;
+        return { choices: [{ message: { content: 'Pointing the new node first preserves the rest of the list.' } }] };
+      },
+    },
+    async (origin) => {
+      const res = await fetch(origin + '/api/visualizer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          problem: 'Insert 30',
+          question: 'Why update newNode.next first?',
+          context: { spec: visualizerExample, index: 2 },
+          mode: 'Explain Solution',
+        }),
+      });
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.match(data.answer, /preserves the rest of the list/);
+      assert.equal(captured?.max_tokens, 4096);
+    }
+  );
 });
 
 test('parseInterviewEvaluation rejects malformed, non-JSON, or incomplete evaluation responses', () => {

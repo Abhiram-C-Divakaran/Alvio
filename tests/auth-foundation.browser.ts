@@ -71,3 +71,29 @@ test('profile sign-out and account switch replace identity and reject an externa
   assert.equal(new URL(page.url()).searchParams.get('topic'), 'Heap');
   await page.close();
 });
+
+test('unknown routes show friendly 404 page and Ctrl+K search handles unmatched queries cleanly', async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(origin + '/nonexistent-route-check');
+  await page.getByRole('heading', { name: 'Page not found', exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Go to Dashboard', exact: true }).click();
+  await page.waitForURL('**/auth?**');
+
+  await page.getByLabel('Email', { exact: true }).fill('browser@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('browser-test-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForURL('**/dashboard');
+  await page.locator('.app-shell').waitFor();
+
+  await page.keyboard.press('Control+k');
+  const box = page.getByRole('combobox', { name: 'Search Alvio' });
+  await box.fill('zzzz-no-matching-lesson-999');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowUp');
+  const activeDesc = await box.getAttribute('aria-activedescendant');
+  assert(!String(activeDesc || '').includes('NaN'), 'Search active descendant must never be NaN');
+  assert.deepEqual(errors, []);
+  await page.close();
+});

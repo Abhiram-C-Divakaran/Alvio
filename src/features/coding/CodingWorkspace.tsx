@@ -345,7 +345,13 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
           try {
             const payload = JSON.parse(payloadText);
             if (payload.error) {
-              setAiAnalysis(payload.error);
+              const safeErr =
+                typeof payload.error === 'string' &&
+                payload.error.trim() &&
+                !/GROQ_API_KEY|process\.env|stack trace/i.test(payload.error)
+                  ? payload.error.trim()
+                  : 'AI analysis was interrupted. Please try again.';
+              setAiAnalysis(safeErr);
               return;
             }
             if (typeof payload.delta === 'string') combined += payload.delta;

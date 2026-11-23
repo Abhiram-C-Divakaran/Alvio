@@ -44,7 +44,7 @@ Data Structures and Algorithms (DSA) form a core foundation of computer science 
 
 To ensure data integrity and offline usability, Alvio combines server-side authentication (`bcryptjs` password hashing and HS256 JSON Web Tokens) with an account-scoped **IndexedDB** offline cache and compare-and-swap cloud progress synchronization featuring three-way conflict resolution. In the Coding Playground, student code is never executed inside the Express process; instead, quick JavaScript experimentation runs in browser Web Workers, while server-verified submissions (`POST /api/problems/:problemId/submit`) load authoritative test cases from SQLite and delegate execution across seven supported programming languages to the external **Paiza.IO** execution API with per-run nonce verification.
 
-The completed application was verified using an automated regression suite (`npm run test:demo`) achieving **0 lint errors**, a clean production build, **37/37 passing backend, authentication, sync, and server-verified submission tests**, **10/10 passing domain model and algorithm unit tests across 7 files**, and **13 passing Playwright end-to-end browser test scripts** (including **128/128** responsive viewport-by-route checks) without requiring paid live API keys during automated testing.
+The completed application was verified using an automated regression suite (`npm run test:demo`) achieving **0 lint errors**, a clean production build, **49/49 passing backend, authentication, sync, AI, and server-verified submission tests**, **10/10 passing domain model and algorithm unit tests across 7 files**, and **13 passing Playwright end-to-end browser test scripts** (including **128/128** responsive viewport-by-route checks) without requiring paid live API keys during automated testing, plus an optional live Groq smoke test (`npm run test:ai-live`, **3/3 passed**).
 
 ---
 
@@ -134,7 +134,7 @@ Alvio follows a layered client-server architecture with a clear trust boundary b
 |            v                                        v                    v  |
 |  +--------------------+                  +--------------------+  +-------+  |
 |  | SQLite (node:sqlite|                  | Groq SDK (Optional)|  | Paiza |  |
-|  | WAL + Foreign Keys |                  | Llama 3.3 70B &    |  | .IO   |  |
+|  | WAL + Foreign Keys |                  | openai/gpt-oss-120b|  | .IO   |  |
 |  | schema_migrations) |                  | Visualizer Model   |  | API   |  |
 |  +--------------------+                  +--------------------+  +-------+  |
 +-----------------------------------------------------------------------------+
@@ -403,27 +403,27 @@ To guarantee reliability without spending money on live AI or execution APIs dur
 
 ## 16. Verified Test Results
 
-All results below were verified on **2026-11-22** on commit `e124262` (`main` branch) running **Node.js `v24.13.0`** and **npm `11.19.0`**, as recorded in [docs/final-verification-results.md](./final-verification-results.md).
+All results below were verified on **2026-11-23** against base commit `c49a10beac9854cc2af9ed0bb6033b8e6774f8aa` (`main` branch) running **Node.js `v24.13.0`** and **npm `11.19.0`**, as recorded in [docs/final-verification-results.md](./final-verification-results.md).
 
 | Stage / Verification Check | Command | Status | Verified Result |
 | --- | --- | --- | --- |
 | **Static Linting** | `npm run lint` (`oxlint`) | **PASS** | `0` errors (pre-existing unused-variable warnings remain) |
-| **Production Build** | `npm run build` | **PASS** | Vite client built in `2.79s`; Express `dist/server.cjs` (`101.0 kb`) built in `19ms` |
-| **Backend, Auth, Sync & Submission Tests** | `npm run test:foundation` | **PASS** | **37/37 tests passed**, `0` failed (`2427ms`) |
-| **Domain Model & Algorithm Unit Tests** | `npm run test:models` | **PASS** | **10/10 tests passed** across 7 files (incl. `480` heap ops), `0` failed (`713ms`) |
-| **Auth Foundation Browser Suite** | `npm run test:auth-browser` | **PASS** | **3/3 tests passed**, `0` failed (`9428ms`) |
-| **Auth, Profile & Coding Regressions** | `npm run test:auth-regressions` | **PASS** | **4/4 browser scripts passed** (auth, profile, Monaco Run/Submit/History/timeout, 8 picker language symbols) |
+| **Production Build** | `npm run build` | **PASS** | Vite client + Express `dist/server.cjs` built cleanly |
+| **Backend, Auth, Sync, AI & Submission Tests** | `npm run test:foundation` | **PASS** | **49/49 tests passed**, `0` failed |
+| **Domain Model & Algorithm Unit Tests** | `npm run test:models` | **PASS** | **10/10 tests passed** across 7 files (incl. `480` heap ops), `0` failed |
+| **Auth Foundation, 404 & Search Browser Suite** | `npm run test:auth-browser` | **PASS** | **4/4 tests passed**, `0` failed |
+| **Auth, Profile & Coding Regressions** | `npm run test:auth-regressions` | **PASS** | **4/4 browser scripts passed** (auth, profile, Monaco Run/Submit/History/AI error guard/timeout, 8 picker language symbols) |
 | **Learning, Video & AI Browser Suite** | `npm run test:learning-browser` | **PASS** | **4/4 browser scripts passed** (**128/128** viewport × route checks from `1920px` to `390px`, `0` failures) |
 | **Practice, Quiz, Progress, PvP & Interview** | `npm run test:practice-browser` | **PASS** | **4/4 browser scripts passed** (Quiz/Rapid Fire, Progress, 2-tab PvP Duel, Mock Interview SSE/rubric/notes/report) |
+| **Optional Live Groq API Smoke Suite** | `npm run test:ai-live` | **PASS** | **3/3 live tests passed** (AI Tutor streaming, Mock Interview JSON/report, AI Visualizer follow-up) |
 | **Fresh Database Catalog Seeding** | `npx tsx server/migrateProblems.ts` (temp DB) | **PASS** | Seeded **472** coding problems cleanly into SQLite |
 | **Dev & Production Server Smoke Checks** | `tsx server.ts` & `node dist/server.cjs` | **PASS** | `/` → `200`, `/api/problems` → `200` (472 problems), `/api/auth/me` → `401` |
-| **Offline Provider Fallback Verification** | Empty `GROQ_API_KEY`, unreachable `PAIZA_API_BASE` | **PASS** | `/api/chat` → safe `500`; `/api/visualizer` → safe `502`; `/api/problems/:id/submit` → `503` (`errorType: 'provider'`, `saved: false`) |
-| **Landing & 3D/Algorithm Visualizers Check** | Desktop (`1440px`) & Mobile (`390px`) | **PASS** | `472` problem metric shown, `0` horizontal overflow, `0` `pageerror`s |
+| **Live Paiza Coding Submit Check** | `POST /api/problems/number-of-digit-one/submit` | **PASS** | JavaScript (`Passed 4/4`, `verified: true`) and Python 3 (`Passed 4/4`, `verified: true`) |
 
 ### Summary Metrics
-- **Total Automated Backend & Unit Tests Passed:** **47** (`37` foundation/backend/submission + `10` model/unit)
-- **Total Playwright E2E Browser Scripts Passed:** **13** (`1` TypeScript auth foundation suite + `12` comprehensive feature regression scripts)
-- **Live Paid API Dependency During Testing:** **0** (100% deterministic local/mocked execution)
+- **Total Automated Offline Backend & Unit Tests Passed:** **59** (`49` foundation/backend/AI/submission + `10` model/unit)
+- **Total Playwright E2E Browser Scripts Passed:** **13** (`1` TypeScript auth/404/search foundation suite [4 tests] + `12` comprehensive feature regression scripts)
+- **Optional Live Groq API Smoke Tests Passed:** **3/3** (skips cleanly offline when `GROQ_API_KEY` is unset)
 
 ---
 
@@ -513,7 +513,7 @@ Building on Alvio's clean modular architecture, future work could expand the pla
 
 **Alvio** achieves its core academic goal of transforming Data Structures and Algorithms study from a fragmented, static process into an engaging, unified full-stack learning experience. By combining interactive Three.js 3D visualizers, bundled video lessons, configurable quizzes, offline-capable IndexedDB/SQLite progress synchronization, a 472-problem multi-language Coding Playground with nonce-protected server-side submission verification, a two-tab PvP duel, and optional server-proxied AI tools, the platform demonstrates solid full-stack engineering principles across frontend, backend, database, security, and automated testing.
 
-With **0 lint errors**, **37/37 backend/submission tests**, **10/10 model unit tests**, and **13 passing Playwright browser regression suites** (verified without live paid API keys), Alvio is complete, well-documented, offline-resilient, and ready for academic evaluation and viva defense.
+With **0 lint errors**, **49/49 backend, AI, and submission tests**, **10/10 model unit tests**, **13 passing Playwright browser regression suites** (verified offline without live paid API keys), and **3/3 live Groq smoke tests**, Alvio is complete, well-documented, offline-resilient, and ready for academic evaluation and viva defense.
 
 ---
 

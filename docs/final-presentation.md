@@ -156,12 +156,12 @@ Express 5 Backend (Node.js 24 — server.ts & server/*)
   - **Submit (`POST /api/problems/:id/submit`):** Accepts only `{ code, language }`, loads authoritative test cases from SQLite, wraps with a random **per-run nonce marker**, executes via Paiza (zero `eval`/`child_process` on Express), updates `user_submissions` & `problem_stats`. Supports Guest Mode (`optionalAuth`).
 - **Automated Verification (`npm run test:demo` — 0 live paid API keys):**
   - `oxlint`: **0 errors** | Production build: **PASS** (Vite `2.79s`, `dist/server.cjs` `101.0 kb`).
-  - Backend, auth, sync & submissions (`test:foundation`): **37/37 passed**.
+  - Backend, auth, sync, AI & submissions (`test:foundation`): **49/49 passed**.
   - Domain models & heap ops (`test:models`): **10/10 passed** across 7 files (`480` heap ops).
   - Playwright E2E browser suites: **13 scripts passed** (**128/128** viewport × route checks).
 
 **Presenter Notes (Speaking Script — ~60 sec):**
-"In the Coding Playground, Run is designed for fast experimentation with editable test cases, while Submit is server-verified. When a student clicks Submit, Express ignores any client verdicts, loads the problem's test cases from SQLite, embeds a random nonce marker so `console.log` cannot fake a pass, and runs the wrapper externally on Paiza across all seven languages—Express never executes student code locally. To prove reliability, our single command `npm run test:demo` passes with 0 lint errors, 37 backend and submission tests, 10 domain model tests, and 13 Playwright browser scripts covering 128 responsive viewport checks—all offline with mocked providers."
+"In the Coding Playground, Run is designed for fast experimentation with editable test cases, while Submit is server-verified. When a student clicks Submit, Express ignores any client verdicts, loads the problem's test cases from SQLite, embeds a random nonce marker so `console.log` cannot fake a pass, and runs the wrapper externally on Paiza across all seven languages—Express never executes student code locally. To prove reliability, our single command `npm run test:demo` passes with 0 lint errors, 49 backend, AI, and submission tests, 10 domain model tests, and 13 Playwright browser scripts covering 128 responsive viewport checks—all offline with mocked providers, alongside an optional live Groq smoke test."
 
 ---
 

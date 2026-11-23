@@ -89,7 +89,7 @@ PvP Coding Duel uses the browser's native **`BroadcastChannel`** API to synchron
 ### 27. How did you test the application thoroughly without paying for live AI or Paiza APIs?
 Our unified verification script `npm run test:demo` runs completely locally using isolated temporary SQLite databases, disposable JWT secrets, and mocked Groq/Paiza providers:
 - `oxlint`: **0 errors**; `npm run build`: clean Vite + `esbuild` output.
-- `test:foundation` (`node:test`): **37/37 tests passed** (auth, headers, rate/body limits, migrations, progress conflict merge, optional auth, and all server-verified coding submission flows).
+- `test:foundation` (`node:test`): **49/49 tests passed** (auth, headers, rate/body limits, migrations, progress conflict merge, optional auth, AI chat/visualizer error & parser tests, and all server-verified coding submission flows).
 - `test:models` (`node:test`): **10/10 tests passed** across 7 files (including 480 heap operations).
 - Playwright E2E browser suites: **13 test scripts passed**, including **128/128** desktop-to-mobile viewport × route checks and all major student workflows.
 
