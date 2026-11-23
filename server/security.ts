@@ -1,18 +1,189 @@
 import type { RequestHandler, ErrorRequestHandler } from 'express';
+import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
-export function rateLimit(limit:number,windowMs:number,scope:string,byUser=false):RequestHandler{
- const entries=new Map<string,{count:number;until:number}>();
- return(req,res,next)=>{const now=Date.now();for(const [key,v] of entries)if(v.until<=now)entries.delete(key);
- const keys=[`${scope}:ip:${req.ip}`,...(byUser&&req.userId!==undefined?[`${scope}:user:${req.userId}`]:[])];
- for(const key of keys){const value=entries.get(key);if((value&&value.count>=limit)||entries.size>10000){res.setHeader('Retry-After',String(Math.max(1,Math.ceil(((value?.until||now+windowMs)-now)/1000))));res.status(429).json({error:"You're sending requests too quickly. Try again in a moment.",code:'RATE_LIMITED'});return;}}
- for(const key of keys){const value=entries.get(key)||{count:0,until:now+windowMs};value.count++;entries.set(key,value)}next();};
+import defaultDb from './db';
+
+export interface RateLimitDecision {
+  allowed: boolean;
+  retryAfterSeconds: number;
 }
-export const securityHeaders:RequestHandler=(req,res,next)=>{
- req.requestId=randomUUID();res.setHeader('X-Request-ID',req.requestId);res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('X-Permitted-Cross-Domain-Policies','none');
- // Inline styles and worker evaluation are required by Monaco and the local teaching runner.
- if(process.env.NODE_ENV==='production')res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net; media-src 'self' blob: https:; worker-src 'self' blob:; connect-src 'self' https://raw.githack.com https://raw.githubusercontent.com https://cdn.jsdelivr.net https://emkc.org https://api.paiza.io; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
- const started=Date.now();res.on('finish',()=>{if(req.path.startsWith('/api/'))console.info(JSON.stringify({requestId:req.requestId,method:req.method,route:req.route?.path||req.path,status:res.statusCode,durationMs:Date.now()-started,userId:req.userId}))});next();
+
+export interface RateLimitStore {
+  consume(keys: string[], limit: number, windowMs: number, now: number): RateLimitDecision;
+}
+
+export function createMemoryRateLimitStore(maxEntries = 10000): RateLimitStore {
+  const entries = new Map<string, { count: number; until: number }>();
+  return {
+    consume(keys, limit, windowMs, now) {
+      for (const [key, v] of entries) {
+        if (v.until <= now) entries.delete(key);
+      }
+      for (const key of keys) {
+        const value = entries.get(key);
+        if ((value && value.count >= limit) || entries.size > maxEntries) {
+          return {
+            allowed: false,
+            retryAfterSeconds: Math.max(1, Math.ceil(((value?.until || now + windowMs) - now) / 1000)),
+          };
+        }
+      }
+      for (const key of keys) {
+        const value = entries.get(key) || { count: 0, until: now + windowMs };
+        value.count++;
+        entries.set(key, value);
+      }
+      return { allowed: true, retryAfterSeconds: 0 };
+    },
+  };
+}
+
+/**
+ * SQLite-backed rate limit store for single-host multi-process or restart-persistent quotas.
+ * Multi-host horizontal deployments should supply a Redis-backed RateLimitStore implementation.
+ */
+export function createSqliteRateLimitStore(db: DatabaseSync = defaultDb): RateLimitStore {
+  return {
+    consume(keys, limit, windowMs, now) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare('DELETE FROM rate_limits WHERE reset_at <= ?').run(now);
+        for (const key of keys) {
+          const row = db
+            .prepare('SELECT count, reset_at FROM rate_limits WHERE key = ?')
+            .get(key) as { count: number; reset_at: number } | undefined;
+          if (row && row.count >= limit) {
+            db.exec('COMMIT');
+            return {
+              allowed: false,
+              retryAfterSeconds: Math.max(1, Math.ceil((row.reset_at - now) / 1000)),
+            };
+          }
+        }
+        const resetAt = now + windowMs;
+        const upsert = db.prepare(`
+          INSERT INTO rate_limits (key, count, reset_at)
+          VALUES (?, 1, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            count = CASE WHEN rate_limits.reset_at <= ? THEN 1 ELSE rate_limits.count + 1 END,
+            reset_at = CASE WHEN rate_limits.reset_at <= ? THEN excluded.reset_at ELSE rate_limits.reset_at END
+        `);
+        for (const key of keys) {
+          upsert.run(key, resetAt, now, now);
+        }
+        db.exec('COMMIT');
+        return { allowed: true, retryAfterSeconds: 0 };
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+    },
+  };
+}
+
+export function rateLimit(
+  limit: number,
+  windowMs: number,
+  scope: string,
+  byUser = false,
+  customStore?: RateLimitStore
+): RequestHandler {
+  const store =
+    customStore ||
+    (process.env.RATE_LIMIT_STORE === 'sqlite'
+      ? createSqliteRateLimitStore(defaultDb)
+      : createMemoryRateLimitStore());
+
+  return (req, res, next) => {
+    const now = Date.now();
+    const keys = [
+      `${scope}:ip:${req.ip}`,
+      ...(byUser && req.userId !== undefined ? [`${scope}:user:${req.userId}`] : []),
+    ];
+    const decision = store.consume(keys, limit, windowMs, now);
+    if (!decision.allowed) {
+      res.setHeader('Retry-After', String(decision.retryAfterSeconds));
+      res.status(429).json({
+        error: "You're sending requests too quickly. Try again in a moment.",
+        code: 'RATE_LIMITED',
+      });
+      return;
+    }
+    next();
+  };
+}
+
+export const securityHeaders: RequestHandler = (req, res, next) => {
+  req.requestId = randomUUID();
+  res.setHeader('X-Request-ID', req.requestId);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+  // Inline styles and worker evaluation are required by Monaco and the local teaching runner.
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net; media-src 'self' blob: https:; worker-src 'self' blob:; connect-src 'self' https://raw.githack.com https://raw.githubusercontent.com https://cdn.jsdelivr.net https://emkc.org https://api.paiza.io; frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+    );
+  }
+  const started = Date.now();
+  res.on('finish', () => {
+    if (req.path.startsWith('/api/')) {
+      console.info(
+        JSON.stringify({
+          requestId: req.requestId,
+          method: req.method,
+          route: req.route?.path || req.path,
+          status: res.statusCode,
+          durationMs: Date.now() - started,
+          userId: req.userId,
+        })
+      );
+    }
+  });
+  next();
 };
-export function logFailure(req:{requestId?:string},kind:string,details?:Record<string,string|number|boolean|undefined>){console.error(JSON.stringify({requestId:req.requestId,event:kind,...details}));}
-export const safeErrors:ErrorRequestHandler=(err,req,res,_next)=>{logFailure(req,'request_error');if(res.headersSent){res.end();return;}const status=err.type==='entity.too.large'?413:err instanceof SyntaxError?400:500;res.status(status).json({error:status===413?'Request is too large.':status===400?'Invalid request body.':'The service is temporarily unavailable.',code:'REQUEST_FAILED'});};
-export function providerCancellation(res:any){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),60000);const close=()=>{if(!res.writableEnded)controller.abort();clearTimeout(timer)};res.once('close',close);return {signal:controller.signal,dispose:()=>{clearTimeout(timer);res.off('close',close)}};}
+
+export function logFailure(
+  req: { requestId?: string },
+  kind: string,
+  details?: Record<string, string | number | boolean | undefined>
+) {
+  console.error(JSON.stringify({ requestId: req.requestId, event: kind, ...details }));
+}
+
+export const safeErrors: ErrorRequestHandler = (err, req, res, _next) => {
+  logFailure(req, 'request_error');
+  if (res.headersSent) {
+    res.end();
+    return;
+  }
+  const status = err.type === 'entity.too.large' ? 413 : err instanceof SyntaxError ? 400 : 500;
+  res.status(status).json({
+    error:
+      status === 413
+        ? 'Request is too large.'
+        : status === 400
+          ? 'Invalid request body.'
+          : 'The service is temporarily unavailable.',
+    code: 'REQUEST_FAILED',
+  });
+};
+
+export function providerCancellation(res: any) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60000);
+  const close = () => {
+    if (!res.writableEnded) controller.abort();
+    clearTimeout(timer);
+  };
+  res.once('close', close);
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      clearTimeout(timer);
+      res.off('close', close);
+    },
+  };
+}

@@ -108,6 +108,25 @@ CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT N
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);`);
+},(db:DatabaseSync)=>{
+  db.exec(`CREATE TABLE IF NOT EXISTS xp_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    event_key TEXT NOT NULL,
+    points INTEGER NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, event_type, event_key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_xp_ledger_user_id ON xp_ledger(user_id);
+  CREATE INDEX IF NOT EXISTS idx_xp_ledger_user_created ON xp_ledger(user_id, created_at);
+  CREATE TABLE IF NOT EXISTS rate_limits (
+    key TEXT PRIMARY KEY,
+    count INTEGER NOT NULL,
+    reset_at INTEGER NOT NULL
+  );`);
 }];
 for(let i=0;i<migrations.length;i++){if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1))continue;db.exec('BEGIN IMMEDIATE');try{migrations[i](db);db.prepare('INSERT INTO schema_migrations(version) VALUES(?)').run(i+1);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
 }
