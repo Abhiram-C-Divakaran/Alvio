@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, ChevronRight, X, GraduationCap, Info } from 'lucide-react';
-import type { TutorialScript, TutorialStep } from '../../data/tutorialScripts';
+import type { TutorialScript } from '../../data/tutorialScripts';
 import Button from '../../components/ui/Button';
 import useVisualizationStore from '../../stores/useVisualizationStore';
 
@@ -42,7 +42,7 @@ export default function TutorialOverlay({ script, onClose, onPerformAction, onCl
 
   useEffect(() => {
     // If autoPlay is on, advance automatically after 3.5 seconds
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
     if (autoPlay && !isFinished) {
       timer = setTimeout(() => {
         handleNext();

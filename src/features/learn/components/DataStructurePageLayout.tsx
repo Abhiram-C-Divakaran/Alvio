@@ -1,7 +1,7 @@
 import { TopicOrientation, TopicNextStep, topicNavigation } from '../../../navigation/TopicOrientation';
-import React, { useState, useEffect, useLayoutEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { createDefaultStructure, insertValue, deleteValue, searchValue } from '../../workspace/dataStructureOps';
+import { createDefaultStructure, insertValue, deleteValue } from '../../workspace/dataStructureOps';
 import Visualization3D from '../../workspace/Visualization3D';
 import Visualization2D from '../../workspace/Visualization2D';
 import VisualizerToolbar from '../../visualizer/VisualizerToolbar';
@@ -9,7 +9,7 @@ import '../../../services/monacoSetup';
 import Editor from '@monaco-editor/react';
 import { codeSnippets } from '../../workspace/codeSnippets';
 import type { DataStructureType, DataStructure } from '../../../types/dataStructures';
-import { Box, Code2, Clock, CheckCircle2, XCircle, Maximize2, Minimize2, HelpCircle, Terminal } from 'lucide-react';
+import { Box, Code2, Clock, Maximize2, Minimize2, HelpCircle, Terminal } from 'lucide-react';
 
 interface DataStructurePageLayoutProps {
   type: DataStructureType;
@@ -23,7 +23,7 @@ interface DataStructurePageLayoutProps {
     delete: string;
   };
   visualizerDsName: string;
-  content: React.ReactNode;
+  content: ReactNode;
 }
 
 export default function DataStructurePageLayout({
@@ -55,11 +55,6 @@ export default function DataStructurePageLayout({
   const handleDelete = (val: string) => {
     if (!structure || !val) return;
     setStructure(deleteValue(structure, val));
-  };
-
-  const handleSearch = (val: string) => {
-    if (!structure || !val) return;
-    setStructure(searchValue(structure, val));
   };
 
   const getDifficultyColor = (diff: string) => {
@@ -141,6 +136,7 @@ export default function DataStructurePageLayout({
           <div className="w-full flex-1 flex flex-col p-6 bg-[var(--color-bg-primary)] relative">
              <div className="flex justify-center mb-6">
               <VisualizerToolbar
+                activeDs={visualizerDsName}
                 onInsert={(val) => handleInsert(val)}
                 onDelete={(val) => handleDelete(val)}
               />
@@ -174,7 +170,7 @@ export default function DataStructurePageLayout({
           <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
             {timeComplexities.access && (
               <div
-                onClick={() => navigateToComplexity(timeComplexities.access)}
+                onClick={() => navigateToComplexity(timeComplexities.access ?? '')}
                 className="flex flex-col p-4 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border-subtle)] hover:border-blue-500 hover:scale-[1.03] transition-all cursor-pointer shadow-sm group"
               >
                 <span className="font-semibold text-[var(--color-text-secondary)] mb-2 text-center text-sm uppercase tracking-wider group-hover:text-blue-300">Access</span>

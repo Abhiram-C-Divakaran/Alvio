@@ -1,14 +1,14 @@
 import { TopicOrientation, TopicNextStep, topicNavigation } from '../../../navigation/TopicOrientation';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import AlgorithmsWorkspace from '../../workspace/AlgorithmsWorkspace';
 import '../../../services/monacoSetup';
 import Editor from '@monaco-editor/react';
-import { Code2, Clock, Maximize2, Minimize2, HelpCircle, Terminal, Activity, ArrowLeft } from 'lucide-react';
+import { Code2, Clock, HelpCircle, Terminal, Activity, ArrowLeft } from 'lucide-react';
 import type { AlgoType } from '../../workspace/AlgorithmsWorkspace';
 
 // Hardcode some snippets for algorithms
-const algoSnippets: Record<AlgoType, Record<string, string>> = {
+const algoSnippets: Partial<Record<AlgoType, Record<string, string>>> = {
   'bubble-sort': {
     python: 'def bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        for j in range(0, n - i - 1):\n            if arr[j] > arr[j + 1]:\n                arr[j], arr[j + 1] = arr[j + 1], arr[j]\n    return arr',
     javascript: 'function bubbleSort(arr) {\n  const n = arr.length;\n  for (let i = 0; i < n; i++) {\n    for (let j = 0; j < n - i - 1; j++) {\n      if (arr[j] > arr[j + 1]) {\n        [arr[j], arr[j + 1]] = [arr[j + 1], arr[j]];\n      }\n    }\n  }\n  return arr;\n}',
@@ -162,7 +162,6 @@ export default function AlgorithmPageLayout({
   const navigate = useNavigate();
   const topicLinks=topicNavigation(useLocation().pathname);
   const [language, setLanguage] = useState<'python' | 'javascript' | 'java' | 'cpp'>('python');
-  const [isVisualizerExpanded, setIsVisualizerExpanded] = useState(false);
 
   const currentCode = algoSnippets[type]?.[language] || '// Code snippet coming soon';
 

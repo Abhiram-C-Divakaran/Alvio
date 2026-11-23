@@ -1,4 +1,3 @@
-import React from 'react';
 import DataStructurePageLayout from './components/DataStructurePageLayout';
 import ArrayCurriculum from './components/ArrayCurriculum';
 

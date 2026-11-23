@@ -1,11 +1,11 @@
 import React, { useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Stars, Text, Html, Environment, Lightformer, ContactShadows, Sparkles, Billboard } from '@react-three/drei';
+import { OrbitControls, Stars, Text, Environment, Lightformer, ContactShadows, Sparkles, Billboard } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import Asteroids from '../visualizer/Asteroids';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
-import { Sparkles as SparklesIcon, ArrowLeft, Info, HelpCircle } from 'lucide-react';
+import { Sparkles as SparklesIcon, ArrowLeft, Info } from 'lucide-react';
 import Card from '../../components/ui/Card';
 
 interface SkillNode {
@@ -134,7 +134,7 @@ function PlanetNode({ node, onHover, onClick }: { node: SkillNode; onHover: (n: 
 function SunNode() {
   const sunRef = useRef<THREE.Mesh>(null);
 
-  useFrame((state, delta) => {
+  useFrame((_state, delta) => {
     if (sunRef.current) {
       sunRef.current.rotation.y += delta * 0.2;
     }
@@ -226,7 +226,7 @@ function AsteroidBelt({ radius = 12, count = 200 }) {
     return temp;
   }, [count, radius]);
 
-  useFrame((state, delta) => {
+  useFrame((_state, delta) => {
     if (meshRef.current) {
       asteroids.forEach((ast, i) => {
         ast.angle += ast.speed * delta;

@@ -1,4 +1,3 @@
-import React from 'react';
 import AlgorithmsWorkspace from '../workspace/AlgorithmsWorkspace';
 
 export default function SearchingPage() {

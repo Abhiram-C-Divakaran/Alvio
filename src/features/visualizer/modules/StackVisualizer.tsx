@@ -1,7 +1,5 @@
-import { useRef } from 'react';
 import { useSpring, animated } from '@react-spring/three';
 import { RoundedBox, Text } from '@react-three/drei';
-import * as THREE from 'three';
 
 interface StackState {
   elements: (string | number)[];

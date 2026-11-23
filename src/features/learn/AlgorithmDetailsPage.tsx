@@ -1,5 +1,4 @@
 import SupplementalAlgorithmLesson from './algorithms/SupplementalAlgorithmLesson';
-import React from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import AlgorithmPageLayout from './components/AlgorithmPageLayout';
 import { ALGO_META } from './algorithms/metadata';

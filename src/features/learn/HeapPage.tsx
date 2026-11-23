@@ -1,4 +1,3 @@
-import React from 'react';
 import DataStructurePageLayout from './components/DataStructurePageLayout';
 
 export default function HeapPage() {

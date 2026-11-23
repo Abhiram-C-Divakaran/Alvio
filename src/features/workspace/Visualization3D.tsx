@@ -3,9 +3,9 @@
 // Inspired by tactile, sculptural 3D geometry with rich lighting,
 // realistic materials, and carefully chosen shapes per structure.
 // ============================================================
-import { useMemo, useRef } from 'react';
+import { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text, Line, Float, Environment, Lightformer, RoundedBox, MeshDistortMaterial, Sphere } from '@react-three/drei';
+import { OrbitControls, Text, Line, Float, Environment, Lightformer, RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 import type {
   DataStructure,

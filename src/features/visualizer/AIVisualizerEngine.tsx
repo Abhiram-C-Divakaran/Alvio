@@ -224,7 +224,7 @@ function ArrayRenderer({ primitive, offsetY }: { primitive: AIPrimitive, offsetY
         </Text>
       )}
 
-      {transitions((style, item, t, i) => {
+      {transitions((style, item, _t, i) => {
         const targetX = i * SPACING - offset;
         return (
           <group key={item.id}>
@@ -270,7 +270,7 @@ function HashMapRenderer({ primitive, offsetY }: { primitive: AIPrimitive, offse
         {primitive.id} (HashMap)
       </Text>
 
-      {transitions((style, item, t, i) => {
+      {transitions((style, item, _t, i) => {
         const row = Math.floor(i / COLS);
         const col = i % COLS;
         const targetX = col * SPACING_X - offsetTotalX;
@@ -317,7 +317,7 @@ function LinkedListNode({
 }) {
   const groupRef = useRef<THREE.Group>(null!);
 
-  useFrame((stateObj, delta) => {
+  useFrame((_stateObj, delta) => {
     // Rotate ring smoothly using frame
     if (groupRef.current && groupRef.current.children[1]) {
        groupRef.current.children[1].rotation.z += delta * 0.5;
@@ -444,7 +444,7 @@ function KnapsackRenderer({ primitive, offsetY }: { primitive: AIPrimitive, offs
         <meshStandardMaterial color="#9333ea" />
       </mesh>
 
-      {transitions((style, item, t, i) => {
+      {transitions((style, item, _t, i) => {
         const isActive = item.state === 'active' || item.state === 'found';
 
         // Items outside the knapsack are laid out in a row in front
@@ -538,7 +538,7 @@ function GenericRenderer({ primitive, offsetY }: { primitive: AIPrimitive, offse
 // ─── Camera Controller ───────────────────────────────────────────────────────
 // We removed manual camera overrides here to allow OrbitControls to work properly.
 // The floating/alive effect is now handled by autoRotate on the OrbitControls.
-function CameraController({ cameraFocus }: { cameraFocus?: string }) {
+function CameraController(_props: { cameraFocus?: string }) {
   return null;
 }
 

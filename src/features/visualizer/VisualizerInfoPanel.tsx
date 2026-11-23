@@ -1,6 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Info, Clock, CheckCircle2, XCircle, ListTree, Code2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { Info, Clock, CheckCircle2, XCircle, ListTree, Code2 } from 'lucide-react';
 
 interface InfoPanelProps {
   activeDs: string;
@@ -101,8 +100,6 @@ export const dsInfo: Record<string, { desc: string, time: { access: string, sear
 };
 
 export default function VisualizerInfoPanel({ activeDs, activeVariant, onVariantSelect, onViewCode }: InfoPanelProps) {
-  const [isMinimized, setIsMinimized] = useState(false);
-
   const info = dsInfo[activeDs] || dsInfo['Array'];
 
   return (

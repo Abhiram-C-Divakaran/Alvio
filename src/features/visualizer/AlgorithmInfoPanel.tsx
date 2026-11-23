@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Info, Clock, CheckCircle2, XCircle, Code2, Play } from 'lucide-react';
+import { Info, Clock, CheckCircle2, XCircle, Code2 } from 'lucide-react';
 import { ALGO_META } from '../workspace/AlgorithmsWorkspace';
 import type { AlgoType } from '../workspace/AlgorithmsWorkspace';
 

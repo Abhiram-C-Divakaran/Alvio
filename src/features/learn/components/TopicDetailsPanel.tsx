@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
 import { Play, BookOpen, Layers, Code2, Clock, ListFilter } from 'lucide-react';
 import { curriculumData, type CurriculumTopic } from '../data/curriculumData';

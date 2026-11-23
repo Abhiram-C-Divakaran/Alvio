@@ -1,4 +1,3 @@
-import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AlgorithmsWorkspace from '../workspace/AlgorithmsWorkspace';
 import type { AlgoType } from '../workspace/AlgorithmsWorkspace';

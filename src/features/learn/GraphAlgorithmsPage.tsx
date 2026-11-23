@@ -1,5 +1,4 @@
 import {CategoryBreadcrumb} from '../../navigation/TopicOrientation';
-import React from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { Network } from 'lucide-react';

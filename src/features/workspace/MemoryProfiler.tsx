@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Database, Play, AlertCircle, Share2, Layers } from 'lucide-react';
+import { Play, AlertCircle, Share2, Layers } from 'lucide-react';
 import Card from '../../components/ui/Card';
-import Badge from '../../components/ui/Badge';
 
 interface StackItem {
   name: string;

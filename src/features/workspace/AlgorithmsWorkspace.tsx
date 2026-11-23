@@ -6,9 +6,8 @@ import useReducedMotion from '../visualizer/useReducedMotion';
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Environment, Lightformer, ContactShadows, Stars, Sparkles as DreiSparkles, Billboard, Text } from '@react-three/drei';
+import { OrbitControls, Environment, Lightformer, ContactShadows, Stars, Sparkles as DreiSparkles } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
-import Array3D from '../visualizer/Array3D';
 import Algorithms3D from './Algorithms3D';
 import GraphAlgorithms3D from './GraphAlgorithms3D';
 import BinaryTree3D from '../visualizer/BinaryTree3D';
@@ -24,7 +23,6 @@ import {
   SkipBack,
   SkipForward,
   RotateCcw,
-  RefreshCcw,
   Sparkles,
   BookOpen,
 } from 'lucide-react';
@@ -45,9 +43,9 @@ interface Step {
   description: string;
   codeLine: number;
 
-  // Graph-specific step tracking:
-  activeNodes?: string[];
-  visitedNodes?: string[];
+  // Graph & tree-traversal step tracking:
+  activeNodes?: (string | number)[];
+  visitedNodes?: (string | number)[];
   activeEdges?: string[][];
 
   // DP & Greedy specific tracking:
@@ -351,7 +349,6 @@ const CODE_TEMPLATES: Record<AlgoType, string[]> = {
   ],
 };
 
-import AlgorithmInfoPanel from '../visualizer/AlgorithmInfoPanel';
 import CodeImplementationsModal from '../visualizer/CodeImplementationsModal';
 import AlgorithmModuleLayout, {AlgorithmCamera} from '../visualizer/AlgorithmModuleLayout';
 export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', filterType, initialAlgo, hideSidebar = false, hideCode = false, immersive = false, hideViewModeToggle = false }: { viewMode?: '3d' | '2d', filterType?: 'sorting' | 'searching' | 'all', initialAlgo?: AlgoType, hideSidebar?: boolean, hideCode?: boolean, immersive?: boolean, hideViewModeToggle?: boolean }) {
@@ -1024,13 +1021,13 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
       const emptyGrid = Array(4).fill(null).map(() => Array(6).fill(0));
       addStep({ description: 'Initialize Knapsack DP grid. Rows = Items, Cols = Weight Capacity.', dpTable: emptyGrid, codeLine: 2 });
 
-      const grid1 = emptyGrid.map((r, ri) => ri === 1 ? r.map((c, ci) => ci >= 2 ? 3 : 0) : [...r]);
+      const grid1 = emptyGrid.map((r, ri) => ri === 1 ? r.map((_, ci) => ci >= 2 ? 3 : 0) : [...r]);
       addStep({ description: 'Process Item 1 (Wt: 2, Val: 3). If capacity >= 2, we can select it.', dpTable: grid1, codeLine: 6 });
 
-      const grid2 = grid1.map((r, ri) => ri === 2 ? r.map((c, ci) => ci === 3 ? 4 : ci === 4 ? 4 : ci === 5 ? 7 : grid1[1][ci]) : [...r]);
+      const grid2 = grid1.map((r, ri) => ri === 2 ? r.map((_, ci) => ci === 3 ? 4 : ci === 4 ? 4 : ci === 5 ? 7 : grid1[1][ci]) : [...r]);
       addStep({ description: 'Process Item 2 (Wt: 3, Val: 4). At cap 5, combining Item 1 & 2 yields 3+4=7.', dpTable: grid2, codeLine: 6 });
 
-      const grid3 = grid2.map((r, ri) => ri === 3 ? r.map((c, ci) => ci === 4 ? 5 : grid2[2][ci]) : [...r]);
+      const grid3 = grid2.map((r, ri) => ri === 3 ? r.map((_, ci) => ci === 4 ? 5 : grid2[2][ci]) : [...r]);
       addStep({ description: 'Process Item 3 (Wt: 4, Val: 5). Optimal Knapsack value remains 7.', dpTable: grid3, codeLine: 9 });
     } else if (activeAlgo === 'lcs') {
       const emptyGrid = Array(4).fill(null).map(() => Array(4).fill(0));
@@ -1039,10 +1036,10 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
       const grid1 = emptyGrid.map((r, ri) => ri === 1 ? r.map(() => 0) : [...r]);
       addStep({ description: 'Compare X[0] ("B") with Y ("C", "A", "T"). No matches found.', dpTable: grid1, codeLine: 6 });
 
-      const grid2 = grid1.map((r, ri) => ri === 2 ? r.map((c, ci) => ci >= 2 ? 1 : 0) : [...r]);
+      const grid2 = grid1.map((r, ri) => ri === 2 ? r.map((_, ci) => ci >= 2 ? 1 : 0) : [...r]);
       addStep({ description: 'Compare X[1] ("A") with Y[1] ("A"). Match found! Set cell to 1.', dpTable: grid2, codeLine: 5 });
 
-      const grid3 = grid2.map((r, ri) => ri === 3 ? r.map((c, ci) => ci === 3 ? 2 : grid2[2][ci]) : [...r]);
+      const grid3 = grid2.map((r, ri) => ri === 3 ? r.map((_, ci) => ci === 3 ? 2 : grid2[2][ci]) : [...r]);
       addStep({ description: 'Compare X[2] ("T") with Y[2] ("T"). Match found! Set cell to 2. LCS length is 2.', dpTable: grid3, codeLine: 5 });
     } else if (activeAlgo === 'activity-selection') {
       const items = [
@@ -1606,23 +1603,25 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
                     <div className="w-full h-full flex items-center justify-center scale-110 origin-center">
                       <Visualization2D structure={{
                         type: 'graph',
+                        directed: false,
+                        weighted: true,
                         nodes: [
-                          { id: 'A', value: 'A', position: { x: 0, y: 1.8, z: 0 }, state: { highlighted: step.activeNodes?.includes('A') } },
-                          { id: 'B', value: 'B', position: { x: -2, y: 0.5, z: 0 }, state: { highlighted: step.activeNodes?.includes('B') } },
-                          { id: 'C', value: 'C', position: { x: 2, y: 0.5, z: 0 }, state: { highlighted: step.activeNodes?.includes('C') } },
-                          { id: 'D', value: 'D', position: { x: -1.5, y: -1, z: 0 }, state: { highlighted: step.activeNodes?.includes('D') } },
-                          { id: 'E', value: 'E', position: { x: 1.5, y: -1, z: 0 }, state: { highlighted: step.activeNodes?.includes('E') } },
-                          { id: 'F', value: 'F', position: { x: 0, y: -2.2, z: 0 }, state: { highlighted: step.activeNodes?.includes('F') } }
+                          { id: 'A', value: 'A', position: { x: 0, y: 1.8, z: 0 }, state: { highlighted: Boolean(step.activeNodes?.includes('A')), active: false } },
+                          { id: 'B', value: 'B', position: { x: -2, y: 0.5, z: 0 }, state: { highlighted: Boolean(step.activeNodes?.includes('B')), active: false } },
+                          { id: 'C', value: 'C', position: { x: 2, y: 0.5, z: 0 }, state: { highlighted: Boolean(step.activeNodes?.includes('C')), active: false } },
+                          { id: 'D', value: 'D', position: { x: -1.5, y: -1, z: 0 }, state: { highlighted: Boolean(step.activeNodes?.includes('D')), active: false } },
+                          { id: 'E', value: 'E', position: { x: 1.5, y: -1, z: 0 }, state: { highlighted: Boolean(step.activeNodes?.includes('E')), active: false } },
+                          { id: 'F', value: 'F', position: { x: 0, y: -2.2, z: 0 }, state: { highlighted: Boolean(step.activeNodes?.includes('F')), active: false } }
                         ],
                         edges: [
-                          { id: 'e1', from: 'A', to: 'B', weight: 4 },
-                          { id: 'e2', from: 'A', to: 'C', weight: 2 },
-                          { id: 'e3', from: 'B', to: 'C', weight: 1 },
-                          { id: 'e4', from: 'B', to: 'D', weight: 5 },
-                          { id: 'e5', from: 'C', to: 'E', weight: 3 },
-                          { id: 'e6', from: 'D', to: 'E', weight: 2 },
-                          { id: 'e7', from: 'D', to: 'F', weight: 4 },
-                          { id: 'e8', from: 'E', to: 'F', weight: 3 }
+                          { id: 'e1', from: 'A', to: 'B', weight: 4, directed: false, state: { highlighted: false, active: false } },
+                          { id: 'e2', from: 'A', to: 'C', weight: 2, directed: false, state: { highlighted: false, active: false } },
+                          { id: 'e3', from: 'B', to: 'C', weight: 1, directed: false, state: { highlighted: false, active: false } },
+                          { id: 'e4', from: 'B', to: 'D', weight: 5, directed: false, state: { highlighted: false, active: false } },
+                          { id: 'e5', from: 'C', to: 'E', weight: 3, directed: false, state: { highlighted: false, active: false } },
+                          { id: 'e6', from: 'D', to: 'E', weight: 2, directed: false, state: { highlighted: false, active: false } },
+                          { id: 'e7', from: 'D', to: 'F', weight: 4, directed: false, state: { highlighted: false, active: false } },
+                          { id: 'e8', from: 'E', to: 'F', weight: 3, directed: false, state: { highlighted: false, active: false } }
                         ]
                       }} />
                     </div>
@@ -1714,12 +1713,14 @@ export default function AlgorithmsWorkspace({ viewMode: initialViewMode = '2d', 
                         <div className="w-full h-64 scale-90 origin-center flex items-center justify-center">
                           <Visualization2D structure={{
                             type: 'binary-tree',
+                            root: step.huffmanNodes[0]?.id ?? null,
                             nodes: step.huffmanNodes.map(n => ({
                               id: n.id,
                               value: `${n.label}\n(${n.freq})`,
-                              left: n.left,
-                              right: n.right,
-                              state: { highlighted: !!n.code }
+                              position: { x: n.x ?? 0, y: n.y ?? 0, z: 0 },
+                              left: n.left ?? null,
+                              right: n.right ?? null,
+                              state: { highlighted: !!n.code, active: false }
                             }))
                           }} />
                         </div>

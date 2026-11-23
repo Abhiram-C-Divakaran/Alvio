@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
-import { BookOpen, Star, Clock, Code2, X, CheckCircle2, PlayCircle, Users, Calendar, Award, ChevronDown } from 'lucide-react';
+import { BookOpen, Star, Clock, Code2, X, PlayCircle, Users, Calendar, Award, ChevronDown } from 'lucide-react';
 
 const courses = [
   {
@@ -451,7 +451,7 @@ export default function CatalogPage() {
                       <Badge variant={selectedCourse.level === 'Beginner' ? 'success' : selectedCourse.level === 'Intermediate' ? 'warning' : 'error'}>
                         {selectedCourse.level}
                       </Badge>
-                      <Badge variant="default" className="bg-[var(--color-surface-glass)]">
+                      <Badge variant="accent" className="bg-[var(--color-surface-glass)]">
                         {selectedCourse.language}
                       </Badge>
                     </div>

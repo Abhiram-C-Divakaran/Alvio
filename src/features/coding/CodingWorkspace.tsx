@@ -17,8 +17,6 @@ import {
   Play, Sun, Send,
   CheckCircle2,
   XCircle,
-  AlertCircle,
-  RefreshCw,
   Loader2,
   ChevronLeft,
   ThumbsUp,
@@ -26,12 +24,9 @@ import {
   Star,
   Share2,
   FileText,
-  BookOpen,
   History,
   Terminal,
-  Settings,
   HelpCircle,
-  Code,
   Sparkles,
   Tag,
   Lightbulb,
@@ -42,20 +37,13 @@ import {
   Clock,
   Cpu,
   Copy,
-  PenLine,
   User,
-  Brain,
   Maximize2,
-  Lock,
-  AlignLeft,
-  Bookmark,
   Expand,
   RotateCcw,
   CheckSquare,
   XSquare,
-  Plus,
-  Maximize,
-  Beaker
+  Plus
 } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore';
 import type { CodingProblem } from '../../data/codingProblems';
@@ -171,7 +159,7 @@ interface CodingWorkspaceProps {
   onShuffle: () => void;
 }
 
-export default function CodingWorkspace({ problem, problemNumber, isSolved, onBack, onNext, onPrev, onShuffle }: CodingWorkspaceProps) {
+export default function CodingWorkspace({ problem, problemNumber, isSolved, onBack, onNext, onPrev }: CodingWorkspaceProps) {
   const [language, setLanguage] = useState<'javascript' | 'python' | 'python3' | 'cpp' | 'c' | 'java' | 'typescript' | 'csharp'>('javascript');
   const [code, setCode] = useState(()=>localStorage.getItem(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:javascript`) ?? problem.starterCode.javascript);
   const [autoSave,setAutoSave]=useState(()=>localStorage.getItem('alvio-autosave')!=='false');

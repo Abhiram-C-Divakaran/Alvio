@@ -1,12 +1,5 @@
 import { useSpring, animated } from '@react-spring/three';
 import { RoundedBox, Text } from '@react-three/drei';
-import * as THREE from 'three';
-
-interface ArrayState {
-  elements: (string | number)[];
-  activeIndices?: number[];
-  pointers?: Record<string, number>;
-}
 
 export default function ArrayVisualizer({ state }: { state: any }) {
   let elements: any[] = [];

@@ -7,8 +7,8 @@ import OutputArray3D from '../visualizer/OutputArray3D';
 
 interface GraphAlgorithms3DProps {
   algoType?: string;
-  activeNodes?: string[];
-  visitedNodes?: string[];
+  activeNodes?: (string | number)[];
+  visitedNodes?: (string | number)[];
   activeEdges?: string[][]; // pair of [from, to]
   queue?: string[];
   speed?: number;
@@ -20,11 +20,10 @@ export default function GraphAlgorithms3D({
   visitedNodes = [],
   activeEdges = [],
   queue,
-  speed = 1
 }: GraphAlgorithms3DProps) {
   const groupRef = useRef<THREE.Group>(null);
 
-  useFrame((state) => {
+  useFrame(() => {
     // Intentionally removed auto-rotation so the user can manually inspect the graph
     // without it fighting their OrbitControls.
   });
