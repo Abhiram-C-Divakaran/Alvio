@@ -86,7 +86,7 @@ export default function MemoryProfiler({ code }: { code: string }) {
 
         setStack(detectedStack);
         setHeap(detectedHeap);
-      } catch (err) {
+      } catch {
         setErrorMsg("Parsing failed. Please check syntax bounds.");
       } finally {
         setIsProfiling(false);
