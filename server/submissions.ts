@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import defaultDb from './db';
 import { optionalAuth, requireAuth } from './auth';
 import { logFailure, providerCancellation, rateLimit } from './security';
+import { awardVerifiedXp, xpForCodingDifficulty } from './xpLedger';
 import {
   DEFAULT_EXECUTION_TIMEOUT_MS,
   MAX_CODE_LENGTH,
@@ -48,16 +49,18 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
   );
   const useOptionalAuth = options.authOptional ?? optionalAuth;
   const useRequiredAuth = options.authRequired ?? requireAuth;
+  const inFlightKeys = new Set<string>();
 
   app.post('/api/problems/:problemId/submit', useOptionalAuth, submitRateLimit, async (req, res) => {
     const cancellation = providerCancellation(res);
+    let inFlightKey: string | null = null;
     try {
       const problemId = typeof req.params.problemId === 'string' ? req.params.problemId.trim() : '';
-      if (!problemId || problemId.length > 128) {
+      if (!problemId || problemId.length > 128 || !/^[a-zA-Z0-9._-]+$/.test(problemId)) {
         return res.status(400).json({ error: 'Invalid problem ID.' });
       }
 
-      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
       const { code, language } = body;
 
       if (!isSupportedLanguage(language)) {
@@ -66,11 +69,27 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
       if (typeof code !== 'string' || code.trim().length === 0) {
         return res.status(400).json({ error: 'Code is required.' });
       }
+      if (code.includes('\0')) {
+        return res.status(400).json({ error: 'Code contains invalid null characters.' });
+      }
       if (code.length > MAX_CODE_LENGTH) {
         return res.status(400).json({ error: `Code exceeds maximum allowed length (${MAX_CODE_LENGTH} characters).` });
       }
 
-      const row = db.prepare('SELECT id, title, signature, testCases FROM problems WHERE id = ?').get(problemId) as any;
+      const actorKey = req.userId !== undefined ? `u:${req.userId}` : `ip:${req.ip || 'unknown'}`;
+      inFlightKey = `${actorKey}:${problemId}`;
+      if (inFlightKeys.has(inFlightKey)) {
+        inFlightKey = null;
+        return res.status(409).json({
+          error: 'A submission for this problem is already running. Please wait for it to finish.',
+          code: 'SUBMISSION_IN_PROGRESS',
+        });
+      }
+      inFlightKeys.add(inFlightKey);
+
+      const row = db
+        .prepare('SELECT id, title, difficulty, signature, testCases FROM problems WHERE id = ?')
+        .get(problemId) as any;
       if (!row) {
         return res.status(404).json({ error: 'Problem not found.' });
       }
@@ -120,11 +139,13 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
         });
       }
 
-      // Atomically record server-calculated problem statistics and (if signed in) user submission history.
+      // Atomically record server-calculated problem stats, submission history, and first-time solve XP.
       const acceptedDelta = verdict.status === 'Passed' ? 1 : 0;
       let updatedStats: { accepted: number; submissions: number } | undefined;
       let saved = false;
       let savedSubmission: any = null;
+      let xpAwarded = 0;
+      let totalXp: number | undefined;
 
       db.exec('BEGIN IMMEDIATE');
       try {
@@ -159,6 +180,29 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
           savedSubmission = db
             .prepare('SELECT * FROM user_submissions WHERE id = ?')
             .get(Number(insertResult.lastInsertRowid));
+
+          if (verdict.status === 'Passed') {
+            const xpOutcome = awardVerifiedXp(
+              db,
+              {
+                userId: req.userId,
+                eventType: 'problem_solved',
+                eventKey: problemId,
+                points: xpForCodingDifficulty(row.difficulty),
+                activityLabel: `Solved problem: ${row.title || problemId}`,
+                metadata: {
+                  problemId,
+                  difficulty: row.difficulty || 'Easy',
+                  language,
+                  passedCount: verdict.passedCount,
+                  totalCount: verdict.totalCount,
+                },
+              },
+              { inTransaction: true, enforceDailyCap: false }
+            );
+            xpAwarded = xpOutcome.pointsAwarded;
+            totalXp = xpOutcome.totalXp;
+          }
         }
         db.exec('COMMIT');
       } catch (txErr) {
@@ -177,12 +221,15 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
         verified: true,
         saved,
         stats: updatedStats ?? { accepted: acceptedDelta, submissions: 1 },
+        ...(verdict.failedTestCase ? { failedTestCase: verdict.failedTestCase } : {}),
         ...(savedSubmission ? { submission: savedSubmission } : {}),
+        ...(req.userId !== undefined ? { xpAwarded, ...(totalXp !== undefined ? { totalXp } : {}) } : {}),
       });
     } catch {
       logFailure(req, 'submission_failed');
       return res.status(500).json({ error: 'Unable to process submission right now.' });
     } finally {
+      if (inFlightKey) inFlightKeys.delete(inFlightKey);
       cancellation.dispose();
     }
   });
@@ -190,6 +237,11 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
   app.get('/api/problems/:problemId/submissions', useRequiredAuth, (req, res) => {
     try {
       const problemId = String(req.params.problemId);
+      const requestedLimit = Number(req.query.limit);
+      const limit = Number.isInteger(requestedLimit) && requestedLimit >= 1 && requestedLimit <= 50
+        ? requestedLimit
+        : 50;
+
       const submission = db.prepare(`
         SELECT us.*, u.name as user_name
         FROM user_submissions us
@@ -201,8 +253,8 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
 
       if (submission) {
         const submissions = db.prepare(
-          'SELECT * FROM user_submissions WHERE user_id = ? AND problem_id = ? ORDER BY created_at DESC, id DESC LIMIT 50'
-        ).all(req.userId, problemId);
+          'SELECT * FROM user_submissions WHERE user_id = ? AND problem_id = ? ORDER BY created_at DESC, id DESC LIMIT ?'
+        ).all(req.userId, problemId, limit);
         res.json({ submission, submissions });
       } else {
         res.json({ submission: null, submissions: [] });

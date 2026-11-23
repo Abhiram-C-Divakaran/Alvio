@@ -25,25 +25,9 @@ import { registerSubmissions } from "./server/submissions";
 import db from "./server/db";
 import { registerVisualizer } from './server/visualizer';
 import { registerChat } from './server/chat';
+import { getEpicLevel, registerXpLedger } from './server/xpLedger';
 
 authSecret();
-
-function getEpicLevel(xp: number) {
-  if (xp < 100) return 'Bronze V';
-  if (xp < 250) return 'Bronze IV';
-  if (xp < 500) return 'Bronze I';
-  if (xp < 800) return 'Silver V';
-  if (xp < 1200) return 'Silver I';
-  if (xp < 1800) return 'Gold V';
-  if (xp < 2500) return 'Gold I';
-  if (xp < 3500) return 'Platinum V';
-  if (xp < 4800) return 'Platinum I';
-  if (xp < 6200) return 'Diamond V';
-  if (xp < 7800) return 'Diamond I';
-  if (xp < 9500) return 'Crown';
-  if (xp < 12000) return 'Ace';
-  return 'Conqueror';
-}
 
 async function startServer() {
   const app = express();
@@ -81,7 +65,27 @@ async function startServer() {
     }
   });
 
+  app.get('/api/ready', (req, res) => {
+    try {
+      const check = db.prepare('SELECT 1 as ok').get() as { ok?: number } | undefined;
+      const migration = db.prepare('SELECT MAX(version) as version FROM schema_migrations').get() as { version?: number } | undefined;
+      const problems = db.prepare('SELECT COUNT(*) as count FROM problems').get() as { count?: number } | undefined;
+      if (check?.ok !== 1 || !migration?.version) throw new Error('Database not ready');
+      res.json({
+        status: 'ready',
+        database: 'ok',
+        migrationVersion: Number(migration.version),
+        problemsCount: Number(problems?.count || 0),
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      logFailure(req, 'readiness_check_failed');
+      res.status(503).json({ status: 'not_ready', database: 'unavailable' });
+    }
+  });
+
   registerProgress(app);
+  registerXpLedger(app);
   registerVisualizer(app);
   registerSubmissions(app);
   registerChat(app);

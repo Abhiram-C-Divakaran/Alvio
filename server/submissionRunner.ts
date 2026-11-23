@@ -65,6 +65,13 @@ export interface ProviderExecutionResponse {
 
 export type ExecutionProvider = (request: ProviderExecutionRequest) => Promise<ProviderExecutionResponse>;
 
+export interface FailedTestCaseDetail {
+  index: number;
+  input?: unknown;
+  expected?: unknown;
+  actual?: unknown;
+}
+
 export interface ServerSubmissionResult {
   status: VerdictStatus;
   passedCount: number;
@@ -74,6 +81,7 @@ export interface ServerSubmissionResult {
   stdout: string[];
   errorType: SubmissionErrorType;
   recordable: boolean;
+  failedTestCase?: FailedTestCaseDetail;
 }
 
 export class ExecutionProviderError extends Error {
@@ -210,6 +218,7 @@ function generateJsOrTsRunner(
           status: 'Failed',
           message: 'Test Case ' + (i + 1) + ' Failed.\\nInput: ' + JSON.stringify(tc.input) + '\\nExpected: ' + JSON.stringify(tc.expected) + '\\nOutput: ' + JSON.stringify(res),
           passedCount: passed,
+          failedTestCase: { index: i + 1, input: tc.input, expected: tc.expected, actual: res },
           stdout: __ALVIO_STDOUT__,
           executionTimeMs: Date.now() - startTime
         }));
@@ -300,9 +309,10 @@ def __alvio_run__():
                     "status": "Failed",
                     "message": f"Test Case {i + 1} Failed.\\nInput: {json.dumps(tc['input'])}\\nExpected: {json.dumps(tc['expected'])}\\nOutput: {json.dumps(result, default=str)}",
                     "passedCount": passed,
+                    "failedTestCase": {"index": i + 1, "input": tc['input'], "expected": tc['expected'], "actual": result},
                     "stdout": stdout,
                     "executionTimeMs": int((time.time() - start_time) * 1000)
-                }))
+                }, default=str))
                 return
 
         sys.stdout = orig_stdout
@@ -1053,6 +1063,7 @@ export async function evaluateSubmission(params: {
     stdout?: unknown;
     executionTimeMs?: unknown;
     errorType?: unknown;
+    failedTestCase?: unknown;
   } | null = null;
 
   const pipeMatch = /^(Passed|Failed)\|(\d+)$/.exec(payloadStr);
@@ -1068,12 +1079,16 @@ export async function evaluateSubmission(params: {
   } else if (pipeMatch) {
     const status = pipeMatch[1] as 'Passed' | 'Failed';
     const count = Number(pipeMatch[2]);
+    const failingCase = status === 'Failed' ? problem.testCases[count] : undefined;
     parsed = {
       status,
       passedCount: count,
       message: status === 'Passed'
         ? 'All provided test cases passed.'
         : `Test Case ${count + 1} Failed. Wrong Answer.`,
+      ...(failingCase
+        ? { failedTestCase: { index: count + 1, input: failingCase.input, expected: failingCase.expected } }
+        : {}),
     };
   }
 
@@ -1132,6 +1147,24 @@ export async function evaluateSubmission(params: {
       ? (parsed.errorType === 'compilation' || parsed.errorType === 'timeout' ? parsed.errorType : 'runtime')
       : null;
 
+  let failedTestCase: FailedTestCaseDetail | undefined;
+  if (status === 'Failed') {
+    const rawDetail =
+      parsed.failedTestCase && typeof parsed.failedTestCase === 'object' && !Array.isArray(parsed.failedTestCase)
+        ? (parsed.failedTestCase as Record<string, unknown>)
+        : undefined;
+    const fallbackCase = problem.testCases[passedCount];
+    failedTestCase = {
+      index:
+        typeof rawDetail?.index === 'number' && Number.isInteger(rawDetail.index) && rawDetail.index >= 1
+          ? rawDetail.index
+          : passedCount + 1,
+      input: rawDetail && 'input' in rawDetail ? rawDetail.input : fallbackCase?.input,
+      expected: rawDetail && 'expected' in rawDetail ? rawDetail.expected : fallbackCase?.expected,
+      ...(rawDetail && 'actual' in rawDetail ? { actual: rawDetail.actual } : {}),
+    };
+  }
+
   return {
     status,
     passedCount,
@@ -1141,5 +1174,6 @@ export async function evaluateSubmission(params: {
     stdout,
     errorType,
     recordable: true,
+    ...(failedTestCase ? { failedTestCase } : {}),
   };
 }
