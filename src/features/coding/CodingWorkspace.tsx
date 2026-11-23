@@ -323,7 +323,14 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
         })
       });
       if (!res.ok) {
-        setAiAnalysis('AI analysis is currently unavailable. Please verify your connection or GROQ_API_KEY and try again.');
+        let serverMsg = '';
+        try {
+          const errBody = await res.json();
+          if (typeof errBody?.error === 'string' && errBody.error.trim() && !/GROQ_API_KEY|process\.env/i.test(errBody.error)) {
+            serverMsg = errBody.error.trim();
+          }
+        } catch {}
+        setAiAnalysis(serverMsg || 'AI analysis is currently unavailable. Please try again in a moment.');
         return;
       }
       const contentType = res.headers.get('content-type') || '';
@@ -332,9 +339,11 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
         let combined = '';
         let finalText = '';
         for (const line of raw.split(/\r?\n/)) {
-          if (!line.startsWith('data: ')) continue;
+          if (!line.startsWith('data:')) continue;
+          const payloadText = line.slice(5).trimStart();
+          if (!payloadText || payloadText === '[DONE]') continue;
           try {
-            const payload = JSON.parse(line.slice(6));
+            const payload = JSON.parse(payloadText);
             if (payload.error) {
               setAiAnalysis(payload.error);
               return;

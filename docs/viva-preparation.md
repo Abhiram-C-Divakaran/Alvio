@@ -57,7 +57,7 @@ We integrate `@monaco-editor/react` using locally bundled `monaco-editor` packag
 
 ### 18. How do the AI features communicate with Groq securely?
 The browser never sees `GROQ_API_KEY`. Authenticated frontend requests call Express:
-- `POST /api/chat` (rate-limited at 25/min per IP & account) enforces a server-side DSA tutor prompt (or a dedicated `'Mock Interview'` `tutorMode` for interviews), validates input bounds, and streams responses from Groq (`llama-3.3-70b-versatile`) back via Server-Sent Events (`text/event-stream`).
+- `POST /api/chat` (rate-limited at 25/min per IP & account) enforces a server-side DSA tutor prompt (or a dedicated isolated `'Mock Interview'` system prompt for interviews), validates input bounds, and streams responses from Groq (`GROQ_CHAT_MODEL`, default `openai/gpt-oss-120b`) back via Server-Sent Events (`text/event-stream`).
 - `POST /api/visualizer` (rate-limited at 12/min per IP & account) requests structured JSON scenes (`openai/gpt-oss-120b` by default), validates and repairs the scene schema server-side, and returns renderable 2D/3D steps with synchronized code line numbers.
 
 ### 19. How does Mock Interview handle prompts, rubrics, and private scratch notes?

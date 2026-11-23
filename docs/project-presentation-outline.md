@@ -65,7 +65,7 @@ Express Backend (server.ts + server/*)
 - **Frontend**: React 19, TypeScript, Vite 8, React Router 7, Zustand, Framer Motion, Recharts, Tailwind CSS, Monaco Editor (`@monaco-editor/react`), Three.js / React Three Fiber / Drei.
 - **Backend**: Node.js 24, Express 5, `node:sqlite`, `bcryptjs`, `jsonwebtoken`, `cors`, `esbuild`.
 - **External Services**:
-  - **Groq API** (`groq-sdk`, Llama 3.3 70B & Visualizer model) for AI Tutor, AI Visualizer, and Mock Interview.
+  - **Groq API** (`groq-sdk`, `openai/gpt-oss-120b` via `GROQ_CHAT_MODEL` & `GROQ_VISUALIZER_MODEL`) for AI Tutor, AI Visualizer, and Mock Interview.
   - **Paiza.IO API** (`https://api.paiza.io`) for external multi-language code execution.
 - **Testing & Quality**: Node built-in test runner (`node:test`), Playwright Chromium/Edge browser automation, `oxlint`.
 

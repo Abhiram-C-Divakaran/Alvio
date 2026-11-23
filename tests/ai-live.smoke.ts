@@ -14,6 +14,7 @@ import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { resolveChatModel } from '../server/chat';
 import { parseInterviewEvaluation } from '../src/features/ai-tutor/interviewParser';
+import { example } from '../src/features/ai-visualizer/example';
 
 const hasLiveKey = Boolean(process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.trim());
 
@@ -200,4 +201,20 @@ test('LIVE Groq: Mock Interview generates question, parses evaluation JSON, and 
   const report = await parseSseResponse(reportRes);
   assert(report.text.length > 100, 'Expected substantive Markdown interview report');
   assert.match(report.text, /Overall Score|Strengths|Areas to Improve/i);
+});
+
+test('LIVE Groq: AI Visualizer follow-up explains a step cleanly', { skip: !hasLiveKey }, async () => {
+  const res = await fetch(origin + '/api/visualizer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      problem: 'Insert value 30 at zero-based index 2 into linked list [10,20,40]',
+      question: 'Why do we point the new node to 40 before updating 20.next?',
+      context: { spec: example, index: 2 },
+      mode: 'Explain Solution',
+    }),
+  });
+  assert.equal(res.status, 200, `Expected HTTP 200 from /api/visualizer follow-up, got ${res.status}`);
+  const data = await res.json();
+  assert(typeof data.answer === 'string' && data.answer.length > 30, 'Expected substantive visualizer follow-up answer');
 });

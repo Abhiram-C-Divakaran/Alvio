@@ -317,7 +317,7 @@ AI capabilities in Alvio are optional enhancements proxied exclusively through t
 
 | Endpoint | Auth & Rate Limit | Model / Mechanism | Purpose & Safeguards |
 | --- | --- | --- | --- |
-| `POST /api/chat` | `requireAuth`, **25 req/min** per IP & account | Groq SDK (`llama-3.3-70b-versatile`), Server-Sent Events (`text/event-stream`) | Powers **AI Tutor** (with server-enforced DSA tutor system prompt and mode controls), Video Ask-AI, Coding AI Analysis, and **Mock Interview** (using a dedicated `'Mock Interview'` `tutorMode` so interview rubric prompts are preserved). |
+| `POST /api/chat` | `requireAuth`, **25 req/min** per IP & account | Groq SDK (`GROQ_CHAT_MODEL`, default `openai/gpt-oss-120b`), Server-Sent Events (`text/event-stream`) | Powers **AI Tutor** (with server-enforced DSA tutor system prompt and mode controls), Video Ask-AI, Coding AI Analysis, and **Mock Interview** (using a dedicated isolated `'Mock Interview'` system prompt so interview rubric prompts are preserved). |
 | `POST /api/visualizer` | `requireAuth`, **12 req/min** per IP & account | Groq SDK (`GROQ_VISUALIZER_MODEL`, default `openai/gpt-oss-120b`), structured JSON | Generates step-by-step data structure scenes for **AI Visualizer** (`/learn/ai-visualizer`), validated and repaired server-side before returning renderable 2D/3D steps and synchronized code lines. |
 
 ### AI Safeguards & Offline Resilience

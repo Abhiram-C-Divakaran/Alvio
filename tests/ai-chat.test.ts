@@ -12,6 +12,7 @@ import {
   type ChatCompletionParams,
 } from '../server/chat';
 import { parseInterviewEvaluation } from '../src/features/ai-tutor/interviewParser';
+import { DEFAULT_GROQ_VISUALIZER_MODEL, resolveVisualizerModel } from '../server/visualizer';
 
 async function withMockChatServer(
   options: Parameters<typeof registerChat>[1],
@@ -236,6 +237,13 @@ test('parseInterviewEvaluation parses raw JSON, fenced JSON, prose-wrapped JSON,
   );
   assert.equal(finalQ.score, 90);
   assert.equal(finalQ.nextQuestion, '');
+});
+
+test('visualizer model defaults to openai/gpt-oss-120b and respects GROQ_VISUALIZER_MODEL', () => {
+  assert.equal(DEFAULT_GROQ_VISUALIZER_MODEL, 'openai/gpt-oss-120b');
+  assert.equal(resolveVisualizerModel({}), 'openai/gpt-oss-120b');
+  assert.equal(resolveVisualizerModel({ GROQ_VISUALIZER_MODEL: '  ' }), 'openai/gpt-oss-120b');
+  assert.equal(resolveVisualizerModel({ GROQ_VISUALIZER_MODEL: ' openai/gpt-oss-20b ' }), 'openai/gpt-oss-20b');
 });
 
 test('parseInterviewEvaluation rejects malformed, non-JSON, or incomplete evaluation responses', () => {

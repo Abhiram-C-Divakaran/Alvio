@@ -107,7 +107,7 @@ Express 5 Backend (Node.js 24 — server.ts & server/*)
 - **Interactive Workspaces:** Three.js / React Three Fiber / Drei (3D), `@monaco-editor/react` (bundled locally).
 - **Backend & Storage:** Node.js 24, Express 5, built-in `node:sqlite`, `bcryptjs`, `jsonwebtoken`, `esbuild`.
 - **Client Offline Cache:** IndexedDB (`src/services/db.ts`, v2) + `localStorage` fallback.
-- **External APIs (Server-Proxied):** Groq SDK (Llama 3.3 70B & Visualizer model), Paiza.IO execution API.
+- **External APIs (Server-Proxied):** Groq SDK (`openai/gpt-oss-120b` via `GROQ_CHAT_MODEL` & `GROQ_VISUALIZER_MODEL`), Paiza.IO execution API.
 - **Testing & Quality:** `node:test`, Playwright Chromium, `fake-indexeddb`, `oxlint`.
 
 **Presenter Notes (Speaking Script — ~45 sec):**
