@@ -47,7 +47,7 @@ npm run db:seed-hidden-tests        # Idempotently seed/update curated server-on
 NODE_ENV=production npm start
 ```
 
-Startup runs all 8 numbered, transactional SQLite migrations automatically and refuses to boot if `JWT_SECRET` (<32 chars) or `ALLOWED_ORIGINS` (in production) is missing.
+Startup runs all 9 numbered, transactional SQLite migrations automatically and refuses to boot if `JWT_SECRET` (<32 chars) or `ALLOWED_ORIGINS` (in production) is missing.
 
 ---
 

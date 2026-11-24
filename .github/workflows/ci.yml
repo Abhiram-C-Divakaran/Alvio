@@ -38,6 +38,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Validate Linux deployment shell scripts
+        run: bash -n deploy/setup-judge-host.sh deploy/health-monitor.sh
+
       - name: TypeScript type check (app, node config, server & judge worker)
         run: |
           npx tsc -p tsconfig.app.json --noEmit

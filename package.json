@@ -1,8 +1,12 @@
 {
-  "name": "new-folder",
+  "name": "alvio",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Alvio — Interactive DSA Learning Platform with 2D/3D Visualizers, AI Tutoring, and Isolated gVisor Coding Judge",
   "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "dev": "tsx --watch-path=src --watch-path=server.ts --watch-path=server server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
@@ -14,7 +18,7 @@
     "db:hidden-coverage": "tsx server/hiddenTestCoverage.ts",
     "judge:worker": "tsx judge-worker/server.ts",
     "preview": "vite preview",
-    "test:foundation": "npm run build && node --import tsx --test tests/backend-foundation.test.ts tests/auth-hardening.test.ts tests/auth-recovery.test.ts tests/backend-reliability.test.ts tests/xp-ledger.test.ts tests/backup-and-judge.test.ts tests/hidden-tests-and-restore.test.ts tests/hidden-tests-coverage.test.ts tests/isolated-judge-worker.test.ts tests/progress-sync.test.ts tests/optional-auth.test.ts tests/coding-submissions.test.ts tests/ai-chat.test.ts",
+    "test:foundation": "npm run build && node --import tsx --test tests/backend-foundation.test.ts tests/auth-hardening.test.ts tests/auth-recovery.test.ts tests/backend-reliability.test.ts tests/xp-ledger.test.ts tests/backup-and-judge.test.ts tests/hidden-tests-and-restore.test.ts tests/hidden-tests-coverage.test.ts tests/isolated-judge-worker.test.ts tests/release-hardening.test.ts tests/progress-sync.test.ts tests/optional-auth.test.ts tests/coding-submissions.test.ts tests/ai-chat.test.ts",
     "test:judge-live-docker": "node --import tsx --test tests/judge-worker-live-docker.test.ts",
     "test:ai-live": "node --import tsx --test tests/ai-live.smoke.ts",
     "test:submissions": "node --import tsx --test tests/coding-submissions.test.ts",
