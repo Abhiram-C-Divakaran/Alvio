@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Alvio SQLite Online Backup Daily at 03:15 UTC
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

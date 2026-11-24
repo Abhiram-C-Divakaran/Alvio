@@ -117,9 +117,27 @@ Alvio ships a standalone isolated coding judge worker under [`judge-worker/`](..
 
 ---
 
-## 8. Multi-Host Scaling Notes
+## 8. Turnkey Deployment Artifacts (`deploy/`), Rollback & Scaling Thresholds
 
-Single-host production works out of the box with SQLite (WAL mode) + `RATE_LIMIT_STORE=sqlite`. Scaling horizontally across multiple application hosts requires:
-1. Setting `RATE_LIMIT_STORE=redis` with `REDIS_REST_URL` and `REDIS_REST_TOKEN`.
-2. Migrating persistence from local SQLite to a shared database (PostgreSQL).
-3. Running the standalone `judge-worker/` on dedicated isolated Linux/gVisor/microVM compute nodes behind internal TLS.
+Ready-to-use Linux production templates are shipped in [`deploy/`](../deploy/):
+
+- [`deploy/setup-judge-host.sh`](../deploy/setup-judge-host.sh) — bootstraps a dedicated Ubuntu judge VM with official **gVisor (`runsc`)**, verifies `runsc` registration in Docker, pre-pulls all 5 pinned language images, and locks UFW port `4005` exclusively to `EXPRESS_PRIVATE_IP`.
+- [`deploy/alvio-api.service`](../deploy/alvio-api.service) & [`deploy/alvio-judge-worker.service`](../deploy/alvio-judge-worker.service) — hardened `systemd` units with graceful `SIGTERM` handling and journald structured logs.
+- [`deploy/alvio-backup.service`](../deploy/alvio-backup.service) & [`deploy/alvio-backup.timer`](../deploy/alvio-backup.timer) — automated daily WAL-safe `VACUUM INTO` backups with `PRAGMA integrity_check` and 14-day local retention.
+- [`deploy/nginx-alvio.conf`](../deploy/nginx-alvio.conf) — TLS 1.2/1.3 reverse proxy with HSTS and `proxy_buffering off` for `/api/chat` SSE (port `4005` never proxied).
+- [`deploy/health-monitor.sh`](../deploy/health-monitor.sh) — operational probe checking `/api/health`, `/api/ready`, judge worker `/health` (`runtimeVerified: true`), and zero exited orphan `alvio-judge-*` containers.
+
+### Controlled Migration & Rollback (`paiza` ↔ `isolated`)
+1. Deploy and bootstrap the dedicated Linux judge VM using `deploy/setup-judge-host.sh`.
+2. Run `JUDGE_DOCKER_RUNTIME=runsc npm run test:judge-live-docker` on the judge VM and verify 12/12 pass under live `runsc`.
+3. Confirm `deploy/health-monitor.sh` passes from the Express host over private networking.
+4. Set `JUDGE_PROVIDER=isolated`, `ISOLATED_JUDGE_URL`, and `ISOLATED_JUDGE_TOKEN` in `/etc/alvio/api.env` and restart `alvio-api.service`.
+5. **Instant rollback:** If the isolated judge host degrades, set `JUDGE_PROVIDER=paiza` in `/etc/alvio/api.env` and restart `alvio-api.service` (while down, Express fails closed with `503 provider_unavailable` and never runs untrusted code on the API host).
+
+### SQLite Suitability vs PostgreSQL + Distributed Rate Limiting
+- **When SQLite (WAL mode) + `RATE_LIMIT_STORE=sqlite` is suitable:** Single API host deployments up to ~100–300 concurrent active students (thousands of registered users, tens of thousands of daily progress/submission writes, DB size < 2–5 GB on local SSD/NVMe) where `BEGIN IMMEDIATE` write contention stays sub-10ms.
+- **When to migrate to PostgreSQL + `RATE_LIMIT_STORE=redis`:**
+  1. Deploying **2+ Express API replicas** behind a load balancer for high availability or horizontal scale (SQLite cannot safely serve concurrent multi-host writers over network filesystems).
+  2. Sustained write p95 latency > 50ms or `SQLITE_BUSY` errors under peak classroom/contest traffic.
+  3. Zero-downtime online schema migrations or point-in-time recovery (PITR) requirements beyond daily snapshots.
+  4. Rate-limit quotas must be shared across multiple API nodes (`RATE_LIMIT_STORE=redis` with `REDIS_REST_URL` + `REDIS_REST_TOKEN` is already implemented in `server/security.ts`).

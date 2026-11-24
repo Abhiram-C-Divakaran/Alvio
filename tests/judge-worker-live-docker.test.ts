@@ -149,13 +149,21 @@ after(async () => {
   db?.close();
 });
 
-test('1. Live /health reports Docker daemon ok', async () => {
+test('1. Live /health reports Docker daemon ok and verifies configured runtime', async () => {
   const res = await fetch(`${workerUrl}/health`);
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.status, 'ok');
   assert.equal(body.docker, 'ok');
+  assert.equal(body.runtime, DOCKER_RUNTIME || 'default-runc');
+  assert.equal(body.runtimeVerified, true);
   assert.equal(body.supportedLanguages.length, 7);
+  if (DOCKER_RUNTIME) {
+    assert.ok(
+      Array.isArray(body.availableRuntimes) && body.availableRuntimes.includes(DOCKER_RUNTIME),
+      `Configured runtime ${DOCKER_RUNTIME} must be registered in Docker: ${JSON.stringify(body.availableRuntimes)}`
+    );
+  }
 });
 
 const LANGUAGE_CASES: Array<{
@@ -348,8 +356,8 @@ def add(a, b):
   assert.equal(secRes.body.status, 'Passed', `Security probe failed: ${JSON.stringify(secRes.body)}`);
 });
 
-test('5. Live Docker concurrency saturation and Docker daemon outage fail closed with 503', async () => {
-  // 5a. Concurrency saturation (maxConcurrentJobs = 1)
+test('5. Live Docker concurrency saturation, runtime inspection, client disconnect cancellation, worker outage, and daemon outage', async () => {
+  // 5a. Concurrency saturation (maxConcurrentJobs = 1) + live HostConfig.Runtime verification
   const smallWorker = createJudgeWorkerServer({
     token: WORKER_TOKEN,
     maxConcurrentJobs: 1,
@@ -363,11 +371,33 @@ test('5. Live Docker concurrency saturation and Docker daemon outage fail closed
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${WORKER_TOKEN}` },
       body: JSON.stringify({
         language: 'python3',
-        sourceCode: 'import time; time.sleep(1.5); print("done")',
-        timeoutMs: 8000,
+        sourceCode: 'import time; time.sleep(2.0); print("done")',
+        timeoutMs: 10000,
       }),
     });
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 400));
+
+    // Inspect active container runtime directly via docker inspect while running
+    const activeNames = spawnSync('docker', ['ps', '--filter', 'name=alvio-judge-', '--format', '{{.Names}}'], {
+      encoding: 'utf8',
+    })
+      .stdout.trim()
+      .split(/\r?\n/)
+      .filter(Boolean);
+    if (DOCKER_RUNTIME && activeNames.length > 0) {
+      const inspectedRuntime = spawnSync(
+        'docker',
+        ['inspect', '--format', '{{.HostConfig.Runtime}}', activeNames[0]],
+        { encoding: 'utf8' }
+      ).stdout.trim();
+      assert.equal(
+        inspectedRuntime,
+        DOCKER_RUNTIME,
+        `Active container ${activeNames[0]} must actually execute under ${DOCKER_RUNTIME}, got ${inspectedRuntime}`
+      );
+      console.log(`[live-docker] Verified live container ${activeNames[0]} HostConfig.Runtime=${inspectedRuntime}`);
+    }
+
     const req2 = await fetch(`${smallUrl}/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${WORKER_TOKEN}` },
@@ -377,11 +407,59 @@ test('5. Live Docker concurrency saturation and Docker daemon outage fail closed
     assert.equal(req2.headers.get('retry-after'), '2');
     const res1 = await req1;
     assert.equal(res1.status, 200);
+
+    // 5b. Client disconnect cancellation immediately kills and removes the container
+    const abortCtrl = new AbortController();
+    const cancelledPromise = fetch(`${smallUrl}/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${WORKER_TOKEN}` },
+      body: JSON.stringify({
+        language: 'python3',
+        sourceCode: 'import time; time.sleep(15)',
+        timeoutMs: 15000,
+      }),
+      signal: abortCtrl.signal,
+    }).catch(() => null);
+    await new Promise((r) => setTimeout(r, 400));
+    abortCtrl.abort();
+    await cancelledPromise;
+    await new Promise((r) => setTimeout(r, 700));
+    const healthAfterCancel = await (await fetch(`${smallUrl}/health`)).json();
+    assert.equal(healthAfterCancel.activeJobs, 0, 'Worker activeJobs must return to 0 after client disconnect');
   } finally {
     await close(smallWorker);
   }
 
-  // 5b. Real Docker daemon outage via nonexistent DOCKER_HOST socket -> 503 fail-closed
+  // 5c. Worker completely unreachable -> Express returns 503 provider_unavailable (never host execution)
+  const deadPortServer = createServer();
+  const deadUrl = await listen(deadPortServer);
+  await close(deadPortServer);
+  const outageApp = express();
+  outageApp.use(express.json({ limit: '512kb' }));
+  registerSubmissions(outageApp, {
+    db,
+    rateLimitMax: 50,
+    provider: createIsolatedJudgeProvider({ baseUrl: deadUrl, token: WORKER_TOKEN }),
+  });
+  outageApp.use(safeErrors);
+  const outageApi = createServer(outageApp);
+  const outageApiUrl = await listen(outageApi);
+  try {
+    const outageRes = await fetch(`${outageApiUrl}/api/problems/live-add/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: 'javascript', code: 'function add(a, b) { return a + b; }' }),
+    });
+    assert.equal(outageRes.status, 503);
+    const outageBody = await outageRes.json();
+    assert.equal(outageBody.executionStatus, 'provider_unavailable');
+    assert.equal(outageBody.verified, false);
+    assert.equal(outageBody.saved, false);
+  } finally {
+    await close(outageApi);
+  }
+
+  // 5d. Real Docker daemon outage via nonexistent DOCKER_HOST socket -> 503 fail-closed
   const brokenEnv = { ...process.env, DOCKER_HOST: 'unix:///tmp/alvio-nonexistent-docker.sock' };
   const brokenWorker = createJudgeWorkerServer({
     token: WORKER_TOKEN,

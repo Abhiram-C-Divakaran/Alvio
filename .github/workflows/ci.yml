@@ -42,7 +42,7 @@ jobs:
         run: |
           npx tsc -p tsconfig.app.json --noEmit
           npx tsc -p tsconfig.node.json --noEmit
-          npx tsc --ignoreConfig --noEmit --module esnext --moduleResolution bundler --target es2023 --esModuleInterop --skipLibCheck server.ts server/seedHiddenTests.ts judge-worker/server.ts
+          npx tsc --ignoreConfig --noEmit --allowImportingTsExtensions --module esnext --moduleResolution bundler --target es2023 --esModuleInterop --skipLibCheck server.ts server/seedHiddenTests.ts server/hiddenTestCoverage.ts judge-worker/server.ts
 
       - name: Production Build
         run: npm run build
@@ -99,5 +99,48 @@ jobs:
           docker pull eclipse-temurin:21-jdk-alpine
           docker pull mono:6.12
 
-      - name: Run live Linux Docker judge integration & security suite
+      - name: Run live Linux Docker judge integration & security suite (runc)
+        run: npm run test:judge-live-docker
+
+  live-gvisor-judge:
+    name: Live Linux gVisor (runsc) Judge Verification (All 7 Languages & Security Controls)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: true
+      JUDGE_DOCKER_RUNTIME: runsc
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install and register official gVisor (runsc) Docker runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+          curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null
+          sudo apt-get update && sudo apt-get install -y runsc
+          sudo runsc install
+          sudo systemctl restart docker
+          docker info --format 'Server={{.ServerVersion}} Runtimes={{range $k, $v := .Runtimes}}{{$k}} {{end}}'
+
+      - name: Pre-pull pinned language runtime images
+        run: |
+          docker pull node:22-alpine
+          docker pull python:3.12-alpine
+          docker pull gcc:14-bookworm
+          docker pull eclipse-temurin:21-jdk-alpine
+          docker pull mono:6.12
+
+      - name: Run live Linux gVisor (runsc) judge integration & security suite
         run: npm run test:judge-live-docker

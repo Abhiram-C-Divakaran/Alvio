@@ -71,7 +71,7 @@ Express never executes student code in-process. Two providers are supported in `
 **Remaining isolation boundaries:**
 - Mounting `/var/run/docker.sock` gives `judge-worker` root-equivalent Docker control on its host, so the worker **must** run on a dedicated isolated VM separate from Express and databases.
 - Standard Docker (`runc`) shares the host Linux kernel and does not defeat every kernel escape; untrusted public workloads should enable **gVisor (`JUDGE_DOCKER_RUNTIME=runsc`)**, **Kata Containers**, or **Firecracker microVMs**.
-- Curated hidden tests currently cover 18 foundational problems (75 verified cases); expanding coverage across the remaining 454 problems is an ongoing content task. Memory/runtime percentile telemetry is not fabricated.
+- Curated hidden tests currently cover **83 of 472** foundational Easy/Medium/Hard problems (**346 oracle-verified hidden cases**, `17.58%` overall / `29.19%` Easy; auditable via `npm run db:hidden-coverage`); expanding coverage across the remaining 389 problems is an ongoing content task. Memory/runtime percentile telemetry is not fabricated.
 
 ## Backend reliability, API security, and operations
 
