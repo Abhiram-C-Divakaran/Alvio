@@ -88,31 +88,31 @@ Branch: `feat/phase2-production-hardening` (branched from `main` `4496bba`).
 
 - **Zero TypeScript errors**: Reduced `npx tsc -p tsconfig.app.json --noEmit` from **269 errors across 50 files** to **0 errors** without introducing `any`, `@ts-ignore`, or broad suppressions. Fixed real UI/runtime bugs uncovered during type cleanup (`ActivityHeatmap` escaped template literal preventing active-day highlighting; `DataStructurePageLayout` missing `activeDs` toolbar prop; removed unimported dead backup `CodingWorkspace_backup.tsx`).
 - **Authentication & session hardening**: Added SQLite Migration #5 (`users.token_version` + `auth_sessions` with `ON DELETE CASCADE`), short-lived access JWTs (`15m` default) + rotating SHA-256-hashed refresh tokens (`7d` default), HttpOnly `SameSite=Lax` cookies (`alvio_access`, `alvio_refresh`) + double-submit `alvio_csrf` cookie, CSRF origin/token protection middleware, `POST /api/auth/refresh` (with replay detection revoking all user sessions), `POST /api/auth/logout`, `POST /api/auth/logout-all`, transparent `X-Auth-Expired: 1` refresh-and-retry in `apiFetch`, and "Sign out all devices" in Profile settings.
-- **Backend reliability**: Wrapped coding submission stats + history writes and like/dislike toggles in SQLite `BEGIN IMMEDIATE` transactions; added `GET /api/health` readiness endpoint, graceful `SIGINT`/`SIGTERM` shutdown, explicit `404` checks before FK writes, strict non-object payload validation, `X-Permitted-Cross-Domain-Policies: none`, and consistent `logFailure` logging.
-- **Coding playground & frontend resilience**: Added strict parameter identifier validation in `server/submissionRunner.ts`, added global and route-scoped React `ErrorBoundary` recovery UI (`src/components/ui/ErrorBoundary.tsx`), and guarded `localStorage` access in `CodingWorkspace.tsx` and `ProfilePage.tsx`.
+- **Backend reliability**: Wrapped coding submission stats + history + XP writes and like/dislike toggles in SQLite `BEGIN IMMEDIATE` transactions; added `GET /api/health` (liveness) and `GET /api/ready` (readiness), WAL-safe online backup & integrity verification (`server/backupDb.ts` / `npm run db:backup`), SQLite-backed `RateLimitStore` option (`RATE_LIMIT_STORE=sqlite`), bounded single transient upstream retry in `server/chat.ts` and `server/visualizer.ts`, graceful `SIGINT`/`SIGTERM` shutdown, explicit `404` checks before FK writes, strict non-object payload validation, `X-Permitted-Cross-Domain-Policies: none`, and consistent `logFailure` logging.
+- **Server-authoritative XP ledger (Migration #6)**: Added `xp_ledger` (`UNIQUE(user_id, event_type, event_key)`) and `server/xpLedger.ts`. Verified coding passes award difficulty XP (`Easy: 25`, `Medium: 50`, `Hard: 100`) atomically once per problem; `POST /api/learning/events` validates lesson/visualizer/video/quiz completions server-side with deduplication and a `150 XP/day` cap; `GET /api/xp/ledger` exposes per-user audit history; `PUT /api/progress` still never trusts client XP.
+- **Coding playground, frontend resilience & CI**: Added strict parameter identifier validation, NUL-byte rejection, concurrent in-flight duplicate submission protection (`409`), and structured `failedTestCase` reporting in `server/submissionRunner.ts` and `server/submissions.ts`; added global and route-scoped React `ErrorBoundary` recovery UI (`src/components/ui/ErrorBoundary.tsx`); guarded `localStorage` access in `CodingWorkspace.tsx` and `ProfilePage.tsx`; cleared all remaining `src/` lint warnings; and added GitHub Actions CI (`.github/workflows/ci.yml`).
 
-### Actual executed test results (2026-11-23)
+### Actual executed test results (2026-11-23 — Final Phase 2 Pass)
 
 | Suite / Command | Mode | Result | Details / Timing |
 | --- | --- | --- | --- |
-| `npx tsc -p tsconfig.app.json --noEmit` | Offline static check | **PASS** | **0 errors** (20.83s; baseline was 269 errors) |
-| `npm run lint` (`oxlint`) | Offline static check | **PASS** | **0 errors**, 25 warnings in legacy helper scripts/tests |
+| `npx tsc -p tsconfig.app.json --noEmit` | Offline static check | **PASS** | **0 errors** (22.23s; baseline was 269 errors) |
+| `npm run lint` (`oxlint`) | Offline static check | **PASS** | **0 errors**, **0 warnings in `src/`** (21 warnings in legacy root helper scripts/tests) |
 | `npm run build` (`vite` + `esbuild`) | Offline build | **PASS** | Built frontend + `dist/server.cjs` cleanly |
-| `npm run test:foundation` | Offline / mocked providers | **PASS** | **58/58 passed** (3.70s), including `tests/auth-hardening.test.ts` (5) and `tests/backend-reliability.test.ts` (4) |
+| `npm run test:foundation` | Offline / mocked providers | **PASS** | **65/65 passed** (3.86s), including `auth-hardening` (5), `backend-reliability` (4), `xp-ledger` (2), and `backup-and-judge` (5) |
 | `npm run test:models` | Offline unit tests | **PASS** | **10/10 passed** (1.21s) |
-| `npm run test:auth-browser` | Offline Playwright Chromium | **PASS** | **4/4 passed** (12.50s) |
+| `npm run test:auth-browser` | Offline Playwright Chromium | **PASS** | **4/4 passed** (14.79s) |
 | `npm run test:auth-regressions` | Offline Playwright Chromium | **PASS** | 4/4 suites passed (`auth`, `profile`, `coding-workspace`, `coding-language`) |
 | `npm run test:learning-browser` | Offline Playwright Chromium (AI mocked) | **PASS** | 4/4 suites passed (`navigation-shell` across 8 viewports, `video-lessons`, `tutor`, `visualizer`) |
 | `npm run test:practice-browser` | Offline Playwright Chromium (AI mocked) | **PASS** | 4/4 suites passed (`quiz`, `progress`, `pvp`, `interview-live`) |
-| `npm run test:demo` (full combined run) | Offline / mocked providers | **PASS** | Exit code 0 (943.16s total across all above suites) |
-| `npm run test:ai-live` | **LIVE Groq API** (`openai/gpt-oss-120b`) | **PASS** | **3/3 passed** (11.10s: AI Tutor streaming + follow-up 5.25s, Mock Interview Q&A + JSON eval + report 4.30s, AI Visualizer follow-up 1.01s) |
+| `npm run test:demo` (full combined run) | Offline / mocked providers | **PASS** | Exit code 0 (383.51s total across all above suites) |
+| `npm run test:ai-live` | **LIVE Groq API** (`openai/gpt-oss-120b`) | **PASS** | **3/3 passed** (AI Tutor streaming + follow-up, Mock Interview Q&A + JSON eval + report, AI Visualizer follow-up) |
 
 ### Remaining known limitations (honest production boundaries)
 
 - Password reset and email verification require an external transactional email provider (not mocked).
 - Coding Playground evaluates visible SQLite test cases through Paiza.IO rather than an isolated hidden-test container judge.
-- Rate limits are process-local in-memory maps; horizontal scaling requires a shared store (e.g. Redis).
-- Permanent learning XP cannot be increased from self-reported client snapshots until a server-validated reward ledger is added.
+- Rate limits support memory (default) and single-host SQLite (`RATE_LIMIT_STORE=sqlite`); multi-host horizontal scaling requires a shared Redis store.
 - Dependency audit low/moderate advisories in upstream Monaco/Tailwind chains remain tracked for upstream releases; legacy `tests/review-fixes.test.mjs` retains two Node-vs-browser Worker assertions.
 
 

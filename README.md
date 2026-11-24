@@ -29,6 +29,7 @@ Copy `.env.example` to `.env`, then explicitly configure `JWT_SECRET` with a pri
 | `JWT_REFRESH_DAYS` | Optional rotating refresh session window in days (default `7`, range `1–90`) |
 | `COOKIE_SECURE` | Optional (`true`/`false`); set `true` behind HTTPS in production |
 | `TRUST_PROXY` | Optional (`true`/`1`); enable when running behind a reverse proxy for HTTPS detection & rate-limit IP |
+| `RATE_LIMIT_STORE` | Optional (`memory` default or `sqlite` for restart-persistent / shared-SQLite rate limiting) |
 | `PORT` | HTTP port; example uses `3001`, server default `3000` |
 | `ALLOWED_ORIGINS` | Comma-separated exact origins; mandatory in production |
 | `DATABASE_PATH` | SQLite file; default `./data/database.sqlite` |
@@ -57,7 +58,7 @@ npm run build
 npm start
 ```
 
-Set `NODE_ENV=production` in your process manager/environment for production. Configure `ALLOWED_ORIGINS`, HTTPS (`COOKIE_SECURE=true`, `TRUST_PROXY=true` behind a proxy), and persistent SQLite storage before deployment. Health probes can check `GET /api/health`. `npm run preview` previews static assets only and does not replace the Express backend.
+Set `NODE_ENV=production` in your process manager/environment for production. Configure `ALLOWED_ORIGINS`, HTTPS (`COOKIE_SECURE=true`, `TRUST_PROXY=true` behind a proxy), and persistent SQLite storage before deployment. Health and readiness probes can check `GET /api/health` (liveness) and `GET /api/ready` (schema + catalog readiness). Create verified online SQLite backups anytime with `npm run db:backup` (`VACUUM INTO` + `PRAGMA integrity_check`). `npm run preview` previews static assets only and does not replace the Express backend.
 
 ## Authentication and progress persistence
 
@@ -106,18 +107,27 @@ npm run test:practice-browser
 
 All TypeScript diagnostics (`npx tsc -p tsconfig.app.json --noEmit`) and repository lint (`npm run lint`) pass with **0 errors**. Offline tests use temporary databases and disposable secrets and do not contact Groq or Paiza live. See [docs/phase1-verification.md](docs/phase1-verification.md) for full Phase 1 and Phase 2 verification logs.
 
-## Database and migration
+## Database, backup, and migration
 
-SQLite migrations (5 numbered, transactional, repeatable migrations) run automatically on server startup and are tracked in `schema_migrations`. Existing accounts and learning records are preserved across upgrades, including `users.token_version` and the `auth_sessions` table (`ON DELETE CASCADE`). Submissions, interactions, progress updates, and session revocations execute inside explicit `BEGIN IMMEDIATE` transactions. Back up the SQLite database using SQLite-aware tooling before deploying migrations.
+SQLite migrations (6 numbered, transactional, repeatable migrations) run automatically on server startup and are tracked in `schema_migrations`. Existing accounts and learning records are preserved across upgrades, including `users.token_version`, `auth_sessions` (`ON DELETE CASCADE`), `xp_ledger` (`ON DELETE CASCADE`, unique per `(user_id, event_type, event_key)`), and `rate_limits`. Submissions, interactions, progress updates, XP awards, and session revocations execute inside explicit `BEGIN IMMEDIATE` transactions.
+
+Create a WAL-safe online backup and verify integrity with:
+
+```sh
+npm run db:backup
+```
+
+Backups use SQLite's atomic `VACUUM INTO` followed by `PRAGMA integrity_check`. To restore, stop the server, replace `DATABASE_PATH` (and remove stale `-wal`/`-shm` sidecars) with the verified backup file, and restart.
 
 ## Security and current limitations
 
 - Passwords are hashed only on the server with bcrypt. All private APIs share session-backed JWT/cookie verification, account existence checks, and token-version checks.
-- AI endpoints require authentication and enforce request limits, per-user/IP quotas, timeouts and disconnect cancellation. Missing AI configuration returns an explicit unavailable response.
-- Permanent XP is server-owned. Self-reported learning snapshots cannot increase account XP. A validated learning-event reward ledger is a follow-up.
-- Coding submissions are verified server-side against each problem's provided SQLite test cases using the external Paiza execution provider (`server/submissionRunner.ts`). Client-supplied verdicts and test cases are ignored, and Express never executes student code locally. There is no hidden-test LeetCode-style container judge or measured memory/percentiles. See [src/features/coding/WORKSPACE.md](src/features/coding/WORKSPACE.md) and [docs/architecture.md](docs/architecture.md) for limitations and the planned isolated judge architecture.
+- AI endpoints require authentication, enforce request limits, per-user/IP quotas, timeouts, disconnect cancellation, and a bounded single retry for transient upstream 5xx/network errors before headers are sent. Missing AI configuration returns an explicit unavailable response.
+- **Server-authoritative XP ledger**: Permanent XP (`users.xp`) is awarded exclusively on the server via `xp_ledger` (`UNIQUE(user_id, event_type, event_key)`). Verified coding solves automatically award difficulty-based XP once per problem (`Easy: 25`, `Medium: 50`, `Hard: 100`). Validated learning milestones (`POST /api/learning/events`) ignore client XP fields, deduplicate strictly, and enforce a `150 XP/day` cap. Uploading forged `totalXp` or `authoritativeXp` via `PUT /api/progress` never modifies `users.xp`.
+- Coding submissions are verified server-side against each problem's provided SQLite test cases using the external Paiza execution provider (`server/submissionRunner.ts`), with in-flight duplicate submission protection (`409 Conflict`), NUL-byte rejection, and structured `failedTestCase` reporting. Client-supplied verdicts and test cases are ignored, and Express never executes student code locally. There is no hidden-test LeetCode-style container judge or measured memory/percentiles. See [src/features/coding/WORKSPACE.md](src/features/coding/WORKSPACE.md) and [docs/architecture.md](docs/architecture.md) for limitations and the planned isolated judge architecture.
 - Password reset and email verification remain explicitly unavailable until transactional email (SMTP/API) infrastructure is configured. See [docs/architecture.md](docs/architecture.md) for the planned reset/verification design.
-- Rate limits are in-memory per process. Multi-instance production deployments require a shared store (e.g. Redis) and `TRUST_PROXY=true` behind a reverse proxy.
+- Rate limiting defaults to in-memory per process and supports `RATE_LIMIT_STORE=sqlite` for restart-persistent / shared-SQLite single-host quotas. Multi-host horizontal deployments require a shared Redis store and `TRUST_PROXY=true` behind a reverse proxy.
+- GitHub Actions CI (`.github/workflows/ci.yml`) runs lint, full TypeScript checks, production build, backend foundation tests, domain model tests, and Playwright Chromium regressions on pushes and pull requests without paid API keys.
 - Tutor/interview histories, code drafts and visualizer sessions remain account-scoped on the device. Learning progress syncs to the server.
 
 See [docs/architecture.md](docs/architecture.md) for precise boundaries and deployment requirements.
