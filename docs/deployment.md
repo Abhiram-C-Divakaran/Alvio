@@ -27,7 +27,8 @@ Never commit `.env` or hardcode secrets. Supply secrets through your host's secr
 | `TRUST_PROXY` | **Yes (behind proxy)** | `true` (enables `X-Forwarded-Proto` HTTPS detection and real client IP rate limiting) |
 | `JWT_ACCESS_TTL` | Optional | `15m` (short-lived access JWT) |
 | `JWT_REFRESH_DAYS` | Optional | `7` (rotating refresh session window) |
-| `RATE_LIMIT_STORE` | Optional | `sqlite` for restart-persistent / single-host shared quotas (or `memory` default) |
+| `RATE_LIMIT_STORE` | Optional | `memory` (default), `sqlite` (single-host persistent), or `redis` (multi-instance with `REDIS_REST_URL` + `REDIS_REST_TOKEN`) |
+| `JUDGE_PROVIDER` | Optional | `paiza` (default) or `isolated` (dedicated container/microVM judge worker via `ISOLATED_JUDGE_URL`, `ISOLATED_JUDGE_TOKEN`, `JUDGE_CPU_LIMIT_SEC`, `JUDGE_MEMORY_LIMIT_MB`) |
 | `GROQ_API_KEY` | Optional (AI features) | Server-only Groq API key |
 | `GROQ_CHAT_MODEL` | Optional | `openai/gpt-oss-120b` |
 | `GROQ_VISUALIZER_MODEL` | Optional | `openai/gpt-oss-120b` |

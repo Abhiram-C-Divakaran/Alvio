@@ -9,7 +9,7 @@ export interface RateLimitDecision {
 }
 
 export interface RateLimitStore {
-  consume(keys: string[], limit: number, windowMs: number, now: number): RateLimitDecision;
+  consume(keys: string[], limit: number, windowMs: number, now: number): RateLimitDecision | Promise<RateLimitDecision>;
 }
 
 export function createMemoryRateLimitStore(maxEntries = 10000): RateLimitStore {
@@ -81,6 +81,59 @@ export function createSqliteRateLimitStore(db: DatabaseSync = defaultDb): RateLi
   };
 }
 
+/**
+ * Redis REST (Upstash-compatible) shared rate-limit store for multi-instance deployments.
+ * Uses Node 24's built-in fetch with an atomic pipeline (INCR + PEXPIRE NX + PTTL).
+ */
+export function createRedisRestRateLimitStore(options: {
+  url?: string;
+  token?: string;
+  fetchImpl?: typeof fetch;
+} = {}): RateLimitStore {
+  const url = (options.url ?? process.env.REDIS_REST_URL ?? '').trim().replace(/\/+$/, '');
+  const token = (options.token ?? process.env.REDIS_REST_TOKEN ?? '').trim();
+  const fetchImpl = options.fetchImpl ?? fetch;
+  if (!url || !/^https?:\/\//i.test(url)) {
+    throw new Error('REDIS_REST_URL must be configured when RATE_LIMIT_STORE=redis.');
+  }
+
+  return {
+    async consume(keys, limit, windowMs) {
+      const pipeline = keys.flatMap((key) => [
+        ['INCR', `alvio:rl:${key}`],
+        ['PEXPIRE', `alvio:rl:${key}`, String(windowMs), 'NX'],
+        ['PTTL', `alvio:rl:${key}`],
+      ]);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const res = await fetchImpl(`${url}/pipeline`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(pipeline),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) throw new Error(`Redis rate-limit store error (${res.status})`);
+      const results = (await res.json()) as Array<{ result?: number }>;
+
+      let maxRetryMs = 0;
+      let exceeded = false;
+      for (let i = 0; i < keys.length; i++) {
+        const count = Number(results[i * 3]?.result ?? 0);
+        const ttlMs = Number(results[i * 3 + 2]?.result ?? windowMs);
+        if (count > limit) {
+          exceeded = true;
+          maxRetryMs = Math.max(maxRetryMs, ttlMs > 0 ? ttlMs : windowMs);
+        }
+      }
+      if (exceeded) {
+        return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(maxRetryMs / 1000)) };
+      }
+      return { allowed: true, retryAfterSeconds: 0 };
+    },
+  };
+}
+
 export function rateLimit(
   limit: number,
   windowMs: number,
@@ -88,11 +141,14 @@ export function rateLimit(
   byUser = false,
   customStore?: RateLimitStore
 ): RequestHandler {
+  const mode = (process.env.RATE_LIMIT_STORE || 'memory').trim().toLowerCase();
   const store =
     customStore ||
-    (process.env.RATE_LIMIT_STORE === 'sqlite'
-      ? createSqliteRateLimitStore(defaultDb)
-      : createMemoryRateLimitStore());
+    (mode === 'redis'
+      ? createRedisRestRateLimitStore()
+      : mode === 'sqlite'
+        ? createSqliteRateLimitStore(defaultDb)
+        : createMemoryRateLimitStore());
 
   return (req, res, next) => {
     const now = Date.now();
@@ -100,16 +156,25 @@ export function rateLimit(
       `${scope}:ip:${req.ip}`,
       ...(byUser && req.userId !== undefined ? [`${scope}:user:${req.userId}`] : []),
     ];
-    const decision = store.consume(keys, limit, windowMs, now);
-    if (!decision.allowed) {
-      res.setHeader('Retry-After', String(decision.retryAfterSeconds));
-      res.status(429).json({
-        error: "You're sending requests too quickly. Try again in a moment.",
-        code: 'RATE_LIMITED',
+    Promise.resolve(store.consume(keys, limit, windowMs, now))
+      .then((decision) => {
+        if (!decision.allowed) {
+          res.setHeader('Retry-After', String(decision.retryAfterSeconds));
+          res.status(429).json({
+            error: "You're sending requests too quickly. Try again in a moment.",
+            code: 'RATE_LIMITED',
+          });
+          return;
+        }
+        next();
+      })
+      .catch(() => {
+        logFailure(req, 'rate_limit_store_error', { scope });
+        res.status(503).json({
+          error: 'The service is temporarily unavailable.',
+          code: 'RATE_LIMIT_UNAVAILABLE',
+        });
       });
-      return;
-    }
-    next();
   };
 }
 

@@ -32,13 +32,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Dependency Security Audit (high/critical)
+        run: npm audit --audit-level=high
+
       - name: Lint
         run: npm run lint
 
       - name: TypeScript type check
         run: npx tsc -p tsconfig.app.json --noEmit
 
-      - name: Build & Backend Foundation Tests
+      - name: Production Build
+        run: npm run build
+
+      - name: Backend Foundation & Security Tests
         run: npm run test:foundation
 
       - name: Domain Model Unit Tests

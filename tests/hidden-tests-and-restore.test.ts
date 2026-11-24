@@ -9,8 +9,9 @@ import { randomBytes } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { migrate } from '../server/migrations';
 import { registerSubmissions } from '../server/submissions';
+import { createIsolatedJudgeProvider, resolveExecutionProvider } from '../server/submissionRunner';
 import { backupDatabase, restoreDatabase } from '../server/backupDb';
-import { safeErrors } from '../server/security';
+import { createRedisRestRateLimitStore, rateLimit, safeErrors } from '../server/security';
 
 let tempDir: string;
 
@@ -178,4 +179,78 @@ test('backupDatabase and restoreDatabase recover user data cleanly after target 
   assert.equal(row.email, 'restore@example.test');
   assert.equal(row.xp, 350);
   checkDb.close();
+});
+
+test('isolated judge provider sends CPU/memory/network limits and rejects missing URL', async () => {
+  assert.throws(
+    () => resolveExecutionProvider({ JUDGE_PROVIDER: 'isolated', ISOLATED_JUDGE_URL: '' }),
+    /ISOLATED_JUDGE_URL must be configured/
+  );
+
+  let capturedUrl = '';
+  let capturedAuth = '';
+  let capturedBody: any = null;
+
+  const provider = createIsolatedJudgeProvider({
+    baseUrl: 'https://judge.internal.example',
+    token: 'secret-judge-token',
+    limits: { cpuTimeLimitSec: 3, memoryLimitMb: 128 },
+    fetchImpl: async (url, init) => {
+      capturedUrl = String(url);
+      capturedAuth = new Headers(init?.headers).get('Authorization') || '';
+      capturedBody = JSON.parse(String(init?.body || '{}'));
+      return Response.json({ status: 'completed', result: 'success', exit_code: 0, stdout: 'ok' });
+    },
+  });
+
+  const result = await provider({
+    language: 'python3',
+    sourceCode: 'print(1)',
+    timeoutMs: 5000,
+  });
+  assert.equal(result.status, 'completed');
+  assert.equal(capturedUrl, 'https://judge.internal.example/execute');
+  assert.equal(capturedAuth, 'Bearer secret-judge-token');
+  assert.equal(capturedBody.limits.cpuTimeLimitSec, 3);
+  assert.equal(capturedBody.limits.memoryLimitMb, 128);
+  assert.equal(capturedBody.limits.networkDisabled, true);
+});
+
+test('Redis REST shared rate-limit store enforces quotas across instances', async () => {
+  const counts = new Map<string, number>();
+  const mockFetch: typeof fetch = async (_url, init) => {
+    const cmds = JSON.parse(String(init?.body || '[]')) as string[][];
+    const out: Array<{ result: number }> = [];
+    for (const cmd of cmds) {
+      if (cmd[0] === 'INCR') {
+        const next = (counts.get(cmd[1]) || 0) + 1;
+        counts.set(cmd[1], next);
+        out.push({ result: next });
+      } else if (cmd[0] === 'PEXPIRE') {
+        out.push({ result: 1 });
+      } else if (cmd[0] === 'PTTL') {
+        out.push({ result: 45000 });
+      }
+    }
+    return Response.json(out);
+  };
+
+  const storeA = createRedisRestRateLimitStore({ url: 'https://redis.example', token: 'tok', fetchImpl: mockFetch });
+  const storeB = createRedisRestRateLimitStore({ url: 'https://redis.example', token: 'tok', fetchImpl: mockFetch });
+  const app = express();
+  app.get('/a', rateLimit(2, 60000, 'multi', false, storeA), (_req, res) => res.json({ ok: 1 }));
+  app.get('/b', rateLimit(2, 60000, 'multi', false, storeB), (_req, res) => res.json({ ok: 2 }));
+
+  const srv = createServer(app);
+  await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${(srv.address() as any).port}`;
+  try {
+    assert.equal((await fetch(`${base}/a`)).status, 200);
+    assert.equal((await fetch(`${base}/b`)).status, 200);
+    const limited = await fetch(`${base}/a`);
+    assert.equal(limited.status, 429);
+    assert.ok(Number(limited.headers.get('retry-after')) >= 1);
+  } finally {
+    await new Promise<void>((r) => srv.close(() => r()));
+  }
 });
