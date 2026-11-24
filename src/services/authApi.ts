@@ -2,7 +2,7 @@ import { apiFetch, readCsrfToken } from './api';
 export { apiFetch as authenticatedFetch } from './api';
 import useAuthStore from '../stores/useAuthStore';
 import { flushProgress } from './progressSync';
-import type { User } from '../types/user';
+import type { AuthSessionResponse, PublicUser } from '../types/api';
 
 async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(`/api/auth/${path}`, init);
@@ -11,12 +11,10 @@ async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return data;
 }
 type Credentials = { email: string; password: string };
-type ServerUser = User & { xp: number; level: string };
-type Session = { user: ServerUser; token: string };
 const body = (value: unknown): RequestInit => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
-export const login = (credentials: Credentials) => authRequest<Session>('login', body(credentials));
-export const signup = (credentials: Credentials & { name: string }) => authRequest<Session>('signup', body(credentials));
-export const getCurrentUser = () => authRequest<{ user: ServerUser }>('me', { signal: AbortSignal.timeout(10000) });
+export const login = (credentials: Credentials) => authRequest<AuthSessionResponse>('login', body(credentials));
+export const signup = (credentials: Credentials & { name: string }) => authRequest<AuthSessionResponse>('signup', body(credentials));
+export const getCurrentUser = () => authRequest<{ user: PublicUser }>('me', { signal: AbortSignal.timeout(10000) });
 export const requestPasswordReset = (email: string) => authRequest<{ success: boolean; message: string }>('forgot-password', body({ email }));
 export const confirmPasswordReset = (token: string, password: string) => authRequest<{ success: boolean; message: string }>('reset-password', body({ token, password }));
 export const requestEmailVerification = () => authRequest<{ sent?: boolean; verified?: boolean; alreadyVerified?: boolean }>('verify-email/request', { method: 'POST' });

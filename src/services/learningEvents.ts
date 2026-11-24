@@ -1,6 +1,7 @@
 import { apiFetch } from './api';
 import useProgressStore from '../stores/useProgressStore';
 import useAuthStore from '../stores/useAuthStore';
+import type { XpAwardResponse } from '../types/api';
 
 export type ClientLearningEvent =
   | { type: 'lesson_completed'; topicId: string }
@@ -76,7 +77,7 @@ export async function flushPendingLearningEvents(): Promise<void> {
         remaining.push(...queued.slice(i));
         break;
       }
-      const data = await res.json();
+      const data: Partial<XpAwardResponse> = await res.json();
       if (typeof data?.totalXp === 'number' && Number.isFinite(data.totalXp)) {
         const current = useProgressStore.getState().progress;
         if (current && current.userId === userId && current.authoritativeXp !== data.totalXp) {

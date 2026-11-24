@@ -1,6 +1,7 @@
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Request, Response, RequestHandler } from 'express';
+import type { PublicUser } from '../src/types/api';
 import db from './db';
 import { logFailure } from './security';
 
@@ -507,16 +508,16 @@ export function extractSessionIdFromRequest(req: Request): string | null {
   return null;
 }
 
-export function publicUser(user: any) {
+export function publicUser(user: any): PublicUser {
   return {
     id: String(user.id),
-    name: user.name,
-    email: user.email,
+    name: String(user.name),
+    email: String(user.email),
     emailVerified: Boolean(user.email_verified_at),
-    xp: user.xp,
-    level: user.level,
+    xp: Number(user.xp || 0),
+    level: String(user.level || 'Apprentice'),
     avatar: user.avatar_url || undefined,
-    createdAt: user.created_at,
+    createdAt: String(user.created_at || ''),
     settings: { theme: 'dark', voiceEnabled: false, animationSpeed: 1, notifications: true },
   };
 }

@@ -1,5 +1,6 @@
 import type { Express, RequestHandler } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
+import type { SubmissionExecutionStatus } from '../src/types/api';
 import defaultDb from './db';
 import { optionalAuth, requireAuth } from './auth';
 import { logFailure, providerCancellation, rateLimit } from './security';
@@ -41,7 +42,7 @@ function parseProblemRow(row: any): SubmissionProblem | null {
 function mapExecutionStatus(verdict: {
   status: 'Passed' | 'Failed' | 'Error';
   errorType: 'compilation' | 'runtime' | 'timeout' | 'provider' | 'unsupported' | null;
-}): string {
+}): SubmissionExecutionStatus {
   if (verdict.status === 'Passed') return 'accepted';
   if (verdict.status === 'Failed') return 'wrong_answer';
   switch (verdict.errorType) {

@@ -5,6 +5,7 @@ import { mergeProgress } from './mergeProgress';
 import useProgressStore from '../stores/useProgressStore';
 import useAuthStore from '../stores/useAuthStore';
 import type { LearningProgress } from '../types/user';
+import type { ProgressResponse } from '../types/api';
 import { flushPendingLearningEvents, reportLearningEvent } from './learningEvents';
 
 export const useSyncStatus = create<{ status: 'idle' | 'syncing' | 'synced' | 'offline' | 'error'; message: string }>(() => ({ status: 'idle', message: '' }));
@@ -100,7 +101,7 @@ export async function startProgressSync(userId: string, permanentXp?: number) {
   try {
     const response = await apiFetch('/api/progress', { signal: AbortSignal.timeout(10000) });
     if (!response.ok) throw Error('Unavailable');
-    const remote = await response.json();
+    const remote: ProgressResponse = await response.json();
     if (generation !== epoch) return;
     const merged = remote.progress ? (cache.pending ? mergeProgress(cache.progress, remote.progress, cache.base) : remote.progress) : cache.progress;
     cache = { userId, progress: merged, base: remote.progress, revision: remote.revision, pending: cache.pending || !remote.progress };

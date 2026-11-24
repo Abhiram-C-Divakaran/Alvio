@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore';
 import type { CodingProblem } from '../../data/codingProblems';
+import type { ChatStreamEvent, SubmissionHistoryResponse, SubmissionVerdictResponse } from '../../types/api';
 import { executeJavaScript, executePython, executeCpp, executeC, executeJava, executeTypescript, executeCsharp, extractFunctionName } from './CodeExecutionEngine';
 import type { ExecutionResult } from './CodeExecutionEngine';
 import { formatInputAsArray, getLocalTestCasesFromProblem, parseEditableTestCases } from './EditableTestCases';
@@ -338,7 +339,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
           const payloadText = line.slice(5).trimStart();
           if (!payloadText || payloadText === '[DONE]') continue;
           try {
-            const payload = JSON.parse(payloadText);
+            const payload: ChatStreamEvent = JSON.parse(payloadText);
             if (payload.error) {
               const safeErr =
                 typeof payload.error === 'string' &&
@@ -373,7 +374,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
     saveDraft();
     setLanguage(newLang);
     const key = newLang === 'python3' ? 'python' : newLang;
-    setCode(localStorage.getItem(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${newLang}`) ?? generateStarterCode(problem, key));
+    setCode(safeGetStorage(`alvio-code:${useAuthStore.getState().user?.id}:${problem.id}:${newLang}`) ?? generateStarterCode(problem, key));
     setResult(null);
   };
 
@@ -443,8 +444,8 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
         })
       });
 
-      const data = await submissionResponse.json().catch(() => null);
-      if (!data || !['Passed', 'Failed', 'Error'].includes(data.status)) {
+      const data: Partial<SubmissionVerdictResponse> | null = await submissionResponse.json().catch(() => null);
+      if (!data || !data.status || !['Passed', 'Failed', 'Error'].includes(data.status)) {
         const errorMessage = data?.error || `Submission failed (HTTP ${submissionResponse.status}).`;
         setResult({
           status: 'Error',
@@ -492,7 +493,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
             headers: { Authorization: `Bearer ${token}` }
           });
           if (resSub.ok) {
-            const dataSub = await resSub.json();
+            const dataSub: SubmissionHistoryResponse = await resSub.json();
             setLatestSubmission(dataSub.submission);
             setSubmissionHistory(dataSub.submissions || []);
           }
@@ -535,7 +536,7 @@ export default function CodingWorkspace({ problem, problemNumber, isSolved, onBa
   useEffect(() => { const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(false); if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveDraft(); } if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (e.shiftKey) void handleSubmit(); else void handleRun(); } }; window.addEventListener('keydown', fn); return () => window.removeEventListener('keydown', fn); });
   return (
     <div className={`cw-root ${expanded ? "cw-expanded" : ""} flex h-[calc(100vh-4rem)] w-full overflow-hidden text-gray-200 p-2 gap-2`}>
-      <nav className="cw-mobile-nav"><button onClick={() => document.getElementById('problem')?.scrollIntoView()}>Problem</button><button onClick={() => document.getElementById('editor')?.scrollIntoView()}>Code</button></nav><PanelGroup orientation="horizontal" onLayoutChanged={layout => localStorage.setItem('alvio-workspace-layout', JSON.stringify(layout))} defaultLayout={JSON.parse(localStorage.getItem('alvio-workspace-layout') || 'null') ?? undefined} className="w-full h-full">
+      <nav className="cw-mobile-nav"><button onClick={() => document.getElementById('problem')?.scrollIntoView()}>Problem</button><button onClick={() => document.getElementById('editor')?.scrollIntoView()}>Code</button></nav><PanelGroup orientation="horizontal" onLayoutChanged={layout => safeSetStorage('alvio-workspace-layout', JSON.stringify(layout))} defaultLayout={(() => { try { return JSON.parse(safeGetStorage('alvio-workspace-layout') || 'null') ?? undefined; } catch { return undefined; } })()} className="w-full h-full">
 
         {/* ── LEFT PANEL: Description / Submissions ── */}
         <Panel id="problem" defaultSize="47%" minSize="28%" className="flex flex-col bg-black/20 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden shadow-2xl">

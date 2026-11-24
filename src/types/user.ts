@@ -6,6 +6,9 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  emailVerified?: boolean;
+  xp?: number;
+  level?: string;
   avatar?: string;
   avatar_url?: string;
   createdAt: string;
