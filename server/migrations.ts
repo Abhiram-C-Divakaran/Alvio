@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 export function migrate(db:DatabaseSync){
+db.exec('PRAGMA busy_timeout=5000;');
 db.exec('CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
 const migrations=[(db:DatabaseSync)=>db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -161,5 +162,17 @@ CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT N
   );
   CREATE INDEX IF NOT EXISTS idx_problem_hidden_tests_problem_id ON problem_hidden_tests(problem_id);`);
 }];
-for(let i=0;i<migrations.length;i++){if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1))continue;db.exec('BEGIN IMMEDIATE');try{migrations[i](db);db.prepare('INSERT INTO schema_migrations(version) VALUES(?)').run(i+1);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
+for(let i=0;i<migrations.length;i++){
+  if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1))continue;
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1)){db.exec('COMMIT');continue;}
+    migrations[i](db);
+    db.prepare('INSERT INTO schema_migrations(version) VALUES(?)').run(i+1);
+    db.exec('COMMIT');
+  }catch(e){
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
 }

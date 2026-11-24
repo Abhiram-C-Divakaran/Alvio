@@ -138,3 +138,23 @@ test('non-object JSON payloads return 400 validation errors instead of 500', asy
     assert.equal(progressRes.status, 400);
   }
 });
+
+test('concurrent multi-process migrations on a fresh SQLite database do not race', async () => {
+  const raceDbPath = join(directory, 'concurrent-migrate.sqlite');
+  const script = `import('./server/db.ts').then((m) => { const count = m.default.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get(); if (!count || Number(count.n) < 8) process.exit(2); m.default.close(); });`;
+  const workers = Array.from({ length: 4 }, () =>
+    new Promise<void>((resolve, reject) => {
+      const proc = spawn(process.execPath, ['--import', 'tsx', '-e', script], {
+        env: { ...process.env, DATABASE_PATH: raceDbPath },
+        stdio: 'pipe',
+      });
+      let err = '';
+      proc.stderr?.on('data', (chunk) => (err += chunk.toString()));
+      proc.on('exit', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Worker exited ${code}: ${err}`));
+      });
+    })
+  );
+  await Promise.all(workers);
+});
