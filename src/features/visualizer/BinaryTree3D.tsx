@@ -5,8 +5,8 @@ import * as THREE from 'three';
 import type { BinaryTreeStructure } from '../../types/dataStructures';
 
 interface BinaryTree3DProps {
-  activeIndex?: number | number[] | string | string[] | null;
-  visitedIndex?: number[] | string[] | null;
+  activeIndex?: number | string | (number | string)[] | null;
+  visitedIndex?: (number | string)[] | null;
   variant?: string;
   dsState?: BinaryTreeStructure | null;
   baseColor?: string;

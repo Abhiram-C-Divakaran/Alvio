@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import AuthGuard from './components/layout/AuthGuard';
+import ErrorBoundary from './components/ui/ErrorBoundary';
 import LandingPage from './features/landing/LandingPage';
 
 
@@ -53,8 +54,9 @@ const DataStructuresUniversePage = lazy(() => import('./features/learn/DataStruc
 
 function App() {
   return (
-    <BrowserRouter>
-      <Suspense fallback={<div className="min-h-screen bg-[#050812] text-slate-300 grid place-items-center" role="status">Opening Alvio…</div>}><Routes>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Suspense fallback={<div className="min-h-screen bg-[#050812] text-slate-300 grid place-items-center" role="status">Opening Alvio…</div>}><Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/auth" element={<AuthPage />} />
 
@@ -129,7 +131,8 @@ function App() {
           }
         />
       </Routes></Suspense>
-    </BrowserRouter>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

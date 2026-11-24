@@ -5,6 +5,8 @@ import { mergeProgress } from './mergeProgress';
 import useProgressStore from '../stores/useProgressStore';
 import useAuthStore from '../stores/useAuthStore';
 import type { LearningProgress } from '../types/user';
+import type { ProgressResponse } from '../types/api';
+import { flushPendingLearningEvents, reportLearningEvent } from './learningEvents';
 
 export const useSyncStatus = create<{ status: 'idle' | 'syncing' | 'synced' | 'offline' | 'error'; message: string }>(() => ({ status: 'idle', message: '' }));
 let cache: ProgressCache | null = null;
@@ -44,6 +46,44 @@ export async function persistProgress(progress: LearningProgress) {
   status('syncing', 'Saving progress…');
   schedule(milestone ? 0 : 2000);
   await persist(cache);
+
+  // Notify server-authoritative XP ledger on newly completed milestones (best-effort, idempotent).
+  if (milestone) {
+    for (const t of progress.topics) {
+      if (t.status === 'completed' && previous.topics.find(p => p.topicId === t.topicId)?.status !== 'completed') {
+        void reportLearningEvent({ type: 'lesson_completed', topicId: t.topicId });
+      }
+    }
+    for (const [id, v] of Object.entries(progress.videoLessons || {})) {
+      if (v.completed && !previous.videoLessons?.[id]?.completed) {
+        void reportLearningEvent({ type: 'video_completed', videoId: id });
+      }
+    }
+    for (const [id, v] of Object.entries(progress.visualizerModules || {})) {
+      if (v.completed && !previous.visualizerModules?.[id]?.completed) {
+        const ops = (v.operationsPerformed?.insert || 0) + (v.operationsPerformed?.delete || 0) + (v.operationsPerformed?.reset || 0);
+        void reportLearningEvent({
+          type: 'visualizer_completed',
+          moduleId: id,
+          completedSteps: v.completedSteps?.length || 0,
+          operationsCount: Math.max(1, ops),
+        });
+      }
+    }
+    const prevQuizIds = new Set(previous.completedQuizIds || []);
+    for (const attempt of progress.quizHistory || []) {
+      if (!prevQuizIds.has(attempt.id)) {
+        const topicId = attempt.topics.length === 1 ? attempt.topics[0].topicId : 'mixed';
+        void reportLearningEvent({
+          type: 'quiz_completed',
+          attemptId: attempt.id,
+          topicId,
+          total: attempt.total,
+          correct: attempt.correct,
+        });
+      }
+    }
+  }
 }
 export async function startProgressSync(userId: string, permanentXp?: number) {
   const existing = useProgressStore.getState().progress;
@@ -61,13 +101,14 @@ export async function startProgressSync(userId: string, permanentXp?: number) {
   try {
     const response = await apiFetch('/api/progress', { signal: AbortSignal.timeout(10000) });
     if (!response.ok) throw Error('Unavailable');
-    const remote = await response.json();
+    const remote: ProgressResponse = await response.json();
     if (generation !== epoch) return;
     const merged = remote.progress ? (cache.pending ? mergeProgress(cache.progress, remote.progress, cache.base) : remote.progress) : cache.progress;
     cache = { userId, progress: merged, base: remote.progress, revision: remote.revision, pending: cache.pending || !remote.progress };
     useProgressStore.getState().setProgress(merged); await persist(cache);
     if (generation !== epoch) return;
     if (cache?.pending) schedule(0); else status('synced', 'Progress synced');
+    void flushPendingLearningEvents();
   } catch {
     if (generation !== epoch || !cache) return;
     useProgressStore.getState().setProgress(cache.progress);
@@ -95,7 +136,7 @@ async function flushProgressOnce() {
       useProgressStore.getState().setProgress(cache.progress); await persist(cache);
     }
     if (generation !== epoch || !cache) return;
-    if (!cache.pending) { status('synced', 'Progress synced'); return; }
+    if (!cache.pending) { status('synced', 'Progress synced'); void flushPendingLearningEvents(); return; }
     status('syncing', 'Saving progress…');
     const sent = cache;
     const put = await apiFetch('/api/progress', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(10000), body: JSON.stringify({ progress: sent.progress, revision: sent.revision }) });

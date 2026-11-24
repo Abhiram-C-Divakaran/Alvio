@@ -16,7 +16,7 @@ function PoppedItem({ value, index, isLinked }: { value: number; index: number; 
   const ref = useRef<THREE.Group>(null);
   const color = '#ef4444'; // Red for deleted
 
-  useFrame((state, delta) => {
+  useFrame((_state, delta) => {
     if (ref.current) {
       // Fly up and to the right, spin, and shrink
       ref.current.position.y += delta * 6;

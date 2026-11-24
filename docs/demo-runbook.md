@@ -44,6 +44,11 @@ Open **http://localhost:3001** (or `http://localhost:3000` if `PORT` is unset).
 | Variable | Required? | Purpose |
 | --- | --- | --- |
 | `JWT_SECRET` | **Required** | Private signing secret, **at least 32 characters**. Generate with `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"`. Server intentionally refuses to start without it. |
+| `JWT_ACCESS_TTL` | Optional | Short-lived access token lifetime (default `15m`). |
+| `JWT_REFRESH_DAYS` | Optional | Rotating refresh session window in days (default `7`). |
+| `COOKIE_SECURE` | Optional | Set `true` behind HTTPS in production so auth cookies include the `Secure` attribute. |
+| `TRUST_PROXY` | Optional | Set `true` when behind a reverse proxy (Nginx, Caddy, cloud load balancer) for HTTPS detection and client IP rate limiting. |
+| `RATE_LIMIT_STORE` | Optional | `memory` (default) or `sqlite` for restart-persistent / shared-SQLite rate limiting. |
 | `PORT` | Optional | HTTP port (`.env.example` uses `3001`; default is `3000`). |
 | `ALLOWED_ORIGINS` | **Required in production** | Comma-separated exact origins, e.g. `http://localhost:3001`. |
 | `DATABASE_PATH` | Optional | Path to SQLite database (defaults to `./data/database.sqlite`). |
@@ -79,7 +84,7 @@ Open **http://localhost:3001** (or `http://localhost:3000` if `PORT` is unset).
    - Switch languages in the picker (JavaScript, TypeScript, Python 3, C++, C, Java, C#).
 8. **PvP Coding Duel (`/workspace/pvp`)**: Open two browser tabs side by side, host a room in Tab 1, join with the 6-character code in Tab 2, show live code view, freeze power-up, and solving `reverseList` to trigger the Victory screen.
 9. **AI Tutor, AI Visualizer & Mock Interview (`/ai-tutor`, `/learn/ai-visualizer`, `/mock-interview`)**: Ask a DSA question in AI Tutor (streaming Markdown + code), step through a visualization in AI Visualizer (2D/3D view, timeline scrub, code line sync), and open Mock Interview to show topic/difficulty setup, live Q&A rubric feedback, private scratch notes, and report generation.
-10. **Profile & Logout (`/profile`)**: Show solved problems, profile bio update, and clean sign-out returning to `/auth`.
+10. **Profile, XP Ledger & Session Security (`/profile`)**: Show solved problems, server-awarded XP (`GET /api/xp/ledger`), profile bio update, **Sign out** (revokes the current session on the server and clears HttpOnly cookies), or **Account Settings → Sign out all devices** (revokes every active device session), and check `GET /api/health`, `GET /api/ready`, and `npm run db:backup`.
 
 ---
 

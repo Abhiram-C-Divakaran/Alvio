@@ -159,7 +159,7 @@ export default function Algorithms3D({ step, algoType, speed = 1 }: Algorithms3D
       })()}
 
       {/* Fixed Index Labels below Slots */}
-      {array.map((_, i: number) => {
+      {array.map((_: number, i: number) => {
         const xPos = startX + i * spacing;
         return (
           <Billboard key={`idx-${i}`} position={[xPos, -1.5, 0]}>

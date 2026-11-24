@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSpring, animated } from '@react-spring/three';
-import { RoundedBox, Billboard, Html } from '@react-three/drei';
+import { RoundedBox, Html } from '@react-three/drei';
 
 interface OutputArray3DProps {
-  data: string[];
+  data: (string | number)[];
   capacity: number;
 }
 
-function ArraySlot({ value, index, isNew }: { value?: string; index: number; isNew: boolean }) {
+function ArraySlot({ value, index, isNew }: { value?: string | number; index: number; isNew: boolean }) {
   const { scale, emissiveIntensity } = useSpring({
     scale: isNew ? [1.15, 1.15, 1.15] : [1, 1, 1],
     emissiveIntensity: isNew ? 1.0 : (value ? 0.6 : 0.1),

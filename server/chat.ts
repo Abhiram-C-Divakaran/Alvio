@@ -197,6 +197,50 @@ export function classifyChatProviderError(error: any, model: string): {
   };
 }
 
+export function isTransientProviderError(error: any): boolean {
+  if (!error) return false;
+  if (error?.name === 'AbortError') return false;
+  const status = typeof error?.status === 'number' ? error.status : undefined;
+  if (status !== undefined) {
+    return status >= 500 && status <= 599;
+  }
+  const code = String(error?.code || error?.cause?.code || '');
+  return /^(ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET)$/i.test(code)
+    || /fetch failed|socket hang up|network error/i.test(String(error?.message || ''));
+}
+
+export async function withTransientRetry<T>(
+  operation: () => Promise<T>,
+  signal: AbortSignal,
+  options: { maxRetries?: number; retryDelayMs?: number } = {}
+): Promise<T> {
+  const maxRetries = options.maxRetries ?? 1;
+  const retryDelayMs = options.retryDelayMs ?? 350;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (err) {
+      lastError = err;
+      if (attempt >= maxRetries || signal.aborted || !isTransientProviderError(err)) {
+        throw err;
+      }
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          signal.removeEventListener('abort', onAbort);
+          resolve();
+        }, retryDelayMs * (attempt + 1));
+        const onAbort = () => {
+          clearTimeout(timer);
+          reject(err);
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
+    }
+  }
+  throw lastError;
+}
+
 const defaultCreateStream: ChatStreamFactory = async (params, { signal, apiKey }) => {
   const groq = new Groq({ apiKey, timeout: 60000, maxRetries: 0 });
   return groq.chat.completions.create(params, { signal }) as Promise<AsyncIterable<ChatStreamChunk>>;
@@ -250,15 +294,20 @@ export function registerChat(app: Express, options: RegisterChatOptions = {}) {
       const builtMessages = buildChatMessages(messages, tutorMode);
       const isInterview = tutorMode === 'Mock Interview';
 
-      const stream = await createStream(
-        {
-          model,
-          messages: builtMessages,
-          temperature: isInterview ? 0.3 : 0.7,
-          max_tokens: 8192,
-          stream: true,
-        },
-        { signal: request.signal, apiKey }
+      const stream = await withTransientRetry(
+        () =>
+          createStream(
+            {
+              model,
+              messages: builtMessages,
+              temperature: isInterview ? 0.3 : 0.7,
+              max_tokens: 8192,
+              stream: true,
+            },
+            { signal: request.signal, apiKey }
+          ),
+        request.signal,
+        { maxRetries: 1, retryDelayMs: 300 }
       );
 
       res.setHeader('Content-Type', 'text/event-stream');

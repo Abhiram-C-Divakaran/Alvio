@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Code2 } from 'lucide-react';
 import Modal from '../../components/ui/Modal';
 import { codeSnippets } from '../workspace/codeSnippets';
 

@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Database, Play, AlertCircle, Share2, Layers } from 'lucide-react';
+import { Play, AlertCircle, Share2, Layers } from 'lucide-react';
 import Card from '../../components/ui/Card';
-import Badge from '../../components/ui/Badge';
 
 interface StackItem {
   name: string;
@@ -26,7 +25,7 @@ export default function MemoryProfiler({ code }: { code: string }) {
   const runProfiler = () => {
     setIsProfiling(true);
     setErrorMsg(null);
-    
+
     // Simulate compilation delay
     setTimeout(() => {
       try {
@@ -36,22 +35,22 @@ export default function MemoryProfiler({ code }: { code: string }) {
 
         // Simplified line-by-line parser for tracing assignments
         const lines = code.split('\n');
-        
+
         lines.forEach(line => {
           const trimmed = line.trim();
-          
+
           // Match simple declarations: const/let x = val
           const varMatch = trimmed.match(/^(?:const|let|var)\s+(\w+)\s*=\s*(.+?);?$/);
           if (varMatch) {
             const [, name, val] = varMatch;
-            
+
             // Check if it looks like a Node instantiation (heap allocation)
             const nodeMatch = val.match(/^(?:new\s+)?(?:Node|ListNode|TreeNode)\((.+?)\)$/i);
             if (nodeMatch) {
               const innerVal = nodeMatch[1];
               const addr = `0x${heapCounter}`;
               heapCounter += 8;
-              
+
               detectedStack.push({ name, value: addr, type: 'pointer' });
               detectedHeap.push({ address: addr, label: name, value: innerVal, nextAddress: null });
             } else {
@@ -80,14 +79,14 @@ export default function MemoryProfiler({ code }: { code: string }) {
           detectedStack.push({ name: 'head', value: '0x1008', type: 'pointer' });
           detectedStack.push({ name: 'temp', value: '0x1016', type: 'pointer' });
           detectedStack.push({ name: 'count', value: '2', type: 'primitive' });
-          
+
           detectedHeap.push({ address: '0x1008', label: 'Node 1', value: '15', nextAddress: '0x1016' });
           detectedHeap.push({ address: '0x1016', label: 'Node 2', value: '32', nextAddress: null });
         }
 
         setStack(detectedStack);
         setHeap(detectedHeap);
-      } catch (err) {
+      } catch {
         setErrorMsg("Parsing failed. Please check syntax bounds.");
       } finally {
         setIsProfiling(false);
@@ -101,7 +100,7 @@ export default function MemoryProfiler({ code }: { code: string }) {
 
   return (
     <Card strong gradientBorder className="w-full flex flex-col h-full bg-[#140D33]/60 border border-white/10 rounded-3xl p-5 shadow-2xl">
-      
+
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between pb-4 border-b border-white/5">
         <div className="flex items-center gap-2.5">
@@ -111,7 +110,7 @@ export default function MemoryProfiler({ code }: { code: string }) {
             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">Heap & Stack Allocation</p>
           </div>
         </div>
-        
+
         <button
           onClick={runProfiler}
           disabled={isProfiling}
@@ -130,11 +129,11 @@ export default function MemoryProfiler({ code }: { code: string }) {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-          
+
           {/* Stack Frame Column */}
           <div className="space-y-3">
             <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 px-1">Stack (Local Scopes)</h4>
-            
+
             <div className="space-y-2">
               <AnimatePresence mode="wait">
                 {stack.map((item, idx) => (
@@ -161,7 +160,7 @@ export default function MemoryProfiler({ code }: { code: string }) {
           {/* Heap Allocations Column */}
           <div className="space-y-3">
             <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 px-1">Heap (Allocated Objects)</h4>
-            
+
             <div className="space-y-3">
               <AnimatePresence mode="wait">
                 {heap.map((obj, idx) => (
@@ -176,7 +175,7 @@ export default function MemoryProfiler({ code }: { code: string }) {
                       <span className="text-[9px] font-mono text-indigo-400 font-bold">{obj.address}</span>
                       <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">NODE</span>
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-3 text-left">
                       <div className="bg-black/20 p-2 rounded-xl border border-white/5">
                         <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">value</span>

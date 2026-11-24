@@ -4,45 +4,90 @@ import { createServer as createViteServer } from "vite";
 import cors from "cors";
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import {authSecret,requireAuth,signAuthToken,publicUser} from "./server/auth";
-import {rateLimit,securityHeaders,safeErrors,logFailure} from "./server/security";
-import {registerProgress} from "./server/progress";
-import {registerSubmissions} from "./server/submissions";
+import {
+  authSecret,
+  clearAuthCookies,
+  createAuthSession,
+  csrfProtection,
+  extractSessionIdFromRequest,
+  parseCookies,
+  publicUser,
+  REFRESH_COOKIE_NAME,
+  requireAuth,
+  revokeAllUserSessions,
+  revokeSessionById,
+  rotateRefreshSession,
+  setAuthCookies,
+} from "./server/auth";
+import { rateLimit, securityHeaders, safeErrors, logFailure } from "./server/security";
+import { registerProgress } from "./server/progress";
+import { registerSubmissions } from "./server/submissions";
 import db from "./server/db";
 import { registerVisualizer } from './server/visualizer';
 import { registerChat } from './server/chat';
+import { getEpicLevel, registerXpLedger } from './server/xpLedger';
+import { registerAuthRecovery } from './server/authRecovery';
 
 authSecret();
-
-function getEpicLevel(xp: number) {
-  if (xp < 100) return 'Bronze V';
-  if (xp < 250) return 'Bronze IV';
-  if (xp < 500) return 'Bronze I';
-  if (xp < 800) return 'Silver V';
-  if (xp < 1200) return 'Silver I';
-  if (xp < 1800) return 'Gold V';
-  if (xp < 2500) return 'Gold I';
-  if (xp < 3500) return 'Platinum V';
-  if (xp < 4800) return 'Platinum I';
-  if (xp < 6200) return 'Diamond V';
-  if (xp < 7800) return 'Diamond I';
-  if (xp < 9500) return 'Crown';
-  if (xp < 12000) return 'Ace';
-  return 'Conqueror';
-}
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
   app.disable('x-powered-by');
-  const origins=(process.env.ALLOWED_ORIGINS||'').split(',').map(v=>v.trim()).filter(Boolean);
-  if(process.env.NODE_ENV==='production'&&!origins.length)throw Error('ALLOWED_ORIGINS is required in production.');
+  if (process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1') {
+    app.set('trust proxy', 1);
+  }
+  const origins = (process.env.ALLOWED_ORIGINS || '').split(',').map(v => v.trim()).filter(Boolean);
+  if (process.env.NODE_ENV === 'production' && !origins.length) throw Error('ALLOWED_ORIGINS is required in production.');
   app.use(securityHeaders);
-  app.use(cors({origin:(origin,done)=>done(null,!origin||origins.includes(origin)||(process.env.NODE_ENV!=='production'&&/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)))}));
-  app.use('/api',(_req,res,next)=>{res.setHeader('Cache-Control','no-store');next()});
-  app.use(express.json({limit:'512kb'}));
+  app.use(cors({
+    origin: (origin, done) => done(null, !origin || origins.includes(origin) || (process.env.NODE_ENV !== 'production' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))),
+    credentials: true,
+    exposedHeaders: ['X-Auth-Expired', 'X-Request-ID'],
+  }));
+  app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next() });
+  app.use('/api', csrfProtection(origins));
+  app.use(express.json({ limit: '512kb' }));
+
+  app.get('/api/health', (req, res) => {
+    try {
+      const check = db.prepare('SELECT 1 as ok').get() as { ok?: number } | undefined;
+      if (check?.ok !== 1) throw new Error('Database readiness probe failed');
+      res.json({
+        status: 'ok',
+        database: 'ok',
+        uptimeSeconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      logFailure(req, 'health_check_failed');
+      res.status(503).json({ status: 'degraded', database: 'unavailable' });
+    }
+  });
+
+  app.get('/api/ready', (req, res) => {
+    try {
+      const check = db.prepare('SELECT 1 as ok').get() as { ok?: number } | undefined;
+      const migration = db.prepare('SELECT MAX(version) as version FROM schema_migrations').get() as { version?: number } | undefined;
+      const problems = db.prepare('SELECT COUNT(*) as count FROM problems').get() as { count?: number } | undefined;
+      if (check?.ok !== 1 || !migration?.version) throw new Error('Database not ready');
+      res.json({
+        status: 'ready',
+        database: 'ok',
+        migrationVersion: Number(migration.version),
+        problemsCount: Number(problems?.count || 0),
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      logFailure(req, 'readiness_check_failed');
+      res.status(503).json({ status: 'not_ready', database: 'unavailable' });
+    }
+  });
+
   registerProgress(app);
+  registerXpLedger(app);
+  registerAuthRecovery(app, { allowedOrigins: origins });
   registerVisualizer(app);
   registerSubmissions(app);
   registerChat(app);
@@ -50,10 +95,11 @@ async function startServer() {
 
 
   // --- Auth Routes ---
-  app.post("/api/auth/signup", rateLimit(5,600000,"signup"), async (req, res) => {
+  app.post("/api/auth/signup", rateLimit(5, 600000, "signup"), async (req, res) => {
     try {
-      const {password}=req.body;const name=typeof req.body.name==='string'?req.body.name.trim():'';const email=typeof req.body.email==='string'?req.body.email.trim().toLowerCase():'';
-      if(name.length<2||name.length>80||email.length>254||!/^\S+@\S+\.\S+$/.test(email)||typeof password!=='string'||password.length<8||Buffer.byteLength(password)>72)return res.status(400).json({error:'Use a valid name, email, and a password of 8–72 bytes.'});
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+      const { password } = body; const name = typeof body.name === 'string' ? body.name.trim() : ''; const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+      if (name.length < 2 || name.length > 80 || email.length > 254 || !/^\S+@\S+\.\S+$/.test(email) || typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password) > 72) return res.status(400).json({ error: 'Use a valid name, email, and a password of 8–72 bytes.' });
       if (!name || !email || !password) {
         return res.status(400).json({ error: "Missing required fields" });
       }
@@ -68,22 +114,24 @@ async function startServer() {
       const result = insert.run(name, email, hash);
 
       const user = { id: Number(result.lastInsertRowid), name, email, xp: 0, level: "Apprentice" };
-      const token = signAuthToken(Number(user.id));
+      const session = createAuthSession(Number(user.id), String(req.headers['user-agent'] || ''));
 
       // Add a welcome activity
       db.prepare("INSERT INTO user_activity (user_id, activity_type, points) VALUES (?, ?, ?)").run(user.id, "Joined Alvio", 0);
 
-      res.json({ user: publicUser(user), token });
-    } catch (error: any) {
-      logFailure(req,'backend_error');
+      setAuthCookies(req, res, session);
+      res.json({ user: publicUser(user), token: session.accessToken });
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "Failed to create account" });
     }
   });
 
-  app.post("/api/auth/login", rateLimit(10,600000,"login"), async (req, res) => {
+  app.post("/api/auth/login", rateLimit(10, 600000, "login"), async (req, res) => {
     try {
-      const {password}=req.body;const email=typeof req.body.email==='string'?req.body.email.trim().toLowerCase():'';
-      if(!email||email.length>254||typeof password!=='string'||Buffer.byteLength(password)>72)return res.status(400).json({error:'Enter a valid email and password.'});
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+      const { password } = body; const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+      if (!email || email.length > 254 || typeof password !== 'string' || Buffer.byteLength(password) > 72) return res.status(400).json({ error: 'Enter a valid email and password.' });
       if (!email || !password) {
         return res.status(400).json({ error: "Missing required fields" });
       }
@@ -98,12 +146,61 @@ async function startServer() {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
-      const token = signAuthToken(Number(user.id));
+      const session = createAuthSession(Number(user.id), String(req.headers['user-agent'] || ''));
+      setAuthCookies(req, res, session);
 
-      res.json({ user: publicUser(user), token });
-    } catch (error: any) {
-      logFailure(req,'backend_error');
+      res.json({ user: publicUser(user), token: session.accessToken });
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "Failed to log in" });
+    }
+  });
+
+  app.post("/api/auth/refresh", rateLimit(30, 600000, "refresh"), (req, res) => {
+    try {
+      const cookies = parseCookies(req.headers.cookie);
+      const rawRefresh = cookies[REFRESH_COOKIE_NAME];
+      if (!rawRefresh) {
+        clearAuthCookies(req, res);
+        return res.status(401).json({ error: "Please sign in again.", code: "UNAUTHORIZED" });
+      }
+      const rotated = rotateRefreshSession(rawRefresh, String(req.headers['user-agent'] || ''));
+      if (!rotated) {
+        clearAuthCookies(req, res);
+        logFailure(req, 'auth_refresh_rejected');
+        return res.status(401).json({ error: "Please sign in again.", code: "SESSION_REVOKED" });
+      }
+      setAuthCookies(req, res, rotated);
+      res.json({ user: publicUser(rotated.user), token: rotated.accessToken });
+    } catch {
+      logFailure(req, 'backend_error');
+      res.status(500).json({ error: "Failed to refresh session" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    try {
+      const sessionId = extractSessionIdFromRequest(req);
+      if (sessionId) {
+        revokeSessionById(sessionId);
+      }
+      clearAuthCookies(req, res);
+      res.json({ success: true });
+    } catch {
+      logFailure(req, 'backend_error');
+      clearAuthCookies(req, res);
+      res.status(500).json({ error: "Failed to log out" });
+    }
+  });
+
+  app.post("/api/auth/logout-all", requireAuth, (req, res) => {
+    try {
+      revokeAllUserSessions(req.userId);
+      clearAuthCookies(req, res);
+      res.json({ success: true });
+    } catch {
+      logFailure(req, 'backend_error');
+      res.status(500).json({ error: "Failed to revoke sessions" });
     }
   });
 
@@ -119,7 +216,7 @@ async function startServer() {
 
       const activity = db.prepare("SELECT * FROM user_activity WHERE user_id = ? ORDER BY created_at DESC LIMIT 10").all(req.userId);
 
-      const allDates = db.prepare("SELECT DISTINCT date(created_at) as d FROM user_activity WHERE user_id = ? ORDER BY d DESC").all(req.userId) as {d: string}[];
+      const allDates = db.prepare("SELECT DISTINCT date(created_at) as d FROM user_activity WHERE user_id = ? ORDER BY d DESC").all(req.userId) as { d: string }[];
       let dayStreak = 0;
       const today = new Date();
       let currentDate = new Date(today);
@@ -130,23 +227,23 @@ async function startServer() {
         const timeDiff = Math.abs(today.getTime() - firstDate.getTime());
         const diffDays = Math.ceil(timeDiff / (1000 * 3600 * 24));
         if (diffDays <= 2) {
-            foundTodayOrYesterday = true;
-            currentDate = firstDate;
+          foundTodayOrYesterday = true;
+          currentDate = firstDate;
         }
       }
 
       if (foundTodayOrYesterday) {
         let i = 0;
-        while(i < allDates.length) {
-            const checkDate = new Date(currentDate);
-            checkDate.setDate(currentDate.getDate() - dayStreak);
-            const checkDateString = checkDate.toISOString().split('T')[0];
-            if (allDates[i].d === checkDateString) {
-                dayStreak++;
-                i++;
-            } else {
-                break;
-            }
+        while (i < allDates.length) {
+          const checkDate = new Date(currentDate);
+          checkDate.setDate(currentDate.getDate() - dayStreak);
+          const checkDateString = checkDate.toISOString().split('T')[0];
+          if (allDates[i].d === checkDateString) {
+            dayStreak++;
+            i++;
+          } else {
+            break;
+          }
         }
       }
 
@@ -158,7 +255,7 @@ async function startServer() {
 
       const onlineUsers = null;
 
-      const completedCountQuery = db.prepare("SELECT COUNT(*) as c FROM course_progress WHERE user_id = ?").get(req.userId) as {c: number};
+      const completedCountQuery = db.prepare("SELECT COUNT(*) as c FROM course_progress WHERE user_id = ?").get(req.userId) as { c: number };
       const topicsCompleted = (completedCountQuery ? completedCountQuery.c : 0);
 
       res.json({
@@ -174,8 +271,8 @@ async function startServer() {
         activity,
         allDates: allDates.map(d => d.d),
       });
-    } catch (error: any) {
-      logFailure(req,'backend_error');
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "Unable to load your account. Please try again." });
     }
   });
@@ -184,7 +281,7 @@ async function startServer() {
 
 
   // --- Activity Routes ---
-  app.post('/api/activity',requireAuth,(_req,res)=>res.status(410).json({error:'Client-reported rewards are no longer accepted. Use learning progress sync.',code:'UNVERIFIED_REWARD'}));
+  app.post('/api/activity', requireAuth, (_req, res) => res.status(410).json({ error: 'Client-reported rewards are no longer accepted. Use learning progress sync.', code: 'UNVERIFIED_REWARD' }));
   // Dummy stats seeding removed as per user request to only use real time data
 
   // --- Problems API Routes (Dedicated Backend) ---
@@ -205,8 +302,8 @@ async function startServer() {
         title: p.title.replace(/^Problem\s+\d+:\s*/i, '')
       }));
       res.json(cleanedProblems);
-    } catch (error) {
-      logFailure(req,'backend_error');
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -238,25 +335,29 @@ async function startServer() {
           accepted: 0,
           submissions: 0
         };
-        db.prepare("INSERT INTO problem_stats (problem_id, accepted, submissions) VALUES (?, ?, ?)").run(String(req.params.problemId), initialStats.accepted, initialStats.submissions);
+        db.prepare("INSERT OR IGNORE INTO problem_stats (problem_id, accepted, submissions) VALUES (?, ?, ?)").run(String(req.params.problemId), initialStats.accepted, initialStats.submissions);
         problem.stats = initialStats;
       }
 
       res.json(problem);
-    } catch (error) {
-      logFailure(req,'backend_error');
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
   // --- Problem Interaction Routes ---
-  app.post("/api/problems/:problemId/feedback", requireAuth, (req, res) => {
+  app.post("/api/problems/:problemId/feedback", requireAuth, rateLimit(20, 600000, "feedback", true), (req, res) => {
     try {
-      const problemId = String(req.params.problemId);
-      const { issues, additionalFeedback, rating } = req.body;
+      const problemId = String(req.params.problemId).trim();
+      if (!problemId || problemId.length > 128 || !db.prepare("SELECT id FROM problems WHERE id = ?").get(problemId)) {
+        return res.status(404).json({ error: "Problem not found" });
+      }
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+      const { issues, additionalFeedback, rating } = body;
 
-      const userId=req.userId;
-      if(!Array.isArray(issues)||issues.length>20||issues.some((x:any)=>typeof x!=="string"||x.length>200)||typeof additionalFeedback!=="string"||additionalFeedback.length>5000||!Number.isInteger(rating)||rating<0||rating>5)return res.status(400).json({error:"Invalid feedback."});
+      const userId = req.userId;
+      if (!Array.isArray(issues) || issues.length > 20 || issues.some((x: any) => typeof x !== "string" || x.length > 200) || typeof additionalFeedback !== "string" || additionalFeedback.length > 5000 || !Number.isInteger(rating) || rating < 0 || rating > 5) return res.status(400).json({ error: "Invalid feedback." });
       db.prepare("INSERT INTO problem_feedback (user_id, problem_id, issues, additional_feedback, rating) VALUES (?, ?, ?, ?, ?)").run(
         userId,
         problemId,
@@ -266,8 +367,8 @@ async function startServer() {
       );
 
       res.json({ success: true });
-    } catch (error) {
-      logFailure(req,'backend_error');
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -286,42 +387,52 @@ async function startServer() {
       });
 
       // Also get total likes for the problem
-      const totalLikesQuery = db.prepare("SELECT COUNT(*) as c FROM user_problem_interactions WHERE problem_id = ? AND interaction_type = 'like'").get(problemId) as {c: number};
+      const totalLikesQuery = db.prepare("SELECT COUNT(*) as c FROM user_problem_interactions WHERE problem_id = ? AND interaction_type = 'like'").get(problemId) as { c: number };
       const totalLikes = totalLikesQuery ? totalLikesQuery.c : 0;
 
       res.json({ ...state, totalLikes });
-    } catch (error) {
-      logFailure(req,'backend_error');
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
   // Coding submission routes are registered by registerSubmissions(app) above.
 
-  app.post("/api/problems/:problemId/interaction", requireAuth, (req, res) => {
+  app.post("/api/problems/:problemId/interaction", requireAuth, rateLimit(60, 60000, "interaction", true), (req, res) => {
     try {
+      const problemId = String(req.params.problemId).trim();
+      if (!problemId || problemId.length > 128 || !db.prepare("SELECT id FROM problems WHERE id = ?").get(problemId)) {
+        return res.status(404).json({ error: "Problem not found" });
+      }
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+      const { type, action } = body;
+      if (!['like', 'dislike', 'star'].includes(type) || !['add', 'remove'].includes(action)) return res.status(400).json({ error: 'Invalid interaction.' }); // type: 'like' | 'dislike' | 'star', action: 'add' | 'remove'
 
-      const problemId = String(req.params.problemId);
-      const { type, action } = req.body;
-      if(!['like','dislike','star'].includes(type)||!['add','remove'].includes(action))return res.status(400).json({error:'Invalid interaction.'}); // type: 'like' | 'dislike' | 'star', action: 'add' | 'remove'
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        if (action === 'add') {
+          // If adding a like, remove dislike (and vice versa) atomically
+          if (type === 'like') {
+            db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'dislike'").run(req.userId, problemId);
+          } else if (type === 'dislike') {
+            db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'like'").run(req.userId, problemId);
+          }
 
-      if (action === 'add') {
-        // If adding a like, remove dislike (and vice versa)
-        if (type === 'like') {
-          db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'dislike'").run(req.userId, problemId);
-        } else if (type === 'dislike') {
-          db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = 'like'").run(req.userId, problemId);
+          // Insert new interaction (ignore if exists due to unique constraint)
+          db.prepare("INSERT OR IGNORE INTO user_problem_interactions (user_id, problem_id, interaction_type) VALUES (?, ?, ?)").run(req.userId, problemId, type);
+        } else if (action === 'remove') {
+          db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = ?").run(req.userId, problemId, type);
         }
-
-        // Insert new interaction (ignore if exists due to unique constraint)
-        db.prepare("INSERT OR IGNORE INTO user_problem_interactions (user_id, problem_id, interaction_type) VALUES (?, ?, ?)").run(req.userId, problemId, type);
-      } else if (action === 'remove') {
-        db.prepare("DELETE FROM user_problem_interactions WHERE user_id = ? AND problem_id = ? AND interaction_type = ?").run(req.userId, problemId, type);
+        db.exec('COMMIT');
+      } catch (txErr) {
+        db.exec('ROLLBACK');
+        throw txErr;
       }
 
       res.json({ success: true });
-    } catch (error) {
-      logFailure(req,'backend_error');
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -332,8 +443,8 @@ async function startServer() {
 
       const favourites = db.prepare("SELECT problem_id, created_at FROM user_problem_interactions WHERE user_id = ? AND interaction_type = 'star' ORDER BY created_at DESC").all(req.userId);
       res.json(favourites);
-    } catch (error) {
-      logFailure(req,'backend_error');
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -343,8 +454,8 @@ async function startServer() {
     try {
       const topUsers = db.prepare("SELECT name, xp FROM users ORDER BY xp DESC LIMIT 5").all();
       res.json(topUsers);
-    } catch (error) {
-      logFailure(req,'backend_error');
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "Failed to fetch leaderboard" });
     }
   });
@@ -354,7 +465,7 @@ async function startServer() {
     try {
 
 
-      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.userId);
+      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.userId) as any;
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
@@ -377,30 +488,32 @@ async function startServer() {
         GROUP BY strftime('%Y-%m-%dT%H:00:00Z', created_at)
         ORDER BY recordedAt
       `).all(req.userId);
-      res.json({ user: { ...publicUser(user), location:user.location, university:user.university, github:user.github, linkedin:user.linkedin, avatar_url:user.avatar_url }, activity, courses, solvedProblems, attemptedProblems, practiceActivity });
-    } catch (error) {
+      res.json({ user: { ...publicUser(user), location: user.location, university: user.university, github: user.github, linkedin: user.linkedin, avatar_url: user.avatar_url }, activity, courses, solvedProblems, attemptedProblems, practiceActivity });
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "The service is temporarily unavailable." });
     }
   });
 
-  app.post("/api/profile/update", requireAuth, (req, res) => {
+  app.post("/api/profile/update", requireAuth, rateLimit(30, 600000, "profile_update", true), (req, res) => {
     try {
-
-
-      const {location='',university='',github='',linkedin='',avatar_url=''}=req.body;
-      if([location,university,github,linkedin,avatar_url].some(v=>typeof v!=='string'||v.length>2000)||[github,linkedin,avatar_url].some(v=>v&&!/^https?:\/\//i.test(v)))return res.status(400).json({error:'Invalid profile details.'});
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : null;
+      if (!body) return res.status(400).json({ error: 'Invalid profile details.' });
+      const { location = '', university = '', github = '', linkedin = '', avatar_url = '' } = body;
+      if ([location, university, github, linkedin, avatar_url].some(v => typeof v !== 'string' || v.length > 2000) || [github, linkedin, avatar_url].some(v => v && !/^https?:\/\//i.test(v))) return res.status(400).json({ error: 'Invalid profile details.' });
 
       db.prepare("UPDATE users SET location = ?, university = ?, github = ?, linkedin = ?, avatar_url = ? WHERE id = ?")
         .run(location, university, github, linkedin, avatar_url, req.userId);
 
       res.json({ success: true });
-    } catch (error) {
+    } catch {
+      logFailure(req, 'backend_error');
       res.status(500).json({ error: "The service is temporarily unavailable." });
     }
   });
 
-  app.get('/api/auth/me',requireAuth,(req,res)=>res.json({user:publicUser(db.prepare('SELECT * FROM users WHERE id=?').get(req.userId))}));
-  app.use('/api',(_req,res)=>res.status(404).json({error:'API route not found.'}));
+  app.get('/api/auth/me', requireAuth, (req, res) => res.json({ user: publicUser(db.prepare('SELECT * FROM users WHERE id=?').get(req.userId)) }));
+  app.use('/api', (_req, res) => res.status(404).json({ error: 'API route not found.' }));
   app.use(safeErrors);
   // Vite middleware for development
 
@@ -414,14 +527,34 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath, { redirect: false }));
-    app.get("/*splat", (req, res) => {
+    app.get("/*splat", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const httpServer = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.info(JSON.stringify({ event: 'server_shutdown', signal }));
+    const forceTimer = setTimeout(() => process.exit(1), 5000);
+    forceTimer.unref();
+    httpServer.close(() => {
+      try {
+        db.close();
+      } catch {
+        // Ignore if already closed
+      }
+      process.exit(0);
+    });
+  };
+
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 startServer();

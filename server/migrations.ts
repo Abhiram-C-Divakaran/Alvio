@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 export function migrate(db:DatabaseSync){
+db.exec('PRAGMA busy_timeout=5000;');
 db.exec('CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
 const migrations=[(db:DatabaseSync)=>db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -93,6 +94,85 @@ CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT N
   INSERT INTO learning_progress_cascade SELECT user_id,progress_json,revision,updated_at FROM learning_progress;
   DROP TABLE learning_progress;
   ALTER TABLE learning_progress_cascade RENAME TO learning_progress;`);
+},(db:DatabaseSync)=>{
+  const userFields=new Set((db.prepare('PRAGMA table_info(users)').all() as any[]).map(x=>x.name));
+  if(!userFields.has('token_version'))db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1');
+  db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    refresh_token_hash TEXT NOT NULL,
+    user_agent TEXT DEFAULT '',
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);`);
+},(db:DatabaseSync)=>{
+  db.exec(`CREATE TABLE IF NOT EXISTS xp_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    event_key TEXT NOT NULL,
+    points INTEGER NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, event_type, event_key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_xp_ledger_user_id ON xp_ledger(user_id);
+  CREATE INDEX IF NOT EXISTS idx_xp_ledger_user_created ON xp_ledger(user_id, created_at);
+  CREATE TABLE IF NOT EXISTS rate_limits (
+    key TEXT PRIMARY KEY,
+    count INTEGER NOT NULL,
+    reset_at INTEGER NOT NULL
+  );`);
+},(db:DatabaseSync)=>{
+  const userFields=new Set((db.prepare('PRAGMA table_info(users)').all() as any[]).map(x=>x.name));
+  if(!userFields.has('email_verified_at'))db.exec('ALTER TABLE users ADD COLUMN email_verified_at TEXT');
+  db.exec(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_password_reset_user_id ON password_reset_tokens(user_id);
+  CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_email_verification_user_id ON email_verification_tokens(user_id);`);
+},(db:DatabaseSync)=>{
+  db.exec(`CREATE TABLE IF NOT EXISTS problem_hidden_tests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    problem_id TEXT NOT NULL,
+    input_json TEXT NOT NULL,
+    expected_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(problem_id) REFERENCES problems(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_problem_hidden_tests_problem_id ON problem_hidden_tests(problem_id);`);
 }];
-for(let i=0;i<migrations.length;i++){if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1))continue;db.exec('BEGIN IMMEDIATE');try{migrations[i](db);db.prepare('INSERT INTO schema_migrations(version) VALUES(?)').run(i+1);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
+for(let i=0;i<migrations.length;i++){
+  if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1))continue;
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1)){db.exec('COMMIT');continue;}
+    migrations[i](db);
+    db.prepare('INSERT INTO schema_migrations(version) VALUES(?)').run(i+1);
+    db.exec('COMMIT');
+  }catch(e){
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
 }

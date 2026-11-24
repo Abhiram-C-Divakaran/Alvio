@@ -1,6 +1,3 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-
 export default function ActivityHeatmap({ allDates = [] }: { allDates: string[] }) {
   const days = 28;
   const today = new Date();
@@ -17,7 +14,7 @@ export default function ActivityHeatmap({ allDates = [] }: { allDates: string[] 
       <div 
         key={i} 
         title={dateString}
-        className={`w-3 h-3 rounded-sm \${isActive ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]' : 'bg-[var(--color-bg-primary)] border border-[var(--color-border-subtle)]'}`}
+        className={`w-3 h-3 rounded-sm ${isActive ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]' : 'bg-[var(--color-bg-primary)] border border-[var(--color-border-subtle)]'}`}
       />
     );
   });

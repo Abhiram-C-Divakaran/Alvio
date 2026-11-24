@@ -18,8 +18,23 @@ export type SubmissionErrorType = 'compilation' | 'runtime' | 'timeout' | 'provi
 
 export const MAX_CODE_LENGTH = 65536;
 export const DEFAULT_EXECUTION_TIMEOUT_MS = 15000;
+export const MAX_PROVIDER_OUTPUT_BYTES = 65536;
 const MAX_STDOUT_LINES = 50;
 const MAX_MESSAGE_LENGTH = 4000;
+
+export interface JudgeResourceLimits {
+  cpuTimeLimitSec: number;
+  memoryLimitMb: number;
+  maxOutputBytes: number;
+  networkDisabled: true;
+}
+
+export const DEFAULT_JUDGE_LIMITS: JudgeResourceLimits = {
+  cpuTimeLimitSec: 5,
+  memoryLimitMb: 256,
+  maxOutputBytes: MAX_PROVIDER_OUTPUT_BYTES,
+  networkDisabled: true,
+};
 
 export interface ProblemParam {
   name: string;
@@ -42,12 +57,14 @@ export interface SubmissionProblem {
   title?: string;
   signature: ProblemSignature;
   testCases: ProblemTestCase[];
+  hiddenTestCases?: ProblemTestCase[];
 }
 
 export interface ProviderExecutionRequest {
   language: PaizaLanguage;
   sourceCode: string;
   timeoutMs: number;
+  limits?: JudgeResourceLimits;
   signal?: AbortSignal;
 }
 
@@ -65,15 +82,26 @@ export interface ProviderExecutionResponse {
 
 export type ExecutionProvider = (request: ProviderExecutionRequest) => Promise<ProviderExecutionResponse>;
 
+export interface FailedTestCaseDetail {
+  index: number;
+  hidden?: boolean;
+  input?: unknown;
+  expected?: unknown;
+  actual?: unknown;
+}
+
 export interface ServerSubmissionResult {
   status: VerdictStatus;
   passedCount: number;
   totalCount: number;
+  visibleCount: number;
+  hiddenCount: number;
   executionTimeMs: number;
   message: string;
   stdout: string[];
   errorType: SubmissionErrorType;
   recordable: boolean;
+  failedTestCase?: FailedTestCaseDetail;
 }
 
 export class ExecutionProviderError extends Error {
@@ -210,6 +238,7 @@ function generateJsOrTsRunner(
           status: 'Failed',
           message: 'Test Case ' + (i + 1) + ' Failed.\\nInput: ' + JSON.stringify(tc.input) + '\\nExpected: ' + JSON.stringify(tc.expected) + '\\nOutput: ' + JSON.stringify(res),
           passedCount: passed,
+          failedTestCase: { index: i + 1, input: tc.input, expected: tc.expected, actual: res },
           stdout: __ALVIO_STDOUT__,
           executionTimeMs: Date.now() - startTime
         }));
@@ -300,9 +329,10 @@ def __alvio_run__():
                     "status": "Failed",
                     "message": f"Test Case {i + 1} Failed.\\nInput: {json.dumps(tc['input'])}\\nExpected: {json.dumps(tc['expected'])}\\nOutput: {json.dumps(result, default=str)}",
                     "passedCount": passed,
+                    "failedTestCase": {"index": i + 1, "input": tc['input'], "expected": tc['expected'], "actual": result},
                     "stdout": stdout,
                     "executionTimeMs": int((time.time() - start_time) * 1000)
-                }))
+                }, default=str))
                 return
 
         sys.stdout = orig_stdout
@@ -835,6 +865,111 @@ export function createPaizaProvider(options: PaizaProviderOptions = {}): Executi
   };
 }
 
+// ---------- Isolated External Judge Integration Boundary ----------
+
+export interface IsolatedJudgeProviderOptions {
+  baseUrl?: string;
+  token?: string;
+  limits?: Partial<JudgeResourceLimits>;
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Integration boundary for a dedicated, out-of-process isolated container/microVM judge service.
+ * Sends explicit CPU, memory, output-size, timeout, and network-disabled execution constraints.
+ * Express never executes untrusted student code in-process.
+ */
+export function createIsolatedJudgeProvider(options: IsolatedJudgeProviderOptions = {}): ExecutionProvider {
+  const baseUrl = (options.baseUrl ?? process.env.ISOLATED_JUDGE_URL ?? '').trim().replace(/\/+$/, '');
+  if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) {
+    throw new Error('ISOLATED_JUDGE_URL must be configured with an http(s) URL when JUDGE_PROVIDER=isolated.');
+  }
+  const token = (options.token ?? process.env.ISOLATED_JUDGE_TOKEN ?? '').trim();
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const configuredLimits: JudgeResourceLimits = {
+    cpuTimeLimitSec: Number(options.limits?.cpuTimeLimitSec ?? process.env.JUDGE_CPU_LIMIT_SEC) || DEFAULT_JUDGE_LIMITS.cpuTimeLimitSec,
+    memoryLimitMb: Number(options.limits?.memoryLimitMb ?? process.env.JUDGE_MEMORY_LIMIT_MB) || DEFAULT_JUDGE_LIMITS.memoryLimitMb,
+    maxOutputBytes: Number(options.limits?.maxOutputBytes) || DEFAULT_JUDGE_LIMITS.maxOutputBytes,
+    networkDisabled: true,
+  };
+
+  return async ({ language, sourceCode, timeoutMs, limits, signal }: ProviderExecutionRequest): Promise<ProviderExecutionResponse> => {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+
+    const onExternalAbort = () => controller.abort();
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      let response: Response;
+      try {
+        response = await fetchImpl(`${baseUrl}/execute`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            language,
+            sourceCode,
+            timeoutMs,
+            limits: { ...configuredLimits, ...limits, networkDisabled: true },
+          }),
+          signal: controller.signal,
+        });
+      } catch {
+        if (timedOut) {
+          throw new ExecutionProviderError('timeout', 'Time Limit Exceeded: execution timed out.');
+        }
+        throw new ExecutionProviderError('provider', 'Isolated judge service is temporarily unavailable. Please try again.');
+      }
+
+      let data: unknown;
+      try {
+        data = await response.json();
+      } catch {
+        throw new ExecutionProviderError('provider', `Isolated judge returned an invalid response (HTTP ${response.status}).`);
+      }
+
+      if (!response.ok || !data || typeof data !== 'object' || Array.isArray(data)) {
+        const msg = (data as Record<string, unknown> | null)?.error;
+        throw new ExecutionProviderError(
+          'provider',
+          typeof msg === 'string' && msg.trim()
+            ? `Isolated judge error: ${msg.trim()}`
+            : `Isolated judge request failed (HTTP ${response.status}).`
+        );
+      }
+
+      return data as ProviderExecutionResponse;
+    } finally {
+      clearTimeout(timeout);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
+    }
+  };
+}
+
+export function resolveExecutionProvider(env: NodeJS.ProcessEnv = process.env): ExecutionProvider {
+  const mode = (env.JUDGE_PROVIDER || 'paiza').trim().toLowerCase();
+  if (mode === 'isolated') {
+    return createIsolatedJudgeProvider({
+      baseUrl: env.ISOLATED_JUDGE_URL,
+      token: env.ISOLATED_JUDGE_TOKEN,
+    });
+  }
+  return createPaizaProvider({
+    baseUrl: env.PAIZA_API_BASE,
+    apiKey: env.PAIZA_API_KEY,
+  });
+}
+
 // ---------- Verdict Calculation ----------
 
 function computeExecutionTimeMs(details: ProviderExecutionResponse, parsedTimeMs: unknown, startedAt: number): number {
@@ -862,14 +997,21 @@ export async function evaluateSubmission(params: {
 }): Promise<ServerSubmissionResult> {
   const { problem, code, language, signal } = params;
   const timeoutMs = params.timeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
-  const provider = params.provider ?? createPaizaProvider();
+  const provider = params.provider ?? resolveExecutionProvider();
   const startedAt = performance.now();
 
-  if (!Array.isArray(problem.testCases) || problem.testCases.length === 0) {
+  const visibleCount = Array.isArray(problem.testCases) ? problem.testCases.length : 0;
+  const hiddenCases = Array.isArray(problem.hiddenTestCases) ? problem.hiddenTestCases : [];
+  const hiddenCount = hiddenCases.length;
+  const allTestCases = [...(Array.isArray(problem.testCases) ? problem.testCases : []), ...hiddenCases];
+
+  if (allTestCases.length === 0) {
     return {
       status: 'Error',
       passedCount: 0,
       totalCount: 0,
+      visibleCount: 0,
+      hiddenCount: 0,
       executionTimeMs: 0,
       message: 'No test cases are available for this problem.',
       stdout: [],
@@ -878,11 +1020,19 @@ export async function evaluateSubmission(params: {
     };
   }
 
-  if (!problem.signature || !isSafeIdentifier(problem.signature.name) || !Array.isArray(problem.signature.params) || typeof problem.signature.returns !== 'string') {
+  if (
+    !problem.signature ||
+    !isSafeIdentifier(problem.signature.name) ||
+    !Array.isArray(problem.signature.params) ||
+    !problem.signature.params.every((p) => p && isSafeIdentifier(p.name) && typeof p.type === 'string') ||
+    typeof problem.signature.returns !== 'string'
+  ) {
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount: problem.testCases.length,
+      totalCount: allTestCases.length,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: 0,
       message: 'This problem is missing a valid function signature for server verification.',
       stdout: [],
@@ -891,15 +1041,18 @@ export async function evaluateSubmission(params: {
     };
   }
 
-  const totalCount = problem.testCases.length;
+  const totalCount = allTestCases.length;
+  const combinedProblem: SubmissionProblem = { ...problem, testCases: allTestCases };
   const marker = `__ALVIO_RES_${randomBytes(6).toString('hex')}__:`;
-  const wrapped = generateExecutionWrapper(language, code, problem, marker);
+  const wrapped = generateExecutionWrapper(language, code, combinedProblem, marker);
 
   if (wrapped.unsupportedReason || !wrapped.sourceCode) {
     return {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: 0,
       message: wrapped.unsupportedReason || 'This language is not supported for server submission on this problem.',
       stdout: [],
@@ -923,6 +1076,8 @@ export async function evaluateSubmission(params: {
         status: 'Error',
         passedCount: 0,
         totalCount,
+        visibleCount,
+        hiddenCount,
         executionTimeMs: elapsed,
         message: 'Time Limit Exceeded: execution timed out.',
         stdout: [],
@@ -934,6 +1089,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: elapsed,
       message: err instanceof ExecutionProviderError
         ? err.message
@@ -949,6 +1106,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: Math.max(0, Math.round(performance.now() - startedAt)),
       message: 'Code execution service returned a malformed response.',
       stdout: [],
@@ -962,6 +1121,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Time Limit Exceeded: execution timed out.',
       stdout: [],
@@ -976,6 +1137,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: trimMessage(`Compilation Error:\n${buildMsg}`),
       stdout: [],
@@ -984,8 +1147,12 @@ export async function evaluateSubmission(params: {
     };
   }
 
-  const rawStdout = typeof details.stdout === 'string' ? details.stdout.trim() : '';
-  const rawStderr = typeof details.stderr === 'string' ? details.stderr.trim() : '';
+  const rawStdout = typeof details.stdout === 'string'
+    ? details.stdout.slice(-MAX_PROVIDER_OUTPUT_BYTES).trim()
+    : '';
+  const rawStderr = typeof details.stderr === 'string'
+    ? details.stderr.slice(0, MAX_PROVIDER_OUTPUT_BYTES).trim()
+    : '';
 
   if (details.result !== 'success' || (details.exit_code != null && Number(details.exit_code) !== 0)) {
     const isSyntax = looksLikeSyntaxError(rawStderr);
@@ -994,6 +1161,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: trimMessage(isSyntax ? `Compilation Error:\n${errText}` : errText),
       stdout: [],
@@ -1007,6 +1176,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: trimMessage(rawStderr || 'Execution completed without a test result.'),
       stdout: [],
@@ -1029,6 +1200,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Execution completed without a valid test result.',
       stdout: outLines.slice(0, MAX_STDOUT_LINES),
@@ -1047,6 +1220,7 @@ export async function evaluateSubmission(params: {
     stdout?: unknown;
     executionTimeMs?: unknown;
     errorType?: unknown;
+    failedTestCase?: unknown;
   } | null = null;
 
   const pipeMatch = /^(Passed|Failed)\|(\d+)$/.exec(payloadStr);
@@ -1062,12 +1236,16 @@ export async function evaluateSubmission(params: {
   } else if (pipeMatch) {
     const status = pipeMatch[1] as 'Passed' | 'Failed';
     const count = Number(pipeMatch[2]);
+    const failingCase = status === 'Failed' ? allTestCases[count] : undefined;
     parsed = {
       status,
       passedCount: count,
       message: status === 'Passed'
-        ? 'All provided test cases passed.'
+        ? (hiddenCount > 0 ? 'All visible and hidden test cases passed.' : 'All provided test cases passed.')
         : `Test Case ${count + 1} Failed. Wrong Answer.`,
+      ...(failingCase
+        ? { failedTestCase: { index: count + 1, input: failingCase.input, expected: failingCase.expected } }
+        : {}),
     };
   }
 
@@ -1076,6 +1254,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Execution returned an unreadable test result.',
       stdout: capturedBeforeMarker,
@@ -1098,6 +1278,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Execution returned an invalid test count.',
       stdout: capturedBeforeMarker,
@@ -1110,30 +1292,63 @@ export async function evaluateSubmission(params: {
     ? parsed.stdout.slice(0, MAX_STDOUT_LINES).map((item) => String(item))
     : capturedBeforeMarker;
 
+  const isHiddenFailure = status === 'Failed' && passedCount >= visibleCount;
+
   const defaultMessage =
     status === 'Passed'
-      ? 'All provided test cases passed.'
+      ? (hiddenCount > 0 ? 'All visible and hidden test cases passed.' : 'All provided test cases passed.')
       : status === 'Failed'
-        ? `Test Case ${passedCount + 1} Failed. Wrong Answer.`
+        ? (isHiddenFailure
+          ? `Hidden Test Case ${passedCount - visibleCount + 1} Failed. Wrong Answer.`
+          : `Test Case ${passedCount + 1} Failed. Wrong Answer.`)
         : 'Runtime Error';
 
-  const message = typeof parsed.message === 'string' && parsed.message.trim()
-    ? trimMessage(parsed.message)
-    : defaultMessage;
+  // Never leak hidden test case inputs, expected outputs, or actual outputs back to the client.
+  const message = isHiddenFailure
+    ? `Hidden Test Case ${passedCount - visibleCount + 1} Failed. Wrong Answer.`
+    : (typeof parsed.message === 'string' && parsed.message.trim()
+      ? trimMessage(parsed.message)
+      : defaultMessage);
 
   const errorType: SubmissionErrorType =
     status === 'Error'
       ? (parsed.errorType === 'compilation' || parsed.errorType === 'timeout' ? parsed.errorType : 'runtime')
       : null;
 
+  let failedTestCase: FailedTestCaseDetail | undefined;
+  if (status === 'Failed') {
+    if (isHiddenFailure) {
+      failedTestCase = { index: passedCount + 1, hidden: true };
+    } else {
+      const rawDetail =
+        parsed.failedTestCase && typeof parsed.failedTestCase === 'object' && !Array.isArray(parsed.failedTestCase)
+          ? (parsed.failedTestCase as Record<string, unknown>)
+          : undefined;
+      const fallbackCase = allTestCases[passedCount];
+      failedTestCase = {
+        index:
+          typeof rawDetail?.index === 'number' && Number.isInteger(rawDetail.index) && rawDetail.index >= 1
+            ? rawDetail.index
+            : passedCount + 1,
+        hidden: false,
+        input: rawDetail && 'input' in rawDetail ? rawDetail.input : fallbackCase?.input,
+        expected: rawDetail && 'expected' in rawDetail ? rawDetail.expected : fallbackCase?.expected,
+        ...(rawDetail && 'actual' in rawDetail ? { actual: rawDetail.actual } : {}),
+      };
+    }
+  }
+
   return {
     status,
     passedCount,
     totalCount,
+    visibleCount,
+    hiddenCount,
     executionTimeMs: computeExecutionTimeMs(details, parsed.executionTimeMs, startedAt),
     message,
     stdout,
     errorType,
     recordable: true,
+    ...(failedTestCase ? { failedTestCase } : {}),
   };
 }

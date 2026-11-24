@@ -78,8 +78,9 @@ test('login is rate limited and normalizes email', async () => {
 test('migrations upgrade old users without deleting records and are repeatable', () => {
   const db = new DatabaseSync(':memory:');
   db.exec("CREATE TABLE users(id INTEGER PRIMARY KEY,email TEXT,password_hash TEXT,name TEXT,xp INTEGER,level TEXT,created_at TEXT); INSERT INTO users VALUES(1,'old@example.test','hash','Old',42,'Novice','2020-01-01')");
-  migrate(db); migrate(db); assert.equal((db.prepare('SELECT COUNT(*) n FROM schema_migrations').get() as any).n, 4);
-  assert.equal((db.prepare('SELECT xp,avatar_url FROM users').get() as any).xp, 42);
+  migrate(db); migrate(db); assert.equal((db.prepare('SELECT COUNT(*) n FROM schema_migrations').get() as any).n, 8);
+  assert.equal((db.prepare('SELECT xp,avatar_url,token_version FROM users').get() as any).xp, 42);
+  assert.equal((db.prepare('SELECT token_version FROM users').get() as any).token_version, 1);
   db.exec("PRAGMA foreign_keys=ON; INSERT INTO learning_progress VALUES(1,'{}',1,'2026-01-01'); DELETE FROM users WHERE id=1");
   assert.equal((db.prepare('SELECT COUNT(*) n FROM learning_progress').get() as any).n, 0); db.close();
 });
