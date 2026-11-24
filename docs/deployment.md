@@ -42,7 +42,8 @@ Never commit `.env` or hardcode secrets. Supply secrets through your host's secr
 ```sh
 npm ci
 npm run build
-npx tsx server/migrateProblems.ts   # First-time catalog seed on a fresh database
+npx tsx server/migrateProblems.ts   # First-time catalog + curated hidden test seed on a fresh database
+npm run db:seed-hidden-tests        # Idempotently seed/update curated server-only hidden tests on an existing DB
 NODE_ENV=production npm start
 ```
 
@@ -104,9 +105,21 @@ npx tsx server/backupDb.ts /var/backups/alvio/alvio-$(date +%F).sqlite
 
 ---
 
-## 7. Multi-Host Scaling Notes
+## 7. Dedicated Isolated Coding Judge Worker (Phase 3)
+
+Alvio ships a standalone isolated coding judge worker under [`judge-worker/`](../judge-worker/README.md) so Express never executes untrusted student code in-process.
+
+- **Required infrastructure & isolation boundary:** Deploy `judge-worker/` on a **dedicated Linux VM/node** separated from the Express API and database host. Mounting `/var/run/docker.sock` gives the worker root-equivalent control over Docker on that host; never co-locate it with application secrets or databases, and never expose port `4005` publicly. Standard Docker (`runc`) shares the host kernel — for untrusted public traffic, install **gVisor** (`JUDGE_DOCKER_RUNTIME=runsc`), **Kata Containers**, or **Firecracker microVMs**.
+- **Default fallback & switching:** Keep `JUDGE_PROVIDER=paiza` until `judge-worker/` passes live verification (`npm run test:judge-live-docker`) on your target Linux host. To switch: set `JUDGE_PROVIDER=isolated`, `ISOLATED_JUDGE_URL`, `ISOLATED_JUDGE_TOKEN` (>= 32 chars, mandatory in production), `JUDGE_CPU_LIMIT_SEC=5`, `JUDGE_MEMORY_LIMIT_MB=256`. To roll back at any time, set `JUDGE_PROVIDER=paiza` and restart Express.
+- **Container hardening enforced per job:** `--rm`, `--network=none`, `--read-only`, `--tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m`, `--tmpfs /work:rw,nosuid,nodev,size=64m`, `--cap-drop=ALL`, `--security-opt=no-new-privileges:true`, `--pids-limit=64`, `--memory=<mb>m --memory-swap=<mb>m`, `--cpus=1`, `--user=65534:65534`, in-container `ulimit -t` & `ulimit -f`, zero host bind mounts, stripped host env, client-disconnect container kill, wall-clock timeout with forced `docker rm -f`, 64 KB output cap, and concurrency admission control (`JUDGE_MAX_CONCURRENT_JOBS`).
+- **Pre-pull images before enabling traffic:** Because containers run with `--network=none`, pre-pull `node:22-alpine`, `python:3.12-alpine`, `gcc:14-bookworm`, `eclipse-temurin:21-jdk-alpine`, and `mono:6.12` on the judge host, start the worker (`judge-worker/docker-compose.yml` or `npm run judge:worker`), and monitor `GET /health` (`200` with `"docker": "ok"`, `503` on daemon failure).
+- **Failure recovery & monitoring:** Alert on non-`200` responses from `GET /health`, elevated HTTP `503` rates (`activeJobs >= maxConcurrentJobs` or daemon/image errors), and any lingering `alvio-judge-*` containers (`docker ps -a --filter name=alvio-judge-`). Worker outages always return explicit HTTP `503 provider_unavailable` from Express — never Wrong Answer and never host-process execution.
+
+---
+
+## 8. Multi-Host Scaling Notes
 
 Single-host production works out of the box with SQLite (WAL mode) + `RATE_LIMIT_STORE=sqlite`. Scaling horizontally across multiple application hosts requires:
-1. Replacing `RateLimitStore` with a Redis-backed implementation.
+1. Setting `RATE_LIMIT_STORE=redis` with `REDIS_REST_URL` and `REDIS_REST_TOKEN`.
 2. Migrating persistence from local SQLite to a shared database (PostgreSQL).
-3. Offloading coding execution to a dedicated isolated container/microVM judge worker queue.
+3. Running the standalone `judge-worker/` on dedicated isolated Linux/gVisor/microVM compute nodes behind internal TLS.

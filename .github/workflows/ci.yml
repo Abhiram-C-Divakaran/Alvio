@@ -38,11 +38,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: TypeScript type check (app, node config & server)
+      - name: TypeScript type check (app, node config, server & judge worker)
         run: |
           npx tsc -p tsconfig.app.json --noEmit
           npx tsc -p tsconfig.node.json --noEmit
-          npx tsc --ignoreConfig --noEmit --module esnext --moduleResolution bundler --target es2023 --esModuleInterop --skipLibCheck server.ts
+          npx tsc --ignoreConfig --noEmit --module esnext --moduleResolution bundler --target es2023 --esModuleInterop --skipLibCheck server.ts server/seedHiddenTests.ts judge-worker/server.ts
 
       - name: Production Build
         run: npm run build
@@ -67,3 +67,37 @@ jobs:
 
       - name: Browser Practice Regressions
         run: npm run test:practice-browser
+
+  live-docker-judge:
+    name: Live Linux Docker Judge Verification (All 7 Languages & Security Controls)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build judge-worker Docker image
+        run: docker build -f judge-worker/Dockerfile -t alvio-judge-worker:ci .
+
+      - name: Pre-pull pinned language runtime images
+        run: |
+          docker pull node:22-alpine
+          docker pull python:3.12-alpine
+          docker pull gcc:14-bookworm
+          docker pull eclipse-temurin:21-jdk-alpine
+          docker pull mono:6.12
+
+      - name: Run live Linux Docker judge integration & security suite
+        run: npm run test:judge-live-docker

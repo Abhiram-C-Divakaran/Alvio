@@ -41,13 +41,14 @@ function parseProblemRow(row: any): SubmissionProblem | null {
 
 function mapExecutionStatus(verdict: {
   status: 'Passed' | 'Failed' | 'Error';
-  errorType: 'compilation' | 'runtime' | 'timeout' | 'provider' | 'unsupported' | null;
+  errorType: 'compilation' | 'runtime' | 'timeout' | 'memory' | 'provider' | 'unsupported' | null;
 }): SubmissionExecutionStatus {
   if (verdict.status === 'Passed') return 'accepted';
   if (verdict.status === 'Failed') return 'wrong_answer';
   switch (verdict.errorType) {
     case 'compilation': return 'compilation_error';
     case 'timeout': return 'time_limit_exceeded';
+    case 'memory': return 'memory_limit_exceeded';
     case 'provider': return 'provider_unavailable';
     case 'unsupported': return 'unsupported';
     default: return 'runtime_error';
@@ -116,15 +117,21 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
         return res.status(500).json({ error: 'Problem test data is unavailable.' });
       }
 
-      // Load server-only hidden test cases (never returned by GET /api/problems/:id).
+      // Load & validate server-only hidden test cases (never returned by GET /api/problems/:id).
       const hiddenRows = db
         .prepare('SELECT input_json, expected_json FROM problem_hidden_tests WHERE problem_id = ? ORDER BY id ASC')
         .all(problemId) as Array<{ input_json: string; expected_json: string }>;
       if (hiddenRows.length > 0) {
+        const expectedArity = Array.isArray(problem.signature?.params) ? problem.signature.params.length : -1;
         problem.hiddenTestCases = hiddenRows
           .map((h) => {
             try {
-              return { input: JSON.parse(h.input_json), expected: JSON.parse(h.expected_json) };
+              const input = JSON.parse(h.input_json);
+              const expected = JSON.parse(h.expected_json);
+              if (!Array.isArray(input) || (expectedArity >= 0 && input.length !== expectedArity) || expected === undefined) {
+                return null;
+              }
+              return { input, expected };
             } catch {
               return null;
             }

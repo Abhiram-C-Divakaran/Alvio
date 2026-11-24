@@ -1,8 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite';
-export function migrate(db:DatabaseSync){
-db.exec('PRAGMA busy_timeout=5000;');
-db.exec('CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
-const migrations=[(db:DatabaseSync)=>db.exec(`
+export function migrate(db: DatabaseSync) {
+  db.exec('PRAGMA busy_timeout=5000;');
+  db.exec('CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
+  const migrations = [(db: DatabaseSync) => db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
@@ -84,20 +84,20 @@ const migrations=[(db:DatabaseSync)=>db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id),
     FOREIGN KEY(problem_id) REFERENCES problems(id)
   );
-`), (db:DatabaseSync)=>{
-const fields=new Set((db.prepare('PRAGMA table_info(users)').all() as any[]).map(x=>x.name));
-for(const field of ['location','university','github','linkedin','avatar_url'])if(!fields.has(field))db.exec(`ALTER TABLE users ADD COLUMN ${field} TEXT DEFAULT ''`);
-db.exec(`CREATE TABLE IF NOT EXISTS problem_stats(problem_id TEXT PRIMARY KEY, accepted INTEGER DEFAULT 0, submissions INTEGER DEFAULT 0, FOREIGN KEY(problem_id) REFERENCES problems(id));
+`), (db: DatabaseSync) => {
+    const fields = new Set((db.prepare('PRAGMA table_info(users)').all() as any[]).map(x => x.name));
+    for (const field of ['location', 'university', 'github', 'linkedin', 'avatar_url']) if (!fields.has(field)) db.exec(`ALTER TABLE users ADD COLUMN ${field} TEXT DEFAULT ''`);
+    db.exec(`CREATE TABLE IF NOT EXISTS problem_stats(problem_id TEXT PRIMARY KEY, accepted INTEGER DEFAULT 0, submissions INTEGER DEFAULT 0, FOREIGN KEY(problem_id) REFERENCES problems(id));
 CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id));`);
-},(db:DatabaseSync)=>{const fields=new Set((db.prepare('PRAGMA table_info(user_submissions)').all() as any[]).map(x=>x.name));if(!fields.has('verified'))db.exec('ALTER TABLE user_submissions ADD COLUMN verified INTEGER NOT NULL DEFAULT 0');},(db:DatabaseSync)=>{
-  db.exec(`CREATE TABLE learning_progress_cascade(user_id INTEGER PRIMARY KEY, progress_json TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+  }, (db: DatabaseSync) => { const fields = new Set((db.prepare('PRAGMA table_info(user_submissions)').all() as any[]).map(x => x.name)); if (!fields.has('verified')) db.exec('ALTER TABLE user_submissions ADD COLUMN verified INTEGER NOT NULL DEFAULT 0'); }, (db: DatabaseSync) => {
+    db.exec(`CREATE TABLE learning_progress_cascade(user_id INTEGER PRIMARY KEY, progress_json TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
   INSERT INTO learning_progress_cascade SELECT user_id,progress_json,revision,updated_at FROM learning_progress;
   DROP TABLE learning_progress;
   ALTER TABLE learning_progress_cascade RENAME TO learning_progress;`);
-},(db:DatabaseSync)=>{
-  const userFields=new Set((db.prepare('PRAGMA table_info(users)').all() as any[]).map(x=>x.name));
-  if(!userFields.has('token_version'))db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1');
-  db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (
+  }, (db: DatabaseSync) => {
+    const userFields = new Set((db.prepare('PRAGMA table_info(users)').all() as any[]).map(x => x.name));
+    if (!userFields.has('token_version')) db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1');
+    db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (
     id TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL,
     refresh_token_hash TEXT NOT NULL,
@@ -109,8 +109,8 @@ CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT N
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);`);
-},(db:DatabaseSync)=>{
-  db.exec(`CREATE TABLE IF NOT EXISTS xp_ledger (
+  }, (db: DatabaseSync) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS xp_ledger (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     event_type TEXT NOT NULL,
@@ -128,10 +128,10 @@ CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT N
     count INTEGER NOT NULL,
     reset_at INTEGER NOT NULL
   );`);
-},(db:DatabaseSync)=>{
-  const userFields=new Set((db.prepare('PRAGMA table_info(users)').all() as any[]).map(x=>x.name));
-  if(!userFields.has('email_verified_at'))db.exec('ALTER TABLE users ADD COLUMN email_verified_at TEXT');
-  db.exec(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  }, (db: DatabaseSync) => {
+    const userFields = new Set((db.prepare('PRAGMA table_info(users)').all() as any[]).map(x => x.name));
+    if (!userFields.has('email_verified_at')) db.exec('ALTER TABLE users ADD COLUMN email_verified_at TEXT');
+    db.exec(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL,
     token_hash TEXT NOT NULL UNIQUE,
@@ -151,8 +151,8 @@ CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT N
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_email_verification_user_id ON email_verification_tokens(user_id);`);
-},(db:DatabaseSync)=>{
-  db.exec(`CREATE TABLE IF NOT EXISTS problem_hidden_tests (
+  }, (db: DatabaseSync) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS problem_hidden_tests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     problem_id TEXT NOT NULL,
     input_json TEXT NOT NULL,
@@ -161,18 +161,18 @@ CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT N
     FOREIGN KEY(problem_id) REFERENCES problems(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_problem_hidden_tests_problem_id ON problem_hidden_tests(problem_id);`);
-}];
-for(let i=0;i<migrations.length;i++){
-  if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1))continue;
-  db.exec('BEGIN IMMEDIATE');
-  try{
-    if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1)){db.exec('COMMIT');continue;}
-    migrations[i](db);
-    db.prepare('INSERT INTO schema_migrations(version) VALUES(?)').run(i+1);
-    db.exec('COMMIT');
-  }catch(e){
-    db.exec('ROLLBACK');
-    throw e;
+  }];
+  for (let i = 0; i < migrations.length; i++) {
+    if (db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i + 1)) continue;
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      if (db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i + 1)) { db.exec('COMMIT'); continue; }
+      migrations[i](db);
+      db.prepare('INSERT INTO schema_migrations(version) VALUES(?)').run(i + 1);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
   }
-}
 }

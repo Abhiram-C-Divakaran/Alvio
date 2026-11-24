@@ -116,8 +116,37 @@ Branch: `feat/phase2-production-hardening` (branched from `main` `4496bba`).
 ### Remaining known limitations (honest production boundaries)
 
 - Password reset and email verification require setting `RESEND_API_KEY` + `EMAIL_FROM` or `EMAIL_WEBHOOK_URL` in production for live email delivery (unconfigured servers return `503 EMAIL_NOT_CONFIGURED`).
-- Coding Playground supports server-only hidden tests (`problem_hidden_tests`) with failure redaction and an isolated judge HTTP integration boundary (`JUDGE_PROVIDER=isolated`), but the default 472-problem catalog seeds visible cases only (`hiddenCount = 0` unless hidden rows are added) and the default runtime uses external Paiza.IO until a separate container/microVM judge worker is deployed.
 - Multi-host rate limiting is wired via `RATE_LIMIT_STORE=redis` (`REDIS_REST_URL` + `REDIS_REST_TOKEN`); database persistence remains SQLite (single-writer host) until migrated to PostgreSQL for horizontal multi-host scaling.
 - `npm audit` has 0 high/critical findings; 2 moderate findings remain in the upstream `@tailwindcss/typography` → `postcss-selector-parser` dev-time chain. Legacy `tests/review-fixes.test.mjs` retains two Node-vs-browser Worker assertions.
+
+---
+
+## Phase 2 Merge into `main` & Phase 3 Isolated Judge Verification — 2026-11-24
+
+### Phase 2 Merge & `main` Verification
+- **GitHub sync & CI fixes**: Repointed local `origin` from legacy `alvioacademy.git` to canonical `https://github.com/Abhiram-C-Divakaran/Alvio.git`; anchored `/data/` in `.gitignore` and tracked `src/features/learn/data/curriculumData.ts` (`17a523d`); eliminated a Linux CI multi-process SQLite migration race by re-checking `schema_migrations` inside `BEGIN IMMEDIATE` (`672875a`).
+- **PR #2 merged cleanly into `main`**: Merge commit `ff003ea` (normal merge commit preserving history; `ui/premium-dashboard-refresh` PR #1 preserved untouched).
+- **GitHub Actions CI on `main`**: Run `45346119392` (`Alvio CI`) **PASSED** on Ubuntu Linux (`6m43s`).
+- **Local `main` (`ff003ea`) verification**: `npx tsc -p tsconfig.app.json --noEmit` (0 errors), `npx tsc -p tsconfig.node.json --noEmit` (0 errors), `npm run lint` (0 errors), `npm run build` (PASS), `npm run test:demo` (74/74 foundation tests, 10/10 model tests, 4/4 auth-browser tests, all regression/learning/practice browser suites PASS).
+
+### Phase 3 Production Coding Judge (`feat/phase3-isolated-judge`)
+- **Standalone Isolated Judge Worker (`judge-worker/`)**: Implemented `judge-worker/sandbox.ts`, `judge-worker/server.ts`, `judge-worker/Dockerfile`, `judge-worker/docker-compose.yml`, and `judge-worker/README.md`. Enforces timing-safe Bearer authentication (`ISOLATED_JUDGE_TOKEN`), strict Docker isolation (`--rm`, `--network=none`, `--read-only`, non-root `--tmpfs` with `uid=65534,gid=65534,mode=0700` and `exec` restricted solely to `/work` for native C/C++ binaries, `--cap-drop=ALL`, `--security-opt=no-new-privileges:true`, `--pids-limit=64`, `--memory`/`--memory-swap`, `--cpus=1`, `--user=65534:65534`, POSIX split `ulimit -S -t` / `ulimit -f`, zero bind mounts, stripped host env), HTTP timeouts + client-disconnect cancellation, concurrency admission control (`503` + `Retry-After`), forced `docker rm -f` cleanup on timeout/output-overflow, first-class `memory_limit_exceeded` classification, and fail-closed `503` when Docker daemon or a runtime image is unavailable. `JUDGE_PROVIDER=paiza` remains the default fallback until an operator deploys the worker on a dedicated judge host.
+- **Two-Phase Hidden Test Isolation & Curated Suite (`server/seedHiddenTests.ts`)**: Populates 75 mathematically oracle-verified, non-duplicate hidden edge-case tests across 18 Easy/Medium/Hard problems idempotently (`npm run db:seed-hidden-tests` and `server/migrateProblems.ts`). Express evaluates visible and hidden test suites in **separate isolated containers** and never returns hidden-phase stdout, stderr, exception messages, or failing inputs/expected values (`hidden: true`).
+- **Mocked Security & Contract Tests (`tests/isolated-judge-worker.test.ts` + `tests/hidden-tests-and-restore.test.ts`)**: Part of `npm run test:foundation` (**80/80 passed** locally and in CI). Deterministically verifies Bearer auth rejection, container isolation flags & secret stripping, C# `mono:6.12` compatibility, all 75 hidden-test oracle expectations, two-phase hidden-test isolation, timeout/OOM/output-overflow/compile-error/concurrency/missing-image/daemon-down paths.
+- **Live Ubuntu Linux Docker Verification (`tests/judge-worker-live-docker.test.ts`, GitHub Actions `live-docker-judge` job — Run `45390235982`, Job `138431688136`, `Docker v29.4.2`, `runtime=default-runc`)**: **12/12 PASSED in 32.38s (ZERO MOCKS)**:
+  - `docker build -f judge-worker/Dockerfile` & pre-pull of all 5 pinned images (`node:22-alpine`, `python:3.12-alpine`, `gcc:14-bookworm`, `eclipse-temurin:21-jdk-alpine`, `mono:6.12`): **PASS**
+  - `GET /health` live Docker daemon check: **PASS** (`109ms`)
+  - All 7 languages (`javascript`, `typescript`, `python3`, `c`, `cpp`, `java`, `csharp`) verified live for **Pass**, **Wrong Answer**, **Compilation Error**, and **Runtime Error**: **7/7 PASS**
+  - Live hidden-test anti-exfiltration (`__filename` read, `console.log`, and `throw new Error` with hidden inputs): **PASS** (`905ms`)
+  - Live timeout (`time_limit_exceeded`), OOM (`memory_limit_exceeded`), 64 KB stdout flood (`Output Limit Exceeded`), `--network=none`, `--read-only`, UID `65534`, and stripped host env: **PASS** (`8.38s`)
+  - Live concurrency saturation (`503` + `Retry-After`) & nonexistent Docker socket outage (`503` fail-closed): **PASS** (`1.77s`)
+  - Post-suite `docker ps -a --filter name=alvio-judge-` cleanup check: **PASS** (0 orphaned containers)
+- **Honest Verification Boundaries**:
+  - Live Linux Docker verification ran on GitHub Actions Ubuntu (`default-runc`), **not** locally on the Windows dev machine (where Docker Desktop daemon was stopped) and **not** under gVisor `runsc` (not pre-installed on `ubuntu-latest`). Production internet-facing judge nodes should enable gVisor (`JUDGE_DOCKER_RUNTIME=runsc`), Kata Containers, or Firecracker microVMs on a dedicated isolated judge VM separated from Express and databases.
+
+### Separate Integration Plan for `ui/premium-dashboard-refresh` (PR #1)
+- Preserved completely untouched on GitHub (`9` commits ahead, `18` behind `main` before PR #2).
+- `git merge-tree` against Phase 2 confirmed 5 structural conflicts (`Sidebar.tsx` modify/delete, `TopBar.tsx` modify/delete, `AppLayout.tsx`, `DashboardPage.tsx`, `LandingPage.tsx`) because it predates the unified `AppShell` redesign (`1f492db`/`925c66b`).
+- Recommended next step in a dedicated future UI PR: cherry-pick or port only the compatible visual assets (`src/features/landing/landingHeroImage.ts` and `src/utils/rank.ts` reconciled with `server/xpLedger.ts`) onto a fresh branch off `main`, rather than merging PR #1 directly.
 
 
