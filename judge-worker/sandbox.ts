@@ -191,6 +191,9 @@ export function buildDockerRunArgs(params: {
   const memoryFlag = `${params.limits.memoryLimitMb}m`;
   const runtime = (params.runtime ?? params.env?.JUDGE_DOCKER_RUNTIME ?? '').trim();
 
+  const needsNativeExec = params.language === 'c' || params.language === 'cpp';
+  const workMountMode = needsNativeExec ? 'rw,exec,nosuid,nodev' : 'rw,noexec,nosuid,nodev';
+
   const args: string[] = [
     'run',
     '--rm',
@@ -200,7 +203,7 @@ export function buildDockerRunArgs(params: {
     '--network=none',
     '--read-only',
     `--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=${DEFAULT_TMPFS_TMP_MB}m,uid=65534,gid=65534,mode=0700`,
-    `--tmpfs=/work:rw,nosuid,nodev,size=${DEFAULT_TMPFS_WORK_MB}m,uid=65534,gid=65534,mode=0700`,
+    `--tmpfs=/work:${workMountMode},size=${DEFAULT_TMPFS_WORK_MB}m,uid=65534,gid=65534,mode=0700`,
     '--cap-drop=ALL',
     '--security-opt=no-new-privileges:true',
     `--pids-limit=${pidsLimit}`,
