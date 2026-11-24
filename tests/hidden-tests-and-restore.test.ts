@@ -55,8 +55,8 @@ test('hidden test cases run server-side, redact secret inputs/outputs on failure
     JSON.stringify(848484)
   );
 
-  let mode: 'fail-hidden' | 'pass-all' = 'fail-hidden';
-  let capturedSource = '';
+  let mode: 'fail-hidden' | 'exfiltrate-hidden' | 'pass-all' = 'fail-hidden';
+  const capturedSources: string[] = [];
 
   const app = express();
   app.use(express.json({ limit: '512kb' }));
@@ -66,8 +66,23 @@ test('hidden test cases run server-side, redact secret inputs/outputs on failure
     authOptional: (req, _res, next) => { req.userId = 1; next(); },
     authRequired: (req, _res, next) => { req.userId = 1; next(); },
     provider: async ({ sourceCode }) => {
-      capturedSource = sourceCode;
+      capturedSources.push(sourceCode);
       const marker = sourceCode.match(/__ALVIO_RES_[a-f0-9]+__:/)?.[0] || '';
+      const isHiddenPhase = sourceCode.includes('424242');
+      if (!isHiddenPhase) {
+        return {
+          status: 'completed',
+          result: 'success',
+          exit_code: 0,
+          stdout: `${marker}${JSON.stringify({
+            status: 'Passed',
+            passedCount: 1,
+            message: 'Visible passed.',
+            stdout: ['visible-log'],
+            executionTimeMs: 2,
+          })}`,
+        };
+      }
       if (mode === 'fail-hidden') {
         return {
           status: 'completed',
@@ -75,10 +90,25 @@ test('hidden test cases run server-side, redact secret inputs/outputs on failure
           exit_code: 0,
           stdout: `${marker}${JSON.stringify({
             status: 'Failed',
-            passedCount: 1,
-            message: 'Test Case 2 Failed.\nInput: [424242]\nExpected: 848484\nOutput: 4',
-            failedTestCase: { index: 2, input: [424242], expected: 848484, actual: 4 },
-            stdout: [],
+            passedCount: 0,
+            message: 'Test Case 1 Failed.\nInput: [424242]\nExpected: 848484\nOutput: 4',
+            failedTestCase: { index: 1, input: [424242], expected: 848484, actual: 4 },
+            stdout: ['LEAKED_INPUT=424242'],
+            executionTimeMs: 3,
+          })}`,
+        };
+      }
+      if (mode === 'exfiltrate-hidden') {
+        return {
+          status: 'completed',
+          result: 'success',
+          exit_code: 0,
+          stdout: `${marker}${JSON.stringify({
+            status: 'Error',
+            errorType: 'runtime',
+            passedCount: 0,
+            message: 'Exfil: 424242 -> 848484',
+            stdout: ['LEAKED_STDOUT_424242'],
             executionTimeMs: 3,
           })}`,
         };
@@ -89,9 +119,9 @@ test('hidden test cases run server-side, redact secret inputs/outputs on failure
         exit_code: 0,
         stdout: `${marker}${JSON.stringify({
           status: 'Passed',
-          passedCount: 2,
+          passedCount: 1,
           message: 'All passed.',
-          stdout: [],
+          stdout: ['HIDDEN_STDOUT_424242'],
           executionTimeMs: 3,
         })}`,
       };
@@ -104,7 +134,7 @@ test('hidden test cases run server-side, redact secret inputs/outputs on failure
   const origin = `http://127.0.0.1:${(srv.address() as any).port}`;
 
   try {
-    // Hard-coded solution fails on the hidden test case; secret values MUST be redacted
+    // Hard-coded solution fails on the hidden test case; secret values MUST be isolated & redacted
     mode = 'fail-hidden';
     const failRes = await fetch(`${origin}/api/problems/double-val/submit`, {
       method: 'POST',
@@ -119,11 +149,27 @@ test('hidden test cases run server-side, redact secret inputs/outputs on failure
     assert.equal(failBody.hiddenCount, 1);
     assert.equal(failBody.totalCount, 2);
     assert.equal(failBody.passedCount, 1);
-    assert.match(capturedSource, /424242/, 'Hidden case must be evaluated in the runner');
-    assert.doesNotMatch(failBody.message, /424242|848484/, 'Hidden test input/expected must NEVER leak in message');
+    assert.equal(capturedSources.length, 2, 'Must isolate visible and hidden phases into separate runs');
+    assert.doesNotMatch(capturedSources[0], /424242/, 'Visible container must NEVER receive hidden test data');
+    assert.match(capturedSources[1], /424242/, 'Hidden container must evaluate hidden test case');
+    assert.doesNotMatch(JSON.stringify(failBody), /424242|848484|LEAKED_INPUT/, 'Hidden test data & stdout must NEVER leak');
+    assert.deepEqual(failBody.stdout, ['visible-log']);
     assert.deepEqual(failBody.failedTestCase, { index: 2, hidden: true });
 
-    // Genuine solution passes both visible and hidden cases
+    // Malicious runtime exception trying to exfiltrate hidden input in Error.message or stdout
+    mode = 'exfiltrate-hidden';
+    const exfilRes = await fetch(`${origin}/api/problems/double-val/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'function doubleVal(n) { throw new Error(String(n)); }', language: 'javascript' }),
+    });
+    assert.equal(exfilRes.status, 200);
+    const exfilBody = await exfilRes.json();
+    assert.equal(exfilBody.status, 'Error');
+    assert.doesNotMatch(JSON.stringify(exfilBody), /424242|848484|LEAKED_STDOUT/);
+    assert.equal(exfilBody.message, 'Runtime Error on hidden test case.');
+
+    // Genuine solution passes both visible and hidden cases; hidden stdout still suppressed
     mode = 'pass-all';
     const passRes = await fetch(`${origin}/api/problems/double-val/submit`, {
       method: 'POST',
@@ -137,6 +183,7 @@ test('hidden test cases run server-side, redact secret inputs/outputs on failure
     assert.equal(passBody.passedCount, 2);
     assert.equal(passBody.totalCount, 2);
     assert.equal(passBody.xpAwarded, 25);
+    assert.doesNotMatch(JSON.stringify(passBody), /424242|HIDDEN_STDOUT/);
   } finally {
     await new Promise<void>((r) => srv.close(() => r()));
     db.close();

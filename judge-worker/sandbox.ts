@@ -16,11 +16,20 @@ export const WORKER_SUPPORTED_LANGUAGES: readonly PaizaLanguage[] = [
   'csharp',
 ] as const;
 
+export const PINNED_RUNTIME_IMAGES = {
+  node: 'node:22-alpine',
+  python: 'python:3.12-alpine',
+  gcc: 'gcc:14-bookworm',
+  java: 'eclipse-temurin:21-jdk-alpine',
+  csharp: 'mono:6.12-slim',
+} as const;
+
 export const MAX_WORKER_SOURCE_BYTES = 131072; // Wrapper + user code
 export const DEFAULT_PIDS_LIMIT = 64;
 export const DEFAULT_CPU_CORES = 1;
 export const DEFAULT_TMPFS_TMP_MB = 32;
 export const DEFAULT_TMPFS_WORK_MB = 64;
+const MAX_CONTAINER_FILE_BLOCKS = 16384; // 8 MiB max file write inside tmpfs (512-byte blocks)
 
 export const COMPILE_FAIL_SENTINEL = '__ALVIO_BUILD_FAILED__:';
 
@@ -29,6 +38,7 @@ export interface WorkerExecutionRequest {
   sourceCode: string;
   timeoutMs: number;
   limits: JudgeResourceLimits;
+  signal?: AbortSignal;
 }
 
 export interface ContainerRunInput {
@@ -38,6 +48,7 @@ export interface ContainerRunInput {
   maxOutputBytes: number;
   containerName: string;
   env: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 export interface ContainerRunOutput {
@@ -46,6 +57,7 @@ export interface ContainerRunOutput {
   stderr: string;
   timedOut: boolean;
   outputExceeded: boolean;
+  aborted?: boolean;
   durationMs: number;
   spawnErrorCode?: string;
   spawnErrorMessage?: string;
@@ -66,15 +78,24 @@ interface LanguageContainerSpec {
 
 export function resolveLanguageSpec(
   language: PaizaLanguage,
+  limits: JudgeResourceLimits = {
+    cpuTimeLimitSec: 5,
+    memoryLimitMb: 256,
+    maxOutputBytes: 65536,
+    networkDisabled: true,
+  },
   env: NodeJS.ProcessEnv = process.env
 ): LanguageContainerSpec {
-  const nodeImage = env.JUDGE_IMAGE_NODE || 'node:22-alpine';
-  const pythonImage = env.JUDGE_IMAGE_PYTHON || 'python:3.12-alpine';
-  const gccImage = env.JUDGE_IMAGE_GCC || 'gcc:14-bookworm';
-  const javaImage = env.JUDGE_IMAGE_JAVA || 'eclipse-temurin:21-jdk-alpine';
-  const dotnetImage = env.JUDGE_IMAGE_DOTNET || 'mcr.microsoft.com/dotnet/sdk:8.0-alpine';
+  const nodeImage = env.JUDGE_IMAGE_NODE || PINNED_RUNTIME_IMAGES.node;
+  const pythonImage = env.JUDGE_IMAGE_PYTHON || PINNED_RUNTIME_IMAGES.python;
+  const gccImage = env.JUDGE_IMAGE_GCC || PINNED_RUNTIME_IMAGES.gcc;
+  const javaImage = env.JUDGE_IMAGE_JAVA || PINNED_RUNTIME_IMAGES.java;
+  const csharpImage = env.JUDGE_IMAGE_CSHARP || PINNED_RUNTIME_IMAGES.csharp;
   const tsImage = env.JUDGE_IMAGE_TS || nodeImage;
 
+  const cpuSec = Math.max(1, Math.min(15, Math.round(limits.cpuTimeLimitSec)));
+  const heapMb = Math.max(32, Math.floor(limits.memoryLimitMb * 0.75));
+  const execUlimit = `ulimit -t ${cpuSec} -f ${MAX_CONTAINER_FILE_BLOCKS}`;
   const compileFailEcho = `printf '%s\\n' '${COMPILE_FAIL_SENTINEL}' >&2`;
 
   switch (language) {
@@ -82,43 +103,43 @@ export function resolveLanguageSpec(
       return {
         image: nodeImage,
         sourceFile: 'main.js',
-        shellCommand: 'cat > /work/main.js && exec node --disallow-code-generation-from-strings /work/main.js',
+        shellCommand: `cat > /work/main.js && ${execUlimit} && exec node --no-warnings --disallow-code-generation-from-strings --max-old-space-size=${heapMb} /work/main.js`,
       };
     case 'typescript':
       return {
         image: tsImage,
         sourceFile: 'main.ts',
-        shellCommand: 'cat > /work/main.ts && exec node --experimental-strip-types /work/main.ts',
+        shellCommand: `cat > /work/main.ts && ${execUlimit} && exec node --no-warnings --experimental-strip-types --disallow-code-generation-from-strings --max-old-space-size=${heapMb} /work/main.ts`,
       };
     case 'python3':
       return {
         image: pythonImage,
         sourceFile: 'main.py',
-        shellCommand: 'cat > /work/main.py && exec python3 -I -B /work/main.py',
+        shellCommand: `cat > /work/main.py && ${execUlimit} && exec python3 -I -B /work/main.py`,
       };
     case 'cpp':
       return {
         image: gccImage,
         sourceFile: 'main.cpp',
-        shellCommand: `cat > /work/main.cpp && if ! g++ -O2 -std=c++20 -o /work/app /work/main.cpp; then ${compileFailEcho}; exit 1; fi && exec /work/app`,
+        shellCommand: `cat > /work/main.cpp && if ! g++ -O2 -std=c++20 -o /work/app /work/main.cpp; then ${compileFailEcho}; exit 1; fi && ${execUlimit} && exec /work/app`,
       };
     case 'c':
       return {
         image: gccImage,
         sourceFile: 'main.c',
-        shellCommand: `cat > /work/main.c && if ! gcc -O2 -std=c17 -o /work/app /work/main.c -lm; then ${compileFailEcho}; exit 1; fi && exec /work/app`,
+        shellCommand: `cat > /work/main.c && if ! gcc -O2 -std=c17 -o /work/app /work/main.c -lm; then ${compileFailEcho}; exit 1; fi && ${execUlimit} && exec /work/app`,
       };
     case 'java':
       return {
         image: javaImage,
         sourceFile: 'Main.java',
-        shellCommand: `cat > /work/Main.java && if ! javac -d /work /work/Main.java; then ${compileFailEcho}; exit 1; fi && exec java -XX:+UseSerialGC -Xmx192m -cp /work Main`,
+        shellCommand: `cat > /work/Main.java && if ! javac -d /work /work/Main.java; then ${compileFailEcho}; exit 1; fi && ${execUlimit} && exec java -XX:+UseSerialGC -Xmx${heapMb}m -cp /work Main`,
       };
     case 'csharp':
       return {
-        image: dotnetImage,
+        image: csharpImage,
         sourceFile: 'Program.cs',
-        shellCommand: `cat > /work/Program.cs && if ! mcs -out:/work/app.exe /work/Program.cs 2>/dev/null; then ${compileFailEcho}; exit 1; fi && exec mono /work/app.exe`,
+        shellCommand: `cat > /work/Program.cs && if ! mcs -out:/work/app.exe /work/Program.cs; then ${compileFailEcho}; exit 1; fi && ${execUlimit} && exec mono /work/app.exe`,
       };
   }
 }
@@ -162,7 +183,7 @@ export function buildDockerRunArgs(params: {
   runtime?: string;
   env?: NodeJS.ProcessEnv;
 }): string[] {
-  const spec = resolveLanguageSpec(params.language, params.env);
+  const spec = resolveLanguageSpec(params.language, params.limits, params.env);
   const pidsLimit = params.pidsLimit ?? DEFAULT_PIDS_LIMIT;
   const cpuCores = params.cpuCores ?? DEFAULT_CPU_CORES;
   const memoryFlag = `${params.limits.memoryLimitMb}m`;
@@ -217,11 +238,14 @@ export function buildSanitizedHostEnv(env: NodeJS.ProcessEnv = process.env): Rec
   return safe;
 }
 
-export function createDockerRuntimeAdapter(dockerBin = 'docker'): ContainerRuntimeAdapter {
+export function createDockerRuntimeAdapter(
+  dockerBin = 'docker',
+  hostEnv: NodeJS.ProcessEnv = process.env
+): ContainerRuntimeAdapter {
   const forceRemoveContainer = async (containerName: string): Promise<void> => {
     await new Promise<void>((resolve) => {
       const killer = spawn(dockerBin, ['rm', '-f', containerName], {
-        env: buildSanitizedHostEnv(),
+        env: buildSanitizedHostEnv(hostEnv),
         stdio: 'ignore',
       });
       killer.on('error', () => resolve());
@@ -243,23 +267,8 @@ export function createDockerRuntimeAdapter(dockerBin = 'docker'): ContainerRunti
       let stderrBytes = 0;
       let timedOut = false;
       let outputExceeded = false;
+      let aborted = false;
       let settled = false;
-
-      const finish = (result: Partial<ContainerRunOutput>) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve({
-          exitCode: result.exitCode ?? null,
-          stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-          stderr: Buffer.concat(stderrChunks).toString('utf8'),
-          timedOut,
-          outputExceeded,
-          durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
-          ...(result.spawnErrorCode ? { spawnErrorCode: result.spawnErrorCode } : {}),
-          ...(result.spawnErrorMessage ? { spawnErrorMessage: result.spawnErrorMessage } : {}),
-        });
-      };
 
       const terminateContainer = () => {
         try {
@@ -268,6 +277,37 @@ export function createDockerRuntimeAdapter(dockerBin = 'docker'): ContainerRunti
           // Ignore if already exited
         }
         void forceRemoveContainer(input.containerName);
+      };
+
+      const onAbort = () => {
+        aborted = true;
+        terminateContainer();
+      };
+
+      if (input.signal) {
+        if (input.signal.aborted) {
+          onAbort();
+        } else {
+          input.signal.addEventListener('abort', onAbort, { once: true });
+        }
+      }
+
+      const finish = (result: Partial<ContainerRunOutput>) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (input.signal) input.signal.removeEventListener('abort', onAbort);
+        resolve({
+          exitCode: result.exitCode ?? null,
+          stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+          stderr: Buffer.concat(stderrChunks).toString('utf8'),
+          timedOut,
+          outputExceeded,
+          aborted,
+          durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+          ...(result.spawnErrorCode ? { spawnErrorCode: result.spawnErrorCode } : {}),
+          ...(result.spawnErrorMessage ? { spawnErrorMessage: result.spawnErrorMessage } : {}),
+        });
       };
 
       const timer = setTimeout(() => {
@@ -324,7 +364,7 @@ export function createDockerRuntimeAdapter(dockerBin = 'docker'): ContainerRunti
   const checkDaemonHealth = async (): Promise<{ ok: boolean; detail?: string }> => {
     return new Promise((resolve) => {
       const child = spawn(dockerBin, ['info', '--format', '{{.ServerVersion}}'], {
-        env: buildSanitizedHostEnv(),
+        env: buildSanitizedHostEnv(hostEnv),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       let out = '';
@@ -365,11 +405,27 @@ export class IsolationUnavailableError extends Error {
   }
 }
 
-function looksLikeDockerDaemonError(exitCode: number | null, stderr: string): boolean {
+function looksLikeDockerInfrastructureError(exitCode: number | null, stderr: string): boolean {
   if (exitCode !== 125 && exitCode !== 126 && exitCode !== 127 && exitCode !== 1) return false;
-  return /Cannot connect to the Docker daemon|failed to connect to the docker API|dockerDesktopLinuxEngine|Error response from daemon|permission denied while trying to connect to the Docker daemon/i.test(
+  return /Cannot connect to the Docker daemon|failed to connect to the docker API|dockerDesktopLinuxEngine|Error response from daemon|permission denied while trying to connect to the Docker daemon|Unable to find image|No such image|pull access denied|unknown runtime specified/i.test(
     stderr
   );
+}
+
+function looksLikeMemoryLimitError(exitCode: number | null, stderr: string, stdout: string): boolean {
+  if (exitCode === 137) return true;
+  const combined = `${stderr}\n${stdout}`;
+  if (exitCode === 134 && /JavaScript heap out of memory|Allocation failed|FatalProcessOutOfMemory/i.test(combined)) {
+    return true;
+  }
+  return /\b(OutOfMemoryError|OutOfMemoryException|MemoryError|std::bad_alloc|JavaScript heap out of memory)\b/i.test(
+    combined
+  );
+}
+
+function looksLikeCpuTimeLimitError(exitCode: number | null, stderr: string): boolean {
+  // SIGXCPU = 24 -> shell exit code 128 + 24 = 152
+  return exitCode === 152 || /CPU time limit exceeded/i.test(stderr);
 }
 
 /**
@@ -382,7 +438,10 @@ export async function executeInIsolatedContainer(
   options: { env?: NodeJS.ProcessEnv; runtime?: string } = {}
 ): Promise<ProviderExecutionResponse> {
   const containerName = `alvio-judge-${randomBytes(8).toString('hex')}`;
-  const effectiveTimeoutMs = Math.min(request.timeoutMs, request.limits.cpuTimeLimitSec * 1000 + 2500);
+  // Compiled languages (C++, Java, C#) need brief compile headroom in addition to execution CPU limit.
+  const isCompiled = request.language === 'cpp' || request.language === 'c' || request.language === 'java' || request.language === 'csharp';
+  const compileHeadroomMs = isCompiled ? 5000 : 2500;
+  const effectiveTimeoutMs = Math.min(request.timeoutMs, request.limits.cpuTimeLimitSec * 1000 + compileHeadroomMs);
   const args = buildDockerRunArgs({
     language: request.language,
     limits: request.limits,
@@ -398,6 +457,7 @@ export async function executeInIsolatedContainer(
     maxOutputBytes: request.limits.maxOutputBytes,
     containerName,
     env: buildSanitizedHostEnv(options.env),
+    signal: request.signal,
   });
 
   if (runResult.spawnErrorCode) {
@@ -406,15 +466,20 @@ export async function executeInIsolatedContainer(
     );
   }
 
-  if (looksLikeDockerDaemonError(runResult.exitCode, runResult.stderr)) {
+  if (runResult.aborted) {
+    await adapter.forceRemoveContainer(containerName);
+    throw new IsolationUnavailableError('Execution cancelled because client disconnected.');
+  }
+
+  if (looksLikeDockerInfrastructureError(runResult.exitCode, runResult.stderr)) {
     throw new IsolationUnavailableError(
-      'Container daemon is unavailable or rejected container creation. Refusing host execution.'
+      'Container runtime or language image is unavailable. Refusing host execution.'
     );
   }
 
   const timeSec = (runResult.durationMs / 1000).toFixed(3);
 
-  if (runResult.timedOut) {
+  if (runResult.timedOut || looksLikeCpuTimeLimitError(runResult.exitCode, runResult.stderr)) {
     await adapter.forceRemoveContainer(containerName);
     return {
       status: 'completed',
@@ -430,9 +495,9 @@ export async function executeInIsolatedContainer(
     await adapter.forceRemoveContainer(containerName);
     return {
       status: 'completed',
-      result: 'failure',
+      result: 'output_limit',
       exit_code: 1,
-      stdout: runResult.stdout.slice(0, request.limits.maxOutputBytes),
+      stdout: '',
       stderr: `Output Limit Exceeded: submission exceeded ${request.limits.maxOutputBytes} bytes of output.`,
       time: timeSec,
     };
@@ -455,13 +520,13 @@ export async function executeInIsolatedContainer(
     };
   }
 
-  if (runResult.exitCode === 137) {
+  if (looksLikeMemoryLimitError(runResult.exitCode, runResult.stderr, runResult.stdout)) {
     return {
       status: 'completed',
-      result: 'failure',
-      exit_code: 137,
+      result: 'memory_limit',
+      exit_code: runResult.exitCode ?? 137,
       stdout: '',
-      stderr: `Memory Limit Exceeded: container terminated (OOM / SIGKILL, limit ${request.limits.memoryLimitMb}MB).`,
+      stderr: `Memory Limit Exceeded: container terminated (limit ${request.limits.memoryLimitMb}MB).`,
       time: timeSec,
     };
   }

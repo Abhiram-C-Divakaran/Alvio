@@ -29,6 +29,7 @@ function constantTimeTokenMatch(supplied: string, expected: string): boolean {
 }
 
 function sendJson(res: ServerResponse, status: number, payload: unknown, extraHeaders: Record<string, string> = {}) {
+  if (res.writableEnded || res.destroyed) return;
   const body = JSON.stringify(payload);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -84,10 +85,10 @@ export function createJudgeWorkerServer(options: JudgeWorkerOptions): Server {
   }
   const expectedToken = options.token.trim();
   const maxConcurrentJobs = Math.max(1, Math.min(32, options.maxConcurrentJobs ?? 4));
-  const adapter = options.adapter ?? createDockerRuntimeAdapter();
+  const adapter = options.adapter ?? createDockerRuntimeAdapter('docker', options.env);
   let activeJobs = 0;
 
-  return createServer(async (req, res) => {
+  const server = createServer(async (req, res) => {
     const method = req.method || 'GET';
     const url = (req.url || '/').split('?')[0];
 
@@ -96,6 +97,7 @@ export function createJudgeWorkerServer(options: JudgeWorkerOptions): Server {
       return sendJson(res, health.ok ? 200 : 503, {
         status: health.ok ? 'ok' : 'degraded',
         docker: health.ok ? 'ok' : 'unavailable',
+        runtime: options.dockerRuntime || options.env?.JUDGE_DOCKER_RUNTIME || 'default-runc',
         activeJobs,
         maxConcurrentJobs,
         supportedLanguages: WORKER_SUPPORTED_LANGUAGES,
@@ -150,10 +152,16 @@ export function createJudgeWorkerServer(options: JudgeWorkerOptions): Server {
       rawTimeoutMs
     );
 
+    const abortController = new AbortController();
+    const onDisconnect = () => {
+      if (!res.writableEnded) abortController.abort();
+    };
+    res.on('close', onDisconnect);
+
     activeJobs++;
     try {
       const result = await executeInIsolatedContainer(
-        { language, sourceCode, timeoutMs, limits },
+        { language, sourceCode, timeoutMs, limits, signal: abortController.signal },
         adapter,
         { env: options.env, runtime: options.dockerRuntime }
       );
@@ -165,8 +173,16 @@ export function createJudgeWorkerServer(options: JudgeWorkerOptions): Server {
       return sendJson(res, 500, { error: 'Internal judge worker error.' });
     } finally {
       activeJobs--;
+      res.removeListener('close', onDisconnect);
     }
   });
+
+  // Protect worker from slowloris / stalled HTTP connections
+  server.headersTimeout = 10000;
+  server.requestTimeout = 35000;
+  server.keepAliveTimeout = 5000;
+
+  return server;
 }
 
 const isMainModule =

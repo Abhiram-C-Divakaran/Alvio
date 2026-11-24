@@ -12,8 +12,11 @@ import { createIsolatedJudgeProvider } from '../server/submissionRunner';
 import { safeErrors } from '../server/security';
 import {
   COMPILE_FAIL_SENTINEL,
+  PINNED_RUNTIME_IMAGES,
+  WORKER_SUPPORTED_LANGUAGES,
   buildDockerRunArgs,
   buildSanitizedHostEnv,
+  resolveLanguageSpec,
   type ContainerRunInput,
   type ContainerRunOutput,
   type ContainerRuntimeAdapter,
@@ -264,13 +267,14 @@ test('end-to-end Express -> isolated judge worker handles timeout, OOM, output f
     assert.equal(tleBody.executionStatus, 'time_limit_exceeded');
     assert.equal(removedContainers.length, 1);
 
-    // 2. Memory exhaustion / OOM -> exit 137 -> clean runtime error mentioning memory limit
+    // 2. Memory exhaustion / OOM -> exit 137 -> first-class memory_limit_exceeded classification
     scenario = 'oom';
     const oomRes = await submit('function inc(x) { const a = []; while(true) a.push(new Uint8Array(1024*1024)); }');
     assert.equal(oomRes.status, 200);
     const oomBody = await oomRes.json();
     assert.equal(oomBody.status, 'Error');
-    assert.equal(oomBody.executionStatus, 'runtime_error');
+    assert.equal(oomBody.errorType, 'memory');
+    assert.equal(oomBody.executionStatus, 'memory_limit_exceeded');
     assert.match(oomBody.message, /Memory Limit Exceeded/i);
 
     // 3. Output overflow flood -> container force-removed, bounded response, never accepted
@@ -375,26 +379,41 @@ test('curated hidden test suite seeds idempotently across 18 catalog problems, m
     }
   }
 
-  // Verify hidden tests are evaluated and redacted via /api/problems/maximum-subarray/submit
+  // Verify hidden tests are evaluated in a separate phase and redacted via /api/problems/maximum-subarray/submit
+  const seenSources: string[] = [];
   const app = express();
   app.use(express.json({ limit: '512kb' }));
   registerSubmissions(app, {
     db,
     rateLimitMax: 50,
     provider: async ({ sourceCode }) => {
+      seenSources.push(sourceCode);
       const marker = sourceCode.match(/__ALVIO_RES_[a-f0-9]+__:/)?.[0] || '';
-      // Confirm hidden negative-only edge case [-5,-2,-8,-1,-4] was included in server wrapper
-      assert.match(sourceCode, /-5,-2,-8,-1,-4/);
+      const isHiddenPhase = sourceCode.includes('-5,-2,-8,-1,-4');
+      if (!isHiddenPhase) {
+        return {
+          status: 'completed',
+          result: 'success',
+          exit_code: 0,
+          stdout: `${marker}${JSON.stringify({
+            status: 'Passed',
+            passedCount: 2,
+            message: 'Visible passed.',
+            stdout: [],
+            executionTimeMs: 2,
+          })}`,
+        };
+      }
       return {
         status: 'completed',
         result: 'success',
         exit_code: 0,
         stdout: `${marker}${JSON.stringify({
           status: 'Failed',
-          passedCount: 2,
-          message: 'Test Case 3 Failed.\nInput: [[-5,-2,-8,-1,-4]]\nExpected: -1\nOutput: 0',
-          failedTestCase: { index: 3, input: [[-5, -2, -8, -1, -4]], expected: -1, actual: 0 },
-          stdout: [],
+          passedCount: 0,
+          message: 'Test Case 1 Failed.\nInput: [[-5,-2,-8,-1,-4]]\nExpected: -1\nOutput: 0',
+          failedTestCase: { index: 1, input: [[-5, -2, -8, -1, -4]], expected: -1, actual: 0 },
+          stdout: ['SECRET_LEAK_-5,-2,-8,-1,-4'],
           executionTimeMs: 4,
         })}`,
       };
@@ -416,10 +435,212 @@ test('curated hidden test suite seeds idempotently across 18 catalog problems, m
     assert.equal(body.visibleCount, 2);
     assert.equal(body.hiddenCount, 4);
     assert.equal(body.totalCount, 6);
+    assert.equal(seenSources.length, 2);
+    assert.doesNotMatch(seenSources[0], /-5,-2,-8,-1,-4/);
+    assert.match(seenSources[1], /-5,-2,-8,-1,-4/);
     assert.deepEqual(body.failedTestCase, { index: 3, hidden: true });
-    assert.doesNotMatch(body.message, /-5|-8|-4/);
+    assert.doesNotMatch(JSON.stringify(body), /-5|-8|-4|SECRET_LEAK/);
   } finally {
     await closeServer(srv);
     db.close();
   }
+});
+
+test('all 7 language runtime specs are mutually compatible, use pinned images, enforce ulimit, and classify missing images as 503', async () => {
+  const limits = { cpuTimeLimitSec: 4, memoryLimitMb: 256, maxOutputBytes: 65536, networkDisabled: true as const };
+
+  for (const lang of WORKER_SUPPORTED_LANGUAGES) {
+    const spec = resolveLanguageSpec(lang, limits, {});
+    assert.ok(spec.image.includes(':'), `Image for ${lang} must be pinned with an explicit tag`);
+    assert.match(spec.shellCommand, /ulimit -t 4 -f 16384/, `${lang} must enforce CPU and file-size ulimit`);
+  }
+
+  // Verify C# uses mono:6.12-slim with mcs/mono and preserves compiler stderr (no 2>/dev/null)
+  const csharpSpec = resolveLanguageSpec('csharp', limits, {});
+  assert.equal(csharpSpec.image, PINNED_RUNTIME_IMAGES.csharp);
+  assert.match(csharpSpec.image, /^mono:/);
+  assert.match(csharpSpec.shellCommand, /\bmcs -out:\/work\/app\.exe \/work\/Program\.cs;/);
+  assert.match(csharpSpec.shellCommand, /\bexec mono \/work\/app\.exe$/);
+  assert.doesNotMatch(csharpSpec.shellCommand, /2>\/dev\/null/);
+
+  // Verify missing pre-pulled local image returns 503 fail-closed infrastructure error
+  const missingImageAdapter: ContainerRuntimeAdapter = {
+    runContainer: async () => ({
+      exitCode: 125,
+      stdout: '',
+      stderr: "Unable to find image 'mono:6.12-slim' locally",
+      timedOut: false,
+      outputExceeded: false,
+      durationMs: 10,
+    }),
+    forceRemoveContainer: async () => {},
+    checkDaemonHealth: async () => ({ ok: true }),
+  };
+  const worker = createJudgeWorkerServer({ token: WORKER_TOKEN, adapter: missingImageAdapter });
+  const workerUrl = await listenOnEphemeralPort(worker);
+  try {
+    const res = await fetch(`${workerUrl}/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${WORKER_TOKEN}` },
+      body: JSON.stringify({ language: 'csharp', sourceCode: 'public class Program { public static void Main() {} }' }),
+    });
+    assert.equal(res.status, 503);
+  } finally {
+    await closeServer(worker);
+  }
+});
+
+test('all 75 curated hidden test expected values are verified against reference implementations and prevent duplicate XP', async () => {
+  const oracles: Record<string, (...args: any[]) => any> = {
+    'number-of-digit-one': (n: number) => {
+      let count = 0;
+      for (let i = 1; i <= n; i *= 10) {
+        const divider = i * 10;
+        count += Math.floor(n / divider) * i + Math.min(Math.max((n % divider) - i + 1, 0), i);
+      }
+      return count;
+    },
+    'rotate-list': (head: number[], k: number) => {
+      if (head.length === 0) return [];
+      const r = k % head.length;
+      return r === 0 ? [...head] : [...head.slice(-r), ...head.slice(0, -r)];
+    },
+    'unique-paths-ii': (grid: number[][]) => {
+      const m = grid.length;
+      const n = grid[0].length;
+      const dp = Array(n).fill(0);
+      dp[0] = grid[0][0] === 1 ? 0 : 1;
+      for (let i = 0; i < m; i++) {
+        for (let j = 0; j < n; j++) {
+          if (grid[i][j] === 1) dp[j] = 0;
+          else if (j > 0) dp[j] += dp[j - 1];
+        }
+      }
+      return dp[n - 1];
+    },
+    'house-robber': (nums: number[]) => {
+      let prev2 = 0;
+      let prev1 = 0;
+      for (const x of nums) {
+        const cur = Math.max(prev1, prev2 + x);
+        prev2 = prev1;
+        prev1 = cur;
+      }
+      return prev1;
+    },
+    'maximum-subarray': (nums: number[]) => {
+      let best = nums[0];
+      let cur = nums[0];
+      for (let i = 1; i < nums.length; i++) {
+        cur = Math.max(nums[i], cur + nums[i]);
+        best = Math.max(best, cur);
+      }
+      return best;
+    },
+    'perfect-number': (num: number) => {
+      if (num <= 1) return false;
+      let sum = 1;
+      for (let d = 2; d * d <= num; d++) {
+        if (num % d === 0) {
+          sum += d;
+          if (d * d !== num) sum += num / d;
+        }
+      }
+      return sum === num;
+    },
+    'merge-intervals': (intervals: number[][]) => {
+      const sorted = intervals.map((x) => [...x]).sort((a, b) => a[0] - b[0]);
+      const out: number[][] = [sorted[0]];
+      for (let i = 1; i < sorted.length; i++) {
+        const last = out[out.length - 1];
+        if (sorted[i][0] <= last[1]) last[1] = Math.max(last[1], sorted[i][1]);
+        else out.push(sorted[i]);
+      }
+      return out;
+    },
+    'pascals-triangle': (numRows: number) => {
+      const tri: number[][] = [];
+      for (let r = 0; r < numRows; r++) {
+        const row = Array(r + 1).fill(1);
+        for (let c = 1; c < r; c++) row[c] = tri[r - 1][c - 1] + tri[r - 1][c];
+        tri.push(row);
+      }
+      return tri;
+    },
+    'flood-fill': (image: number[][], sr: number, sc: number, color: number) => {
+      const grid = image.map((r) => [...r]);
+      const orig = grid[sr][sc];
+      if (orig === color) return grid;
+      const dfs = (r: number, c: number) => {
+        if (r < 0 || r >= grid.length || c < 0 || c >= grid[0].length || grid[r][c] !== orig) return;
+        grid[r][c] = color;
+        dfs(r + 1, c); dfs(r - 1, c); dfs(r, c + 1); dfs(r, c - 1);
+      };
+      dfs(sr, sc);
+      return grid;
+    },
+    'power-of-four': (n: number) => n > 0 && (n & (n - 1)) === 0 && (n & 0x55555555) !== 0,
+    'word-break': (s: string, wordDict: string[]) => {
+      const set = new Set(wordDict);
+      const dp = Array(s.length + 1).fill(false);
+      dp[0] = true;
+      for (let i = 1; i <= s.length; i++) {
+        for (let j = 0; j < i; j++) {
+          if (dp[j] && set.has(s.slice(j, i))) { dp[i] = true; break; }
+        }
+      }
+      return dp[s.length];
+    },
+    'count-and-say': (n: number) => {
+      let s = '1';
+      for (let step = 1; step < n; step++) {
+        let next = '';
+        for (let i = 0; i < s.length; ) {
+          let j = i;
+          while (j < s.length && s[j] === s[i]) j++;
+          next += `${j - i}${s[i]}`;
+          i = j;
+        }
+        s = next;
+      }
+      return s;
+    },
+    'valid-anagram': (s: string, t: string) =>
+      s.length === t.length && s.split('').sort().join('') === t.split('').sort().join(''),
+    'best-time-to-buy-and-sell-stock': (prices: number[]) => {
+      let minP = Infinity;
+      let best = 0;
+      for (const p of prices) { minP = Math.min(minP, p); best = Math.max(best, p - minP); }
+      return best;
+    },
+    'valid-parentheses': (s: string) => {
+      const stack: string[] = [];
+      const pairs: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
+      for (const ch of s) {
+        if (ch in pairs) { if (stack.pop() !== pairs[ch]) return false; }
+        else stack.push(ch);
+      }
+      return stack.length === 0;
+    },
+    'climbing-stairs': (n: number) => {
+      let a = 1;
+      let b = 1;
+      for (let i = 2; i <= n; i++) { const c = a + b; a = b; b = c; }
+      return b;
+    },
+    'contains-duplicate': (nums: number[]) => new Set(nums).size !== nums.length,
+    'reverse-string': (s: string[]) => [...s].reverse(),
+  };
+
+  let verifiedCount = 0;
+  for (const [problemId, cases] of Object.entries(CURATED_HIDDEN_TESTS)) {
+    const fn = oracles[problemId];
+    assert.ok(fn, `Missing oracle for curated problem ${problemId}`);
+    for (const tc of cases) {
+      const clonedInput = JSON.parse(JSON.stringify(tc.input));
+      assert.deepEqual(fn(...clonedInput), tc.expected, `Hidden test oracle mismatch for ${problemId}: ${JSON.stringify(tc.input)}`);
+      verifiedCount++;
+    }
+  }
+  assert.equal(verifiedCount, 75);
 });

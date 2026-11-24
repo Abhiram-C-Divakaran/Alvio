@@ -13,7 +13,7 @@ export const CURATED_HIDDEN_TESTS: Readonly<Record<string, readonly ProblemTestC
     { input: [[], 5], expected: [] },
     { input: [[42], 99], expected: [42] },
     { input: [[1, 2, 3, 4], 4], expected: [1, 2, 3, 4] },
-    { input: [[1, 2, 3, 4, 5, 6], 1000000001], expected: [6, 1, 2, 3, 4, 5] },
+    { input: [[1, 2, 3, 4, 5, 6], 1000000001], expected: [2, 3, 4, 5, 6, 1] },
   ],
   'unique-paths-ii': [
     { input: [[[1]]], expected: 0 },

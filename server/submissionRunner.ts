@@ -14,7 +14,7 @@ export const SUPPORTED_SUBMISSION_LANGUAGES = [
 export type SubmissionLanguage = (typeof SUPPORTED_SUBMISSION_LANGUAGES)[number];
 export type PaizaLanguage = 'javascript' | 'typescript' | 'python3' | 'cpp' | 'c' | 'java' | 'csharp';
 export type VerdictStatus = 'Passed' | 'Failed' | 'Error';
-export type SubmissionErrorType = 'compilation' | 'runtime' | 'timeout' | 'provider' | 'unsupported' | null;
+export type SubmissionErrorType = 'compilation' | 'runtime' | 'timeout' | 'memory' | 'provider' | 'unsupported' | null;
 
 export const MAX_CODE_LENGTH = 65536;
 export const DEFAULT_EXECUTION_TIMEOUT_MS = 15000;
@@ -987,75 +987,57 @@ function computeExecutionTimeMs(details: ProviderExecutionResponse, parsedTimeMs
 }
 
 function looksLikeSyntaxError(stderr: string): boolean {
-  return /\b(SyntaxError|IndentationError|TabError|error TS\d+)\b/i.test(stderr);
+  return /\b(SyntaxError|IndentationError|TabError|error TS\d+|ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX)\b/i.test(stderr);
 }
 
-export async function evaluateSubmission(params: {
+function looksLikeMemoryError(details: ProviderExecutionResponse, stderr: string): boolean {
+  if (details.result === 'memory_limit' || details.exit_code === 137) return true;
+  return /\b(Memory Limit Exceeded|OutOfMemoryError|OutOfMemoryException|MemoryError|std::bad_alloc|JavaScript heap out of memory)\b/i.test(
+    stderr
+  );
+}
+
+function looksLikeOutputLimitError(details: ProviderExecutionResponse, stderr: string): boolean {
+  return details.result === 'output_limit' || /Output Limit Exceeded/i.test(stderr);
+}
+
+function isValidTestCase(tc: unknown, expectedArity: number): tc is ProblemTestCase {
+  if (!tc || typeof tc !== 'object' || Array.isArray(tc)) return false;
+  const candidate = tc as Record<string, unknown>;
+  return Array.isArray(candidate.input) && candidate.input.length === expectedArity && candidate.expected !== undefined;
+}
+
+interface PhaseRunOutcome {
+  status: VerdictStatus;
+  passedCount: number;
+  executionTimeMs: number;
+  message: string;
+  stdout: string[];
+  errorType: SubmissionErrorType;
+  recordable: boolean;
+  failedTestCase?: FailedTestCaseDetail;
+}
+
+async function runSinglePhase(params: {
   problem: SubmissionProblem;
+  cases: ProblemTestCase[];
   code: string;
   language: SubmissionLanguage;
-  provider?: ExecutionProvider;
-  timeoutMs?: number;
+  provider: ExecutionProvider;
+  timeoutMs: number;
   signal?: AbortSignal;
-}): Promise<ServerSubmissionResult> {
-  const { problem, code, language, signal } = params;
-  const timeoutMs = params.timeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
-  const provider = params.provider ?? resolveExecutionProvider();
+}): Promise<PhaseRunOutcome> {
+  const { problem, cases, code, language, provider, timeoutMs, signal } = params;
   const startedAt = performance.now();
-
-  const visibleCount = Array.isArray(problem.testCases) ? problem.testCases.length : 0;
-  const hiddenCases = Array.isArray(problem.hiddenTestCases) ? problem.hiddenTestCases : [];
-  const hiddenCount = hiddenCases.length;
-  const allTestCases = [...(Array.isArray(problem.testCases) ? problem.testCases : []), ...hiddenCases];
-
-  if (allTestCases.length === 0) {
-    return {
-      status: 'Error',
-      passedCount: 0,
-      totalCount: 0,
-      visibleCount: 0,
-      hiddenCount: 0,
-      executionTimeMs: 0,
-      message: 'No test cases are available for this problem.',
-      stdout: [],
-      errorType: 'unsupported',
-      recordable: false,
-    };
-  }
-
-  if (
-    !problem.signature ||
-    !isSafeIdentifier(problem.signature.name) ||
-    !Array.isArray(problem.signature.params) ||
-    !problem.signature.params.every((p) => p && isSafeIdentifier(p.name) && typeof p.type === 'string') ||
-    typeof problem.signature.returns !== 'string'
-  ) {
-    return {
-      status: 'Error',
-      passedCount: 0,
-      totalCount: allTestCases.length,
-      visibleCount,
-      hiddenCount,
-      executionTimeMs: 0,
-      message: 'This problem is missing a valid function signature for server verification.',
-      stdout: [],
-      errorType: 'unsupported',
-      recordable: false,
-    };
-  }
-
-  const totalCount = allTestCases.length;
-  const combinedProblem: SubmissionProblem = { ...problem, testCases: allTestCases };
+  const phaseCount = cases.length;
+  const phaseProblem: SubmissionProblem = { ...problem, testCases: cases, hiddenTestCases: undefined };
   const marker = `__ALVIO_RES_${randomBytes(6).toString('hex')}__:`;
-  const wrapped = generateExecutionWrapper(language, code, combinedProblem, marker);
+  const wrapped = generateExecutionWrapper(language, code, phaseProblem, marker);
 
   if (wrapped.unsupportedReason || !wrapped.sourceCode) {
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount,
-      visibleCount,
-      hiddenCount,
       executionTimeMs: 0,
       message: wrapped.unsupportedReason || 'This language is not supported for server submission on this problem.',
       stdout: [],
@@ -1078,9 +1060,6 @@ export async function evaluateSubmission(params: {
       return {
         status: 'Error',
         passedCount: 0,
-        totalCount,
-        visibleCount,
-        hiddenCount,
         executionTimeMs: elapsed,
         message: 'Time Limit Exceeded: execution timed out.',
         stdout: [],
@@ -1091,9 +1070,6 @@ export async function evaluateSubmission(params: {
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount,
-      visibleCount,
-      hiddenCount,
       executionTimeMs: elapsed,
       message: err instanceof ExecutionProviderError
         ? err.message
@@ -1108,9 +1084,6 @@ export async function evaluateSubmission(params: {
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount,
-      visibleCount,
-      hiddenCount,
       executionTimeMs: Math.max(0, Math.round(performance.now() - startedAt)),
       message: 'Code execution service returned a malformed response.',
       stdout: [],
@@ -1123,9 +1096,6 @@ export async function evaluateSubmission(params: {
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount,
-      visibleCount,
-      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Time Limit Exceeded: execution timed out.',
       stdout: [],
@@ -1139,9 +1109,6 @@ export async function evaluateSubmission(params: {
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount,
-      visibleCount,
-      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: trimMessage(`Compilation Error:\n${buildMsg}`),
       stdout: [],
@@ -1157,15 +1124,36 @@ export async function evaluateSubmission(params: {
     ? details.stderr.slice(0, MAX_PROVIDER_OUTPUT_BYTES).trim()
     : '';
 
+  if (looksLikeMemoryError(details, rawStderr)) {
+    return {
+      status: 'Error',
+      passedCount: 0,
+      executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
+      message: trimMessage(rawStderr || 'Memory Limit Exceeded: submission exceeded the memory limit.'),
+      stdout: [],
+      errorType: 'memory',
+      recordable: true,
+    };
+  }
+
+  if (looksLikeOutputLimitError(details, rawStderr)) {
+    return {
+      status: 'Error',
+      passedCount: 0,
+      executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
+      message: trimMessage(rawStderr || 'Output Limit Exceeded: submission produced too much output.'),
+      stdout: [],
+      errorType: 'runtime',
+      recordable: true,
+    };
+  }
+
   if (details.result !== 'success' || (details.exit_code != null && Number(details.exit_code) !== 0)) {
     const isSyntax = looksLikeSyntaxError(rawStderr);
     const errText = rawStderr || rawStdout || 'Runtime Error';
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount,
-      visibleCount,
-      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: trimMessage(isSyntax ? `Compilation Error:\n${errText}` : errText),
       stdout: [],
@@ -1178,9 +1166,6 @@ export async function evaluateSubmission(params: {
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount,
-      visibleCount,
-      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: trimMessage(rawStderr || 'Execution completed without a test result.'),
       stdout: [],
@@ -1202,9 +1187,6 @@ export async function evaluateSubmission(params: {
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount,
-      visibleCount,
-      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Execution completed without a valid test result.',
       stdout: outLines.slice(0, MAX_STDOUT_LINES),
@@ -1239,12 +1221,12 @@ export async function evaluateSubmission(params: {
   } else if (pipeMatch) {
     const status = pipeMatch[1] as 'Passed' | 'Failed';
     const count = Number(pipeMatch[2]);
-    const failingCase = status === 'Failed' ? allTestCases[count] : undefined;
+    const failingCase = status === 'Failed' ? cases[count] : undefined;
     parsed = {
       status,
       passedCount: count,
       message: status === 'Passed'
-        ? (hiddenCount > 0 ? 'All visible and hidden test cases passed.' : 'All provided test cases passed.')
+        ? 'All provided test cases passed.'
         : `Test Case ${count + 1} Failed. Wrong Answer.`,
       ...(failingCase
         ? { failedTestCase: { index: count + 1, input: failingCase.input, expected: failingCase.expected } }
@@ -1256,9 +1238,6 @@ export async function evaluateSubmission(params: {
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount,
-      visibleCount,
-      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Execution returned an unreadable test result.',
       stdout: capturedBeforeMarker,
@@ -1273,16 +1252,13 @@ export async function evaluateSubmission(params: {
   if (
     !Number.isInteger(passedCount) ||
     passedCount < 0 ||
-    passedCount > totalCount ||
-    (status === 'Passed' && passedCount !== totalCount) ||
-    (status === 'Failed' && passedCount >= totalCount)
+    passedCount > phaseCount ||
+    (status === 'Passed' && passedCount !== phaseCount) ||
+    (status === 'Failed' && passedCount >= phaseCount)
   ) {
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount,
-      visibleCount,
-      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Execution returned an invalid test count.',
       stdout: capturedBeforeMarker,
@@ -1295,63 +1271,234 @@ export async function evaluateSubmission(params: {
     ? parsed.stdout.slice(0, MAX_STDOUT_LINES).map((item) => String(item))
     : capturedBeforeMarker;
 
-  const isHiddenFailure = status === 'Failed' && passedCount >= visibleCount;
-
-  const defaultMessage =
-    status === 'Passed'
-      ? (hiddenCount > 0 ? 'All visible and hidden test cases passed.' : 'All provided test cases passed.')
+  const parsedMessage = typeof parsed.message === 'string' && parsed.message.trim()
+    ? trimMessage(parsed.message)
+    : (status === 'Passed'
+      ? 'All provided test cases passed.'
       : status === 'Failed'
-        ? (isHiddenFailure
-          ? `Hidden Test Case ${passedCount - visibleCount + 1} Failed. Wrong Answer.`
-          : `Test Case ${passedCount + 1} Failed. Wrong Answer.`)
-        : 'Runtime Error';
+        ? `Test Case ${passedCount + 1} Failed. Wrong Answer.`
+        : 'Runtime Error');
 
-  // Never leak hidden test case inputs, expected outputs, or actual outputs back to the client.
-  const message = isHiddenFailure
-    ? `Hidden Test Case ${passedCount - visibleCount + 1} Failed. Wrong Answer.`
-    : (typeof parsed.message === 'string' && parsed.message.trim()
-      ? trimMessage(parsed.message)
-      : defaultMessage);
-
+  const isParsedMemoryErr = status === 'Error' && looksLikeMemoryError(details, parsedMessage);
   const errorType: SubmissionErrorType =
     status === 'Error'
-      ? (parsed.errorType === 'compilation' || parsed.errorType === 'timeout' ? parsed.errorType : 'runtime')
+      ? (isParsedMemoryErr
+        ? 'memory'
+        : parsed.errorType === 'compilation' || parsed.errorType === 'timeout' || parsed.errorType === 'memory'
+          ? parsed.errorType
+          : 'runtime')
       : null;
 
   let failedTestCase: FailedTestCaseDetail | undefined;
   if (status === 'Failed') {
-    if (isHiddenFailure) {
-      failedTestCase = { index: passedCount + 1, hidden: true };
-    } else {
-      const rawDetail =
-        parsed.failedTestCase && typeof parsed.failedTestCase === 'object' && !Array.isArray(parsed.failedTestCase)
-          ? (parsed.failedTestCase as Record<string, unknown>)
-          : undefined;
-      const fallbackCase = allTestCases[passedCount];
-      failedTestCase = {
-        index:
-          typeof rawDetail?.index === 'number' && Number.isInteger(rawDetail.index) && rawDetail.index >= 1
-            ? rawDetail.index
-            : passedCount + 1,
-        hidden: false,
-        input: rawDetail && 'input' in rawDetail ? rawDetail.input : fallbackCase?.input,
-        expected: rawDetail && 'expected' in rawDetail ? rawDetail.expected : fallbackCase?.expected,
-        ...(rawDetail && 'actual' in rawDetail ? { actual: rawDetail.actual } : {}),
-      };
-    }
+    const rawDetail =
+      parsed.failedTestCase && typeof parsed.failedTestCase === 'object' && !Array.isArray(parsed.failedTestCase)
+        ? (parsed.failedTestCase as Record<string, unknown>)
+        : undefined;
+    const fallbackCase = cases[passedCount];
+    failedTestCase = {
+      index:
+        typeof rawDetail?.index === 'number' && Number.isInteger(rawDetail.index) && rawDetail.index >= 1
+          ? rawDetail.index
+          : passedCount + 1,
+      hidden: false,
+      input: rawDetail && 'input' in rawDetail ? rawDetail.input : fallbackCase?.input,
+      expected: rawDetail && 'expected' in rawDetail ? rawDetail.expected : fallbackCase?.expected,
+      ...(rawDetail && 'actual' in rawDetail ? { actual: rawDetail.actual } : {}),
+    };
   }
 
   return {
     status,
     passedCount,
-    totalCount,
-    visibleCount,
-    hiddenCount,
     executionTimeMs: computeExecutionTimeMs(details, parsed.executionTimeMs, startedAt),
-    message,
+    message: parsedMessage,
     stdout,
     errorType,
     recordable: true,
     ...(failedTestCase ? { failedTestCase } : {}),
+  };
+}
+
+export async function evaluateSubmission(params: {
+  problem: SubmissionProblem;
+  code: string;
+  language: SubmissionLanguage;
+  provider?: ExecutionProvider;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}): Promise<ServerSubmissionResult> {
+  const { problem, code, language, signal } = params;
+  const timeoutMs = params.timeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
+  const provider = params.provider ?? resolveExecutionProvider();
+
+  if (
+    !problem.signature ||
+    !isSafeIdentifier(problem.signature.name) ||
+    !Array.isArray(problem.signature.params) ||
+    !problem.signature.params.every((p) => p && isSafeIdentifier(p.name) && typeof p.type === 'string') ||
+    typeof problem.signature.returns !== 'string'
+  ) {
+    const fallbackVisible = Array.isArray(problem.testCases) ? problem.testCases.length : 0;
+    const fallbackHidden = Array.isArray(problem.hiddenTestCases) ? problem.hiddenTestCases.length : 0;
+    return {
+      status: 'Error',
+      passedCount: 0,
+      totalCount: fallbackVisible + fallbackHidden,
+      visibleCount: fallbackVisible,
+      hiddenCount: fallbackHidden,
+      executionTimeMs: 0,
+      message: 'This problem is missing a valid function signature for server verification.',
+      stdout: [],
+      errorType: 'unsupported',
+      recordable: false,
+    };
+  }
+
+  const expectedArity = problem.signature.params.length;
+  const visibleCases = (Array.isArray(problem.testCases) ? problem.testCases : []).filter((tc) =>
+    isValidTestCase(tc, expectedArity)
+  );
+  const hiddenCases = (Array.isArray(problem.hiddenTestCases) ? problem.hiddenTestCases : []).filter((tc) =>
+    isValidTestCase(tc, expectedArity)
+  );
+
+  const visibleCount = visibleCases.length;
+  const hiddenCount = hiddenCases.length;
+  const totalCount = visibleCount + hiddenCount;
+
+  if (totalCount === 0) {
+    return {
+      status: 'Error',
+      passedCount: 0,
+      totalCount: 0,
+      visibleCount: 0,
+      hiddenCount: 0,
+      executionTimeMs: 0,
+      message: 'No test cases are available for this problem.',
+      stdout: [],
+      errorType: 'unsupported',
+      recordable: false,
+    };
+  }
+
+  // Phase 1: Execute ONLY visible test cases in an isolated container.
+  // Hidden test inputs/expected values are never placed inside Container 1's source or memory.
+  let visibleResult: PhaseRunOutcome | null = null;
+  if (visibleCount > 0) {
+    visibleResult = await runSinglePhase({
+      problem,
+      cases: visibleCases,
+      code,
+      language,
+      provider,
+      timeoutMs,
+      signal,
+    });
+
+    if (visibleResult.status !== 'Passed' || hiddenCount === 0) {
+      return {
+        status: visibleResult.status,
+        passedCount: visibleResult.passedCount,
+        totalCount,
+        visibleCount,
+        hiddenCount,
+        executionTimeMs: visibleResult.executionTimeMs,
+        message: visibleResult.message,
+        stdout: visibleResult.stdout,
+        errorType: visibleResult.errorType,
+        recordable: visibleResult.recordable,
+        ...(visibleResult.failedTestCase ? { failedTestCase: visibleResult.failedTestCase } : {}),
+      };
+    }
+  }
+
+  // Phase 2: All visible cases passed -> execute hidden test cases in a separate isolated container.
+  // NEVER return Phase 2 stdout, raw stderr, or exception messages to the client so user code
+  // cannot exfiltrate hidden test inputs via console.log, fs.readFileSync(__filename), or throw.
+  const hiddenResult = await runSinglePhase({
+    problem,
+    cases: hiddenCases,
+    code,
+    language,
+    provider,
+    timeoutMs,
+    signal,
+  });
+
+  const combinedTimeMs = (visibleResult?.executionTimeMs ?? 0) + hiddenResult.executionTimeMs;
+  const safeVisibleStdout = visibleResult?.stdout ?? [];
+
+  if (hiddenResult.errorType === 'provider' || hiddenResult.errorType === 'unsupported') {
+    return {
+      status: 'Error',
+      passedCount: 0,
+      totalCount,
+      visibleCount,
+      hiddenCount,
+      executionTimeMs: combinedTimeMs,
+      message: hiddenResult.message,
+      stdout: safeVisibleStdout,
+      errorType: hiddenResult.errorType,
+      recordable: false,
+    };
+  }
+
+  if (hiddenResult.status === 'Passed') {
+    return {
+      status: 'Passed',
+      passedCount: visibleCount + hiddenResult.passedCount,
+      totalCount,
+      visibleCount,
+      hiddenCount,
+      executionTimeMs: combinedTimeMs,
+      message: 'All visible and hidden test cases passed.',
+      stdout: safeVisibleStdout,
+      errorType: null,
+      recordable: true,
+    };
+  }
+
+  if (hiddenResult.status === 'Failed') {
+    const hiddenOrdinal = hiddenResult.passedCount + 1;
+    const overallIndex = visibleCount + hiddenOrdinal;
+    return {
+      status: 'Failed',
+      passedCount: visibleCount + hiddenResult.passedCount,
+      totalCount,
+      visibleCount,
+      hiddenCount,
+      executionTimeMs: combinedTimeMs,
+      message: `Hidden Test Case ${hiddenOrdinal} Failed. Wrong Answer.`,
+      stdout: safeVisibleStdout,
+      errorType: null,
+      recordable: true,
+      failedTestCase: { index: overallIndex, hidden: true },
+    };
+  }
+
+  // Redact hidden-phase runtime/exception details so `throw new Error(JSON.stringify(hiddenInput))` cannot leak.
+  let redactedHiddenError = 'Runtime Error on hidden test case.';
+  if (hiddenResult.errorType === 'timeout') {
+    redactedHiddenError = 'Time Limit Exceeded on hidden test case.';
+  } else if (hiddenResult.errorType === 'memory') {
+    redactedHiddenError = 'Memory Limit Exceeded on hidden test case.';
+  } else if (hiddenResult.errorType === 'compilation') {
+    redactedHiddenError = 'Compilation Error on hidden test case.';
+  } else if (/Output Limit Exceeded/i.test(hiddenResult.message)) {
+    redactedHiddenError = 'Output Limit Exceeded on hidden test case.';
+  }
+
+  return {
+    status: 'Error',
+    passedCount: visibleCount + hiddenResult.passedCount,
+    totalCount,
+    visibleCount,
+    hiddenCount,
+    executionTimeMs: combinedTimeMs,
+    message: redactedHiddenError,
+    stdout: safeVisibleStdout,
+    errorType: hiddenResult.errorType ?? 'runtime',
+    recordable: hiddenResult.recordable,
   };
 }

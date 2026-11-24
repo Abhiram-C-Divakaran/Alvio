@@ -4,6 +4,7 @@ import { apiFetch } from '../../services/api';
 // ============================================================
 
 import type { CodingProblem, TestCase, DataType } from '../../data/codingProblems';
+import type { SubmissionErrorType } from '../../types/api';
 
 export interface ExecutionResult {
   status: 'Passed' | 'Failed' | 'Error';
@@ -12,7 +13,7 @@ export interface ExecutionResult {
   totalCount: number;
   stdout: string[];
   executionTimeMs: number;
-  errorType?: 'compilation' | 'runtime' | 'timeout' | 'provider' | 'unsupported' | null;
+  errorType?: SubmissionErrorType;
 }
 
 export async function executeJavaScript(userCode:string,testCases:TestCase[],functionName:string):Promise<ExecutionResult>{

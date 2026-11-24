@@ -37,7 +37,7 @@ export interface ProgressConflictResponse extends ApiErrorResponse {
 
 export type SubmissionVerdictStatus = 'Passed' | 'Failed' | 'Error';
 
-export type SubmissionErrorType = 'compilation' | 'runtime' | 'timeout' | 'provider' | 'unsupported' | null;
+export type SubmissionErrorType = 'compilation' | 'runtime' | 'timeout' | 'memory' | 'provider' | 'unsupported' | null;
 
 export type SubmissionExecutionStatus =
   | 'accepted'
@@ -45,6 +45,7 @@ export type SubmissionExecutionStatus =
   | 'compilation_error'
   | 'runtime_error'
   | 'time_limit_exceeded'
+  | 'memory_limit_exceeded'
   | 'provider_unavailable'
   | 'unsupported';
 
