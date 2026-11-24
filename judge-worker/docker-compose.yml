@@ -1,0 +1,27 @@
+# Dedicated isolated judge worker stack — deploy on an isolated judge VM/node,
+# NOT on the same public network or host privileges as the Express API if avoidable.
+services:
+  alvio-judge-worker:
+    build:
+      context: ..
+      dockerfile: judge-worker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4005:4005"
+    environment:
+      ISOLATED_JUDGE_TOKEN: "${ISOLATED_JUDGE_TOKEN:?Set a 32+ char random secret}"
+      JUDGE_WORKER_HOST: "0.0.0.0"
+      JUDGE_WORKER_PORT: "4005"
+      JUDGE_MAX_CONCURRENT_JOBS: "${JUDGE_MAX_CONCURRENT_JOBS:-4}"
+      # Strongly recommended in production: install gVisor (runsc) or Kata Containers
+      # and set JUDGE_DOCKER_RUNTIME=runsc for kernel-level isolation.
+      JUDGE_DOCKER_RUNTIME: "${JUDGE_DOCKER_RUNTIME:-}"
+    volumes:
+      # Docker socket is mounted ONLY on the dedicated judge worker host so it can spawn
+      # network-disabled, read-only, non-root, capability-dropped ephemeral containers.
+      - /var/run/docker.sock:/var/run/docker.sock
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true

@@ -38,11 +38,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: TypeScript type check (app, node config & server)
+      - name: TypeScript type check (app, node config, server & judge worker)
         run: |
           npx tsc -p tsconfig.app.json --noEmit
           npx tsc -p tsconfig.node.json --noEmit
-          npx tsc --ignoreConfig --noEmit --module esnext --moduleResolution bundler --target es2023 --esModuleInterop --skipLibCheck server.ts
+          npx tsc --ignoreConfig --noEmit --module esnext --moduleResolution bundler --target es2023 --esModuleInterop --skipLibCheck server.ts server/seedHiddenTests.ts judge-worker/server.ts
 
       - name: Production Build
         run: npm run build

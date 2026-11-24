@@ -1,0 +1,479 @@
+import { randomBytes } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import type {
+  JudgeResourceLimits,
+  PaizaLanguage,
+  ProviderExecutionResponse,
+} from '../server/submissionRunner';
+
+export const WORKER_SUPPORTED_LANGUAGES: readonly PaizaLanguage[] = [
+  'javascript',
+  'typescript',
+  'python3',
+  'cpp',
+  'c',
+  'java',
+  'csharp',
+] as const;
+
+export const MAX_WORKER_SOURCE_BYTES = 131072; // Wrapper + user code
+export const DEFAULT_PIDS_LIMIT = 64;
+export const DEFAULT_CPU_CORES = 1;
+export const DEFAULT_TMPFS_TMP_MB = 32;
+export const DEFAULT_TMPFS_WORK_MB = 64;
+
+export const COMPILE_FAIL_SENTINEL = '__ALVIO_BUILD_FAILED__:';
+
+export interface WorkerExecutionRequest {
+  language: PaizaLanguage;
+  sourceCode: string;
+  timeoutMs: number;
+  limits: JudgeResourceLimits;
+}
+
+export interface ContainerRunInput {
+  args: string[];
+  stdin: string;
+  timeoutMs: number;
+  maxOutputBytes: number;
+  containerName: string;
+  env: Record<string, string>;
+}
+
+export interface ContainerRunOutput {
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  outputExceeded: boolean;
+  durationMs: number;
+  spawnErrorCode?: string;
+  spawnErrorMessage?: string;
+}
+
+export interface ContainerRuntimeAdapter {
+  runContainer: (input: ContainerRunInput) => Promise<ContainerRunOutput>;
+  forceRemoveContainer: (containerName: string) => Promise<void>;
+  checkDaemonHealth: () => Promise<{ ok: boolean; detail?: string }>;
+}
+
+interface LanguageContainerSpec {
+  image: string;
+  sourceFile: string;
+  /** Runs inside the container with stdin containing the source code and /work as cwd. */
+  shellCommand: string;
+}
+
+export function resolveLanguageSpec(
+  language: PaizaLanguage,
+  env: NodeJS.ProcessEnv = process.env
+): LanguageContainerSpec {
+  const nodeImage = env.JUDGE_IMAGE_NODE || 'node:22-alpine';
+  const pythonImage = env.JUDGE_IMAGE_PYTHON || 'python:3.12-alpine';
+  const gccImage = env.JUDGE_IMAGE_GCC || 'gcc:14-bookworm';
+  const javaImage = env.JUDGE_IMAGE_JAVA || 'eclipse-temurin:21-jdk-alpine';
+  const dotnetImage = env.JUDGE_IMAGE_DOTNET || 'mcr.microsoft.com/dotnet/sdk:8.0-alpine';
+  const tsImage = env.JUDGE_IMAGE_TS || nodeImage;
+
+  const compileFailEcho = `printf '%s\\n' '${COMPILE_FAIL_SENTINEL}' >&2`;
+
+  switch (language) {
+    case 'javascript':
+      return {
+        image: nodeImage,
+        sourceFile: 'main.js',
+        shellCommand: 'cat > /work/main.js && exec node --disallow-code-generation-from-strings /work/main.js',
+      };
+    case 'typescript':
+      return {
+        image: tsImage,
+        sourceFile: 'main.ts',
+        shellCommand: 'cat > /work/main.ts && exec node --experimental-strip-types /work/main.ts',
+      };
+    case 'python3':
+      return {
+        image: pythonImage,
+        sourceFile: 'main.py',
+        shellCommand: 'cat > /work/main.py && exec python3 -I -B /work/main.py',
+      };
+    case 'cpp':
+      return {
+        image: gccImage,
+        sourceFile: 'main.cpp',
+        shellCommand: `cat > /work/main.cpp && if ! g++ -O2 -std=c++20 -o /work/app /work/main.cpp; then ${compileFailEcho}; exit 1; fi && exec /work/app`,
+      };
+    case 'c':
+      return {
+        image: gccImage,
+        sourceFile: 'main.c',
+        shellCommand: `cat > /work/main.c && if ! gcc -O2 -std=c17 -o /work/app /work/main.c -lm; then ${compileFailEcho}; exit 1; fi && exec /work/app`,
+      };
+    case 'java':
+      return {
+        image: javaImage,
+        sourceFile: 'Main.java',
+        shellCommand: `cat > /work/Main.java && if ! javac -d /work /work/Main.java; then ${compileFailEcho}; exit 1; fi && exec java -XX:+UseSerialGC -Xmx192m -cp /work Main`,
+      };
+    case 'csharp':
+      return {
+        image: dotnetImage,
+        sourceFile: 'Program.cs',
+        shellCommand: `cat > /work/Program.cs && if ! mcs -out:/work/app.exe /work/Program.cs 2>/dev/null; then ${compileFailEcho}; exit 1; fi && exec mono /work/app.exe`,
+      };
+  }
+}
+
+export function clampLimits(
+  rawLimits: Partial<JudgeResourceLimits> | undefined,
+  rawTimeoutMs: unknown
+): { limits: JudgeResourceLimits; timeoutMs: number } {
+  const cpuRaw = Number(rawLimits?.cpuTimeLimitSec);
+  const memRaw = Number(rawLimits?.memoryLimitMb);
+  const outRaw = Number(rawLimits?.maxOutputBytes);
+  const timeoutRaw = Number(rawTimeoutMs);
+
+  const cpuTimeLimitSec = Number.isFinite(cpuRaw) ? Math.min(15, Math.max(1, Math.round(cpuRaw))) : 5;
+  const memoryLimitMb = Number.isFinite(memRaw) ? Math.min(512, Math.max(64, Math.round(memRaw))) : 256;
+  const maxOutputBytes = Number.isFinite(outRaw) ? Math.min(131072, Math.max(4096, Math.round(outRaw))) : 65536;
+  const timeoutMs = Number.isFinite(timeoutRaw) ? Math.min(30000, Math.max(500, Math.round(timeoutRaw))) : 10000;
+
+  return {
+    limits: {
+      cpuTimeLimitSec,
+      memoryLimitMb,
+      maxOutputBytes,
+      networkDisabled: true,
+    },
+    timeoutMs,
+  };
+}
+
+/**
+ * Builds hardened `docker run` arguments enforcing network, filesystem, capability,
+ * PID, memory, swap, CPU, and unprivileged-user isolation. Never mounts host paths
+ * and never forwards host environment variables or secrets.
+ */
+export function buildDockerRunArgs(params: {
+  language: PaizaLanguage;
+  limits: JudgeResourceLimits;
+  containerName: string;
+  pidsLimit?: number;
+  cpuCores?: number;
+  runtime?: string;
+  env?: NodeJS.ProcessEnv;
+}): string[] {
+  const spec = resolveLanguageSpec(params.language, params.env);
+  const pidsLimit = params.pidsLimit ?? DEFAULT_PIDS_LIMIT;
+  const cpuCores = params.cpuCores ?? DEFAULT_CPU_CORES;
+  const memoryFlag = `${params.limits.memoryLimitMb}m`;
+  const runtime = (params.runtime ?? params.env?.JUDGE_DOCKER_RUNTIME ?? '').trim();
+
+  const args: string[] = [
+    'run',
+    '--rm',
+    '-i',
+    '--name',
+    params.containerName,
+    '--network=none',
+    '--read-only',
+    `--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=${DEFAULT_TMPFS_TMP_MB}m`,
+    `--tmpfs=/work:rw,nosuid,nodev,size=${DEFAULT_TMPFS_WORK_MB}m`,
+    '--cap-drop=ALL',
+    '--security-opt=no-new-privileges:true',
+    `--pids-limit=${pidsLimit}`,
+    `--memory=${memoryFlag}`,
+    `--memory-swap=${memoryFlag}`,
+    `--cpus=${cpuCores}`,
+    '--user=65534:65534',
+    '--workdir=/work',
+    '-e',
+    'HOME=/tmp',
+    '-e',
+    'TMPDIR=/tmp',
+    '-e',
+    'PYTHONDONTWRITEBYTECODE=1',
+  ];
+
+  if (runtime) {
+    args.push(`--runtime=${runtime}`);
+  }
+
+  args.push(spec.image, '/bin/sh', '-c', spec.shellCommand);
+  return args;
+}
+
+/**
+ * Minimal host environment for spawning the `docker` CLI itself — deliberately strips
+ * application secrets (JWT_SECRET, GROQ_API_KEY, ISOLATED_JUDGE_TOKEN, etc.).
+ */
+export function buildSanitizedHostEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const safe: Record<string, string> = {};
+  for (const key of ['PATH', 'DOCKER_HOST', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH', 'SYSTEMROOT', 'COMSPEC']) {
+    const val = env[key];
+    if (typeof val === 'string' && val.length > 0) {
+      safe[key] = val;
+    }
+  }
+  return safe;
+}
+
+export function createDockerRuntimeAdapter(dockerBin = 'docker'): ContainerRuntimeAdapter {
+  const forceRemoveContainer = async (containerName: string): Promise<void> => {
+    await new Promise<void>((resolve) => {
+      const killer = spawn(dockerBin, ['rm', '-f', containerName], {
+        env: buildSanitizedHostEnv(),
+        stdio: 'ignore',
+      });
+      killer.on('error', () => resolve());
+      killer.on('close', () => resolve());
+    });
+  };
+
+  const runContainer = async (input: ContainerRunInput): Promise<ContainerRunOutput> => {
+    const startedAt = performance.now();
+    return new Promise<ContainerRunOutput>((resolve) => {
+      const child = spawn(dockerBin, input.args, {
+        env: input.env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
+      let timedOut = false;
+      let outputExceeded = false;
+      let settled = false;
+
+      const finish = (result: Partial<ContainerRunOutput>) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({
+          exitCode: result.exitCode ?? null,
+          stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+          stderr: Buffer.concat(stderrChunks).toString('utf8'),
+          timedOut,
+          outputExceeded,
+          durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+          ...(result.spawnErrorCode ? { spawnErrorCode: result.spawnErrorCode } : {}),
+          ...(result.spawnErrorMessage ? { spawnErrorMessage: result.spawnErrorMessage } : {}),
+        });
+      };
+
+      const terminateContainer = () => {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          // Ignore if already exited
+        }
+        void forceRemoveContainer(input.containerName);
+      };
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        terminateContainer();
+      }, input.timeoutMs);
+
+      const handleChunk = (chunk: Buffer, isStdout: boolean) => {
+        const currentTotal = stdoutBytes + stderrBytes;
+        const remaining = input.maxOutputBytes - currentTotal;
+        if (remaining <= 0) {
+          if (!outputExceeded) {
+            outputExceeded = true;
+            terminateContainer();
+          }
+          return;
+        }
+        const slice = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+        if (isStdout) {
+          stdoutChunks.push(slice);
+          stdoutBytes += slice.length;
+        } else {
+          stderrChunks.push(slice);
+          stderrBytes += slice.length;
+        }
+        if (chunk.length > remaining && !outputExceeded) {
+          outputExceeded = true;
+          terminateContainer();
+        }
+      };
+
+      child.stdout?.on('data', (chunk: Buffer) => handleChunk(chunk, true));
+      child.stderr?.on('data', (chunk: Buffer) => handleChunk(chunk, false));
+
+      child.on('error', (err: NodeJS.ErrnoException) => {
+        finish({
+          exitCode: null,
+          spawnErrorCode: err.code || 'SPAWN_ERROR',
+          spawnErrorMessage: err.message,
+        });
+      });
+
+      child.on('close', (code) => {
+        finish({ exitCode: code });
+      });
+
+      child.stdin?.on('error', () => {
+        // Ignore EPIPE when container exits before stdin finishes
+      });
+      child.stdin?.end(input.stdin, 'utf8');
+    });
+  };
+
+  const checkDaemonHealth = async (): Promise<{ ok: boolean; detail?: string }> => {
+    return new Promise((resolve) => {
+      const child = spawn(dockerBin, ['info', '--format', '{{.ServerVersion}}'], {
+        env: buildSanitizedHostEnv(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let out = '';
+      let err = '';
+      const timer = setTimeout(() => {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          // ignore
+        }
+        resolve({ ok: false, detail: 'Docker daemon health check timed out.' });
+      }, 3000);
+
+      child.stdout?.on('data', (d) => (out += d.toString()));
+      child.stderr?.on('data', (d) => (err += d.toString()));
+      child.on('error', (e: NodeJS.ErrnoException) => {
+        clearTimeout(timer);
+        resolve({ ok: false, detail: `Docker CLI unavailable: ${e.code || e.message}` });
+      });
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (code === 0 && out.trim()) {
+          resolve({ ok: true, detail: `docker ${out.trim()}` });
+        } else {
+          resolve({ ok: false, detail: err.trim() || `docker info exited with code ${code}` });
+        }
+      });
+    });
+  };
+
+  return { runContainer, forceRemoveContainer, checkDaemonHealth };
+}
+
+export class IsolationUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'IsolationUnavailableError';
+  }
+}
+
+function looksLikeDockerDaemonError(exitCode: number | null, stderr: string): boolean {
+  if (exitCode !== 125 && exitCode !== 126 && exitCode !== 127 && exitCode !== 1) return false;
+  return /Cannot connect to the Docker daemon|failed to connect to the docker API|dockerDesktopLinuxEngine|Error response from daemon|permission denied while trying to connect to the Docker daemon/i.test(
+    stderr
+  );
+}
+
+/**
+ * Executes a wrapped submission inside a hardened, ephemeral container.
+ * Never falls back to executing untrusted code on the host process.
+ */
+export async function executeInIsolatedContainer(
+  request: WorkerExecutionRequest,
+  adapter: ContainerRuntimeAdapter,
+  options: { env?: NodeJS.ProcessEnv; runtime?: string } = {}
+): Promise<ProviderExecutionResponse> {
+  const containerName = `alvio-judge-${randomBytes(8).toString('hex')}`;
+  const effectiveTimeoutMs = Math.min(request.timeoutMs, request.limits.cpuTimeLimitSec * 1000 + 2500);
+  const args = buildDockerRunArgs({
+    language: request.language,
+    limits: request.limits,
+    containerName,
+    runtime: options.runtime,
+    env: options.env,
+  });
+
+  const runResult = await adapter.runContainer({
+    args,
+    stdin: request.sourceCode,
+    timeoutMs: effectiveTimeoutMs,
+    maxOutputBytes: request.limits.maxOutputBytes,
+    containerName,
+    env: buildSanitizedHostEnv(options.env),
+  });
+
+  if (runResult.spawnErrorCode) {
+    throw new IsolationUnavailableError(
+      `Container runtime unavailable (${runResult.spawnErrorCode}). Refusing host execution.`
+    );
+  }
+
+  if (looksLikeDockerDaemonError(runResult.exitCode, runResult.stderr)) {
+    throw new IsolationUnavailableError(
+      'Container daemon is unavailable or rejected container creation. Refusing host execution.'
+    );
+  }
+
+  const timeSec = (runResult.durationMs / 1000).toFixed(3);
+
+  if (runResult.timedOut) {
+    await adapter.forceRemoveContainer(containerName);
+    return {
+      status: 'completed',
+      result: 'timeout',
+      exit_code: 124,
+      stdout: '',
+      stderr: `Time Limit Exceeded: container terminated after ${effectiveTimeoutMs}ms.`,
+      time: timeSec,
+    };
+  }
+
+  if (runResult.outputExceeded) {
+    await adapter.forceRemoveContainer(containerName);
+    return {
+      status: 'completed',
+      result: 'failure',
+      exit_code: 1,
+      stdout: runResult.stdout.slice(0, request.limits.maxOutputBytes),
+      stderr: `Output Limit Exceeded: submission exceeded ${request.limits.maxOutputBytes} bytes of output.`,
+      time: timeSec,
+    };
+  }
+
+  if (runResult.stderr.includes(COMPILE_FAIL_SENTINEL)) {
+    const cleanedBuildErr = runResult.stderr
+      .replace(COMPILE_FAIL_SENTINEL, '')
+      .trim()
+      .slice(0, request.limits.maxOutputBytes);
+    return {
+      status: 'completed',
+      build_result: 'failure',
+      build_stderr: cleanedBuildErr || 'Compilation failed.',
+      result: 'failure',
+      exit_code: runResult.exitCode ?? 1,
+      stdout: '',
+      stderr: '',
+      time: timeSec,
+    };
+  }
+
+  if (runResult.exitCode === 137) {
+    return {
+      status: 'completed',
+      result: 'failure',
+      exit_code: 137,
+      stdout: '',
+      stderr: `Memory Limit Exceeded: container terminated (OOM / SIGKILL, limit ${request.limits.memoryLimitMb}MB).`,
+      time: timeSec,
+    };
+  }
+
+  const succeeded = runResult.exitCode === 0;
+  return {
+    status: 'completed',
+    build_result: 'success',
+    result: succeeded ? 'success' : 'failure',
+    exit_code: runResult.exitCode ?? 1,
+    stdout: runResult.stdout.slice(0, request.limits.maxOutputBytes),
+    stderr: runResult.stderr.slice(0, request.limits.maxOutputBytes),
+    time: timeSec,
+  };
+}

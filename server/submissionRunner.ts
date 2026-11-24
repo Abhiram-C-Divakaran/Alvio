@@ -885,6 +885,9 @@ export function createIsolatedJudgeProvider(options: IsolatedJudgeProviderOption
     throw new Error('ISOLATED_JUDGE_URL must be configured with an http(s) URL when JUDGE_PROVIDER=isolated.');
   }
   const token = (options.token ?? process.env.ISOLATED_JUDGE_TOKEN ?? '').trim();
+  if (process.env.NODE_ENV === 'production' && token.length < 16) {
+    throw new Error('ISOLATED_JUDGE_TOKEN must be configured (>= 16 chars) in production when JUDGE_PROVIDER=isolated.');
+  }
   const fetchImpl = options.fetchImpl ?? fetch;
   const configuredLimits: JudgeResourceLimits = {
     cpuTimeLimitSec: Number(options.limits?.cpuTimeLimitSec ?? process.env.JUDGE_CPU_LIMIT_SEC) || DEFAULT_JUDGE_LIMITS.cpuTimeLimitSec,
