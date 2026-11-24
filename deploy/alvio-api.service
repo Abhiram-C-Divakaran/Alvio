@@ -1,0 +1,30 @@
+[Unit]
+Description=Alvio Express API & Web Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alvio
+Group=alvio
+WorkingDirectory=/opt/alvio
+EnvironmentFile=/etc/alvio/api.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/alvio/dist/server.cjs
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/alvio /var/backups/alvio
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=alvio-api
+
+[Install]
+WantedBy=multi-user.target

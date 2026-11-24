@@ -88,20 +88,24 @@ export function createJudgeWorkerServer(options: JudgeWorkerOptions): Server {
   const adapter = options.adapter ?? createDockerRuntimeAdapter('docker', options.env);
   let activeJobs = 0;
 
+  const configuredRuntime = (options.dockerRuntime ?? options.env?.JUDGE_DOCKER_RUNTIME ?? '').trim();
+
   const server = createServer(async (req, res) => {
     const method = req.method || 'GET';
     const url = (req.url || '/').split('?')[0];
 
     if (method === 'GET' && url === '/health') {
-      const health = await adapter.checkDaemonHealth();
+      const health = await adapter.checkDaemonHealth(configuredRuntime || undefined);
       return sendJson(res, health.ok ? 200 : 503, {
         status: health.ok ? 'ok' : 'degraded',
         docker: health.ok ? 'ok' : 'unavailable',
-        runtime: options.dockerRuntime || options.env?.JUDGE_DOCKER_RUNTIME || 'default-runc',
+        runtime: configuredRuntime || 'default-runc',
+        runtimeVerified: health.runtimeVerified ?? health.ok,
+        ...(health.availableRuntimes ? { availableRuntimes: health.availableRuntimes } : {}),
         activeJobs,
         maxConcurrentJobs,
         supportedLanguages: WORKER_SUPPORTED_LANGUAGES,
-        ...(health.ok ? {} : { detail: 'Container runtime is currently unavailable.' }),
+        ...(health.ok ? {} : { detail: health.detail || 'Container runtime is currently unavailable.' }),
       });
     }
 

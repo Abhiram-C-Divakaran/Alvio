@@ -66,7 +66,12 @@ export interface ContainerRunOutput {
 export interface ContainerRuntimeAdapter {
   runContainer: (input: ContainerRunInput) => Promise<ContainerRunOutput>;
   forceRemoveContainer: (containerName: string) => Promise<void>;
-  checkDaemonHealth: () => Promise<{ ok: boolean; detail?: string }>;
+  checkDaemonHealth: (requiredRuntime?: string) => Promise<{
+    ok: boolean;
+    detail?: string;
+    runtimeVerified?: boolean;
+    availableRuntimes?: string[];
+  }>;
 }
 
 interface LanguageContainerSpec {
@@ -372,12 +377,18 @@ export function createDockerRuntimeAdapter(
     });
   };
 
-  const checkDaemonHealth = async (): Promise<{ ok: boolean; detail?: string }> => {
+  const checkDaemonHealth = async (
+    requiredRuntime?: string
+  ): Promise<{ ok: boolean; detail?: string; runtimeVerified?: boolean; availableRuntimes?: string[] }> => {
     return new Promise((resolve) => {
-      const child = spawn(dockerBin, ['info', '--format', '{{.ServerVersion}}'], {
-        env: buildSanitizedHostEnv(hostEnv),
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      const child = spawn(
+        dockerBin,
+        ['info', '--format', '{{.ServerVersion}}|{{range $k, $v := .Runtimes}}{{$k}},{{end}}'],
+        {
+          env: buildSanitizedHostEnv(hostEnv),
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }
+      );
       let out = '';
       let err = '';
       const timer = setTimeout(() => {
@@ -386,22 +397,47 @@ export function createDockerRuntimeAdapter(
         } catch {
           // ignore
         }
-        resolve({ ok: false, detail: 'Docker daemon health check timed out.' });
+        resolve({ ok: false, detail: 'Docker daemon health check timed out.', runtimeVerified: false });
       }, 3000);
 
       child.stdout?.on('data', (d) => (out += d.toString()));
       child.stderr?.on('data', (d) => (err += d.toString()));
       child.on('error', (e: NodeJS.ErrnoException) => {
         clearTimeout(timer);
-        resolve({ ok: false, detail: `Docker CLI unavailable: ${e.code || e.message}` });
+        resolve({ ok: false, detail: `Docker CLI unavailable: ${e.code || e.message}`, runtimeVerified: false });
       });
       child.on('close', (code) => {
         clearTimeout(timer);
-        if (code === 0 && out.trim()) {
-          resolve({ ok: true, detail: `docker ${out.trim()}` });
-        } else {
-          resolve({ ok: false, detail: err.trim() || `docker info exited with code ${code}` });
+        const trimmed = out.trim();
+        if (code !== 0 || !trimmed) {
+          resolve({
+            ok: false,
+            detail: err.trim() || `docker info exited with code ${code}`,
+            runtimeVerified: false,
+          });
+          return;
         }
+        const [version, runtimeListRaw = ''] = trimmed.split('|');
+        const availableRuntimes = runtimeListRaw
+          .split(',')
+          .map((r) => r.trim())
+          .filter(Boolean);
+        const targetRuntime = (requiredRuntime || '').trim();
+        if (targetRuntime && !availableRuntimes.includes(targetRuntime)) {
+          resolve({
+            ok: false,
+            detail: `Required Docker runtime "${targetRuntime}" is not registered (available: ${availableRuntimes.join(', ') || 'none'}).`,
+            runtimeVerified: false,
+            availableRuntimes,
+          });
+          return;
+        }
+        resolve({
+          ok: true,
+          detail: `docker ${version}`,
+          runtimeVerified: targetRuntime ? availableRuntimes.includes(targetRuntime) : true,
+          availableRuntimes,
+        });
       });
     });
   };

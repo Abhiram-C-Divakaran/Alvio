@@ -1,0 +1,13 @@
+[Unit]
+Description=Alvio SQLite WAL-safe Online Backup & Integrity Verification
+
+[Service]
+Type=oneshot
+User=alvio
+Group=alvio
+WorkingDirectory=/opt/alvio
+EnvironmentFile=/etc/alvio/api.env
+ExecStart=/bin/sh -c 'mkdir -p /var/backups/alvio && npx tsx /opt/alvio/server/backupDb.ts "/var/backups/alvio/alvio-$(date +%%F-%%H%%M).sqlite" && find /var/backups/alvio -name "alvio-*.sqlite" -mtime +14 -delete'
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=alvio-backup

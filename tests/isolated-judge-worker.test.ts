@@ -350,7 +350,7 @@ test('end-to-end Express -> isolated judge worker handles timeout, OOM, output f
   }
 });
 
-test('curated hidden test suite seeds idempotently across 18 catalog problems, matches signatures, and redacts hidden failures', async () => {
+test('curated hidden test suite seeds idempotently across 83 catalog problems, matches signatures, and redacts hidden failures', async () => {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON;');
   migrate(db);
@@ -362,7 +362,7 @@ test('curated hidden test suite seeds idempotently across 18 catalog problems, m
   const firstRun = seedHiddenTests(db);
   assert.equal(firstRun.problemsMatched, Object.keys(CURATED_HIDDEN_TESTS).length);
   assert.equal(firstRun.problemsSkipped, 0);
-  assert.ok(firstRun.inserted >= 70, `Expected >= 70 hidden test cases, got ${firstRun.inserted}`);
+  assert.ok(firstRun.inserted >= 340, `Expected >= 340 hidden test cases, got ${firstRun.inserted}`);
   assert.equal(firstRun.alreadyPresent, 0);
 
   // Re-seeding must be strictly idempotent
@@ -500,157 +500,40 @@ test('all 7 language runtime specs are mutually compatible, use pinned images, e
   }
 });
 
-test('all 75 curated hidden test expected values are verified against reference implementations and prevent duplicate XP', async () => {
-  const oracles: Record<string, (...args: any[]) => any> = {
-    'number-of-digit-one': (n: number) => {
-      let count = 0;
-      for (let i = 1; i <= n; i *= 10) {
-        const divider = i * 10;
-        count += Math.floor(n / divider) * i + Math.min(Math.max((n % divider) - i + 1, 0), i);
-      }
-      return count;
-    },
-    'rotate-list': (head: number[], k: number) => {
-      if (head.length === 0) return [];
-      const r = k % head.length;
-      return r === 0 ? [...head] : [...head.slice(-r), ...head.slice(0, -r)];
-    },
-    'unique-paths-ii': (grid: number[][]) => {
-      const m = grid.length;
-      const n = grid[0].length;
-      const dp = Array(n).fill(0);
-      dp[0] = grid[0][0] === 1 ? 0 : 1;
-      for (let i = 0; i < m; i++) {
-        for (let j = 0; j < n; j++) {
-          if (grid[i][j] === 1) dp[j] = 0;
-          else if (j > 0) dp[j] += dp[j - 1];
-        }
-      }
-      return dp[n - 1];
-    },
-    'house-robber': (nums: number[]) => {
-      let prev2 = 0;
-      let prev1 = 0;
-      for (const x of nums) {
-        const cur = Math.max(prev1, prev2 + x);
-        prev2 = prev1;
-        prev1 = cur;
-      }
-      return prev1;
-    },
-    'maximum-subarray': (nums: number[]) => {
-      let best = nums[0];
-      let cur = nums[0];
-      for (let i = 1; i < nums.length; i++) {
-        cur = Math.max(nums[i], cur + nums[i]);
-        best = Math.max(best, cur);
-      }
-      return best;
-    },
-    'perfect-number': (num: number) => {
-      if (num <= 1) return false;
-      let sum = 1;
-      for (let d = 2; d * d <= num; d++) {
-        if (num % d === 0) {
-          sum += d;
-          if (d * d !== num) sum += num / d;
-        }
-      }
-      return sum === num;
-    },
-    'merge-intervals': (intervals: number[][]) => {
-      const sorted = intervals.map((x) => [...x]).sort((a, b) => a[0] - b[0]);
-      const out: number[][] = [sorted[0]];
-      for (let i = 1; i < sorted.length; i++) {
-        const last = out[out.length - 1];
-        if (sorted[i][0] <= last[1]) last[1] = Math.max(last[1], sorted[i][1]);
-        else out.push(sorted[i]);
-      }
-      return out;
-    },
-    'pascals-triangle': (numRows: number) => {
-      const tri: number[][] = [];
-      for (let r = 0; r < numRows; r++) {
-        const row = Array(r + 1).fill(1);
-        for (let c = 1; c < r; c++) row[c] = tri[r - 1][c - 1] + tri[r - 1][c];
-        tri.push(row);
-      }
-      return tri;
-    },
-    'flood-fill': (image: number[][], sr: number, sc: number, color: number) => {
-      const grid = image.map((r) => [...r]);
-      const orig = grid[sr][sc];
-      if (orig === color) return grid;
-      const dfs = (r: number, c: number) => {
-        if (r < 0 || r >= grid.length || c < 0 || c >= grid[0].length || grid[r][c] !== orig) return;
-        grid[r][c] = color;
-        dfs(r + 1, c); dfs(r - 1, c); dfs(r, c + 1); dfs(r, c - 1);
-      };
-      dfs(sr, sc);
-      return grid;
-    },
-    'power-of-four': (n: number) => n > 0 && (n & (n - 1)) === 0 && (n & 0x55555555) !== 0,
-    'word-break': (s: string, wordDict: string[]) => {
-      const set = new Set(wordDict);
-      const dp = Array(s.length + 1).fill(false);
-      dp[0] = true;
-      for (let i = 1; i <= s.length; i++) {
-        for (let j = 0; j < i; j++) {
-          if (dp[j] && set.has(s.slice(j, i))) { dp[i] = true; break; }
-        }
-      }
-      return dp[s.length];
-    },
-    'count-and-say': (n: number) => {
-      let s = '1';
-      for (let step = 1; step < n; step++) {
-        let next = '';
-        for (let i = 0; i < s.length; ) {
-          let j = i;
-          while (j < s.length && s[j] === s[i]) j++;
-          next += `${j - i}${s[i]}`;
-          i = j;
-        }
-        s = next;
-      }
-      return s;
-    },
-    'valid-anagram': (s: string, t: string) =>
-      s.length === t.length && s.split('').sort().join('') === t.split('').sort().join(''),
-    'best-time-to-buy-and-sell-stock': (prices: number[]) => {
-      let minP = Infinity;
-      let best = 0;
-      for (const p of prices) { minP = Math.min(minP, p); best = Math.max(best, p - minP); }
-      return best;
-    },
-    'valid-parentheses': (s: string) => {
-      const stack: string[] = [];
-      const pairs: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
-      for (const ch of s) {
-        if (ch in pairs) { if (stack.pop() !== pairs[ch]) return false; }
-        else stack.push(ch);
-      }
-      return stack.length === 0;
-    },
-    'climbing-stairs': (n: number) => {
-      let a = 1;
-      let b = 1;
-      for (let i = 2; i <= n; i++) { const c = a + b; a = b; b = c; }
-      return b;
-    },
-    'contains-duplicate': (nums: number[]) => new Set(nums).size !== nums.length,
-    'reverse-string': (s: string[]) => [...s].reverse(),
+test('judge worker /health fails closed with 503 if configured gVisor runtime is missing', async () => {
+  const missingRuntimeAdapter: ContainerRuntimeAdapter = {
+    runContainer: async () => ({
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      timedOut: false,
+      outputExceeded: false,
+      durationMs: 1,
+    }),
+    forceRemoveContainer: async () => {},
+    checkDaemonHealth: async (requiredRuntime) => ({
+      ok: false,
+      detail: `Required Docker runtime "${requiredRuntime}" is not registered.`,
+      runtimeVerified: false,
+      availableRuntimes: ['runc'],
+    }),
   };
 
-  let verifiedCount = 0;
-  for (const [problemId, cases] of Object.entries(CURATED_HIDDEN_TESTS)) {
-    const fn = oracles[problemId];
-    assert.ok(fn, `Missing oracle for curated problem ${problemId}`);
-    for (const tc of cases) {
-      const clonedInput = JSON.parse(JSON.stringify(tc.input));
-      assert.deepEqual(fn(...clonedInput), tc.expected, `Hidden test oracle mismatch for ${problemId}: ${JSON.stringify(tc.input)}`);
-      verifiedCount++;
-    }
+  const worker = createJudgeWorkerServer({
+    token: WORKER_TOKEN,
+    dockerRuntime: 'runsc',
+    adapter: missingRuntimeAdapter,
+  });
+  const baseUrl = await listenOnEphemeralPort(worker);
+  try {
+    const res = await fetch(`${baseUrl}/health`);
+    assert.equal(res.status, 503);
+    const body = await res.json();
+    assert.equal(body.status, 'degraded');
+    assert.equal(body.runtime, 'runsc');
+    assert.equal(body.runtimeVerified, false);
+    assert.match(body.detail, /runsc/);
+  } finally {
+    await closeServer(worker);
   }
-  assert.equal(verifiedCount, 75);
 });

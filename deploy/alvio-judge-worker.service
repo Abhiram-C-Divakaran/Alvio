@@ -1,0 +1,24 @@
+[Unit]
+Description=Alvio Isolated Coding Judge Worker (Dedicated Judge VM Only)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/alvio-judge
+EnvironmentFile=/etc/alvio/judge-worker.env
+Environment=NODE_ENV=production
+Environment=JUDGE_DOCKER_RUNTIME=runsc
+ExecStart=/usr/bin/npx tsx /opt/alvio-judge/judge-worker/server.ts
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=alvio-judge-worker
+
+[Install]
+WantedBy=multi-user.target
