@@ -248,14 +248,20 @@ export function createDockerRuntimeAdapter(
   hostEnv: NodeJS.ProcessEnv = process.env
 ): ContainerRuntimeAdapter {
   const forceRemoveContainer = async (containerName: string): Promise<void> => {
-    await new Promise<void>((resolve) => {
-      const killer = spawn(dockerBin, ['rm', '-f', containerName], {
-        env: buildSanitizedHostEnv(hostEnv),
-        stdio: 'ignore',
+    const removeOnce = () =>
+      new Promise<void>((resolve) => {
+        const killer = spawn(dockerBin, ['rm', '-f', containerName], {
+          env: buildSanitizedHostEnv(hostEnv),
+          stdio: 'ignore',
+        });
+        killer.on('error', () => resolve());
+        killer.on('close', () => resolve());
       });
-      killer.on('error', () => resolve());
-      killer.on('close', () => resolve());
-    });
+    await removeOnce();
+    // Guard against the dockerd race where `docker run` is SIGKILLed mid-CreateContainer
+    // and the container finishes registering slightly after the first `docker rm -f`.
+    await new Promise<void>((resolve) => setTimeout(resolve, 200));
+    await removeOnce();
   };
 
   const runContainer = async (input: ContainerRunInput): Promise<ContainerRunOutput> => {
@@ -443,10 +449,11 @@ export async function executeInIsolatedContainer(
   options: { env?: NodeJS.ProcessEnv; runtime?: string } = {}
 ): Promise<ProviderExecutionResponse> {
   const containerName = `alvio-judge-${randomBytes(8).toString('hex')}`;
-  // Compiled languages (C++, Java, C#) need brief compile headroom in addition to execution CPU limit.
+  // Compiled languages need compile headroom; all languages need brief containerd cold-start headroom
+  // while in-container `ulimit -S -t` enforces the exact CPU execution budget.
   const isCompiled = request.language === 'cpp' || request.language === 'c' || request.language === 'java' || request.language === 'csharp';
-  const compileHeadroomMs = isCompiled ? 5000 : 2500;
-  const effectiveTimeoutMs = Math.min(request.timeoutMs, request.limits.cpuTimeLimitSec * 1000 + compileHeadroomMs);
+  const startupHeadroomMs = isCompiled ? 6000 : 4000;
+  const effectiveTimeoutMs = Math.min(request.timeoutMs, request.limits.cpuTimeLimitSec * 1000 + startupHeadroomMs);
   const args = buildDockerRunArgs({
     language: request.language,
     limits: request.limits,
