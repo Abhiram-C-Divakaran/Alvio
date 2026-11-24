@@ -54,14 +54,14 @@ Because execution containers run with `--network=none`, pre-pull every pinned im
 | C | `gcc:14-bookworm` (`JUDGE_IMAGE_GCC`) | `gcc -O2 -std=c17 ... -lm` → `/work/app` |
 | C++ | `gcc:14-bookworm` (`JUDGE_IMAGE_GCC`) | `g++ -O2 -std=c++20` → `/work/app` |
 | Java | `eclipse-temurin:21-jdk-alpine` (`JUDGE_IMAGE_JAVA`) | `javac` → `java -XX:+UseSerialGC -Xmx...` |
-| C# | `mono:6.12-slim` (`JUDGE_IMAGE_CSHARP`) | `mcs` → `mono /work/app.exe` |
+| C# | `mono:6.12` (`JUDGE_IMAGE_CSHARP`) | `mcs` → `mono /work/app.exe` |
 
 ```sh
 docker pull node:22-alpine
 docker pull python:3.12-alpine
 docker pull gcc:14-bookworm
 docker pull eclipse-temurin:21-jdk-alpine
-docker pull mono:6.12-slim
+docker pull mono:6.12
 ```
 
 ---

@@ -21,7 +21,7 @@ export const PINNED_RUNTIME_IMAGES = {
   python: 'python:3.12-alpine',
   gcc: 'gcc:14-bookworm',
   java: 'eclipse-temurin:21-jdk-alpine',
-  csharp: 'mono:6.12-slim',
+  csharp: 'mono:6.12',
 } as const;
 
 export const MAX_WORKER_SOURCE_BYTES = 131072; // Wrapper + user code
@@ -95,7 +95,9 @@ export function resolveLanguageSpec(
 
   const cpuSec = Math.max(1, Math.min(15, Math.round(limits.cpuTimeLimitSec)));
   const heapMb = Math.max(32, Math.floor(limits.memoryLimitMb * 0.75));
-  const execUlimit = `ulimit -t ${cpuSec} -f ${MAX_CONTAINER_FILE_BLOCKS}`;
+  // Use separate POSIX ulimit calls (Debian dash rejects multiple flags in one ulimit call)
+  // and soft CPU limit (-S -t) so Linux emits SIGXCPU (exit 152) instead of SIGKILL (137, OOM).
+  const execUlimit = `ulimit -S -t ${cpuSec} && ulimit -f ${MAX_CONTAINER_FILE_BLOCKS}`;
   const compileFailEcho = `printf '%s\\n' '${COMPILE_FAIL_SENTINEL}' >&2`;
 
   switch (language) {

@@ -452,13 +452,13 @@ test('all 7 language runtime specs are mutually compatible, use pinned images, e
   for (const lang of WORKER_SUPPORTED_LANGUAGES) {
     const spec = resolveLanguageSpec(lang, limits, {});
     assert.ok(spec.image.includes(':'), `Image for ${lang} must be pinned with an explicit tag`);
-    assert.match(spec.shellCommand, /ulimit -t 4 -f 16384/, `${lang} must enforce CPU and file-size ulimit`);
+    assert.match(spec.shellCommand, /ulimit -S -t 4 && ulimit -f 16384/, `${lang} must enforce POSIX CPU and file-size ulimit`);
   }
 
-  // Verify C# uses mono:6.12-slim with mcs/mono and preserves compiler stderr (no 2>/dev/null)
+  // Verify C# uses mono:6.12 with mcs/mono and preserves compiler stderr (no 2>/dev/null)
   const csharpSpec = resolveLanguageSpec('csharp', limits, {});
   assert.equal(csharpSpec.image, PINNED_RUNTIME_IMAGES.csharp);
-  assert.match(csharpSpec.image, /^mono:/);
+  assert.equal(csharpSpec.image, 'mono:6.12');
   assert.match(csharpSpec.shellCommand, /\bmcs -out:\/work\/app\.exe \/work\/Program\.cs;/);
   assert.match(csharpSpec.shellCommand, /\bexec mono \/work\/app\.exe$/);
   assert.doesNotMatch(csharpSpec.shellCommand, /2>\/dev\/null/);

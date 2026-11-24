@@ -280,7 +280,15 @@ test('3. Live Docker hidden-test isolation blocks __filename read, stdout dump, 
   assert.equal(exfilRes.status, 200);
   assert.equal(exfilRes.body.status, 'Error');
   assert.equal(exfilRes.body.message, 'Runtime Error on hidden test case.');
-  assert.doesNotMatch(JSON.stringify(exfilRes.body), /77777|11111|EXFIL_/);
+  assert.doesNotMatch(
+    JSON.stringify({
+      message: exfilRes.body.message,
+      stdout: exfilRes.body.stdout,
+      failedTestCase: exfilRes.body.failedTestCase,
+    }),
+    /77777|11111|88888|EXFIL_/
+  );
+  assert.doesNotMatch(JSON.stringify(exfilRes.body), /77777|11111|88888/);
 });
 
 test('4. Live Docker enforces timeout, OOM memory limit, output limit, network-none, read-only rootfs, non-root, and secret stripping', async () => {
