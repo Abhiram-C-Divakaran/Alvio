@@ -30,6 +30,7 @@ Copy `.env.example` to `.env`, then explicitly configure `JWT_SECRET` with a pri
 | `COOKIE_SECURE` | Optional (`true`/`false`); set `true` behind HTTPS in production |
 | `TRUST_PROXY` | Optional (`true`/`1`); enable when running behind a reverse proxy for HTTPS detection & rate-limit IP |
 | `RATE_LIMIT_STORE` | Optional (`memory` default or `sqlite` for restart-persistent / shared-SQLite rate limiting) |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Optional transactional email credentials for password reset & email verification (or use `EMAIL_WEBHOOK_URL` + `EMAIL_WEBHOOK_SECRET`) |
 | `PORT` | HTTP port; example uses `3001`, server default `3000` |
 | `ALLOWED_ORIGINS` | Comma-separated exact origins; mandatory in production |
 | `DATABASE_PATH` | SQLite file; default `./data/database.sqlite` |
@@ -109,7 +110,7 @@ All TypeScript diagnostics (`npx tsc -p tsconfig.app.json --noEmit`) and reposit
 
 ## Database, backup, and migration
 
-SQLite migrations (6 numbered, transactional, repeatable migrations) run automatically on server startup and are tracked in `schema_migrations`. Existing accounts and learning records are preserved across upgrades, including `users.token_version`, `auth_sessions` (`ON DELETE CASCADE`), `xp_ledger` (`ON DELETE CASCADE`, unique per `(user_id, event_type, event_key)`), and `rate_limits`. Submissions, interactions, progress updates, XP awards, and session revocations execute inside explicit `BEGIN IMMEDIATE` transactions.
+SQLite migrations (7 numbered, transactional, repeatable migrations) run automatically on server startup and are tracked in `schema_migrations`. Existing accounts and learning records are preserved across upgrades, including `users.token_version`, `users.email_verified_at`, `auth_sessions` (`ON DELETE CASCADE`), `password_reset_tokens`, `email_verification_tokens`, `xp_ledger` (`ON DELETE CASCADE`, unique per `(user_id, event_type, event_key)`), and `rate_limits`. Submissions, interactions, progress updates, XP awards, password resets, email confirmations, and session revocations execute inside explicit `BEGIN IMMEDIATE` transactions.
 
 Create a WAL-safe online backup and verify integrity with:
 
@@ -125,7 +126,7 @@ Backups use SQLite's atomic `VACUUM INTO` followed by `PRAGMA integrity_check`. 
 - AI endpoints require authentication, enforce request limits, per-user/IP quotas, timeouts, disconnect cancellation, and a bounded single retry for transient upstream 5xx/network errors before headers are sent. Missing AI configuration returns an explicit unavailable response.
 - **Server-authoritative XP ledger**: Permanent XP (`users.xp`) is awarded exclusively on the server via `xp_ledger` (`UNIQUE(user_id, event_type, event_key)`). Verified coding solves automatically award difficulty-based XP once per problem (`Easy: 25`, `Medium: 50`, `Hard: 100`). Validated learning milestones (`POST /api/learning/events`) ignore client XP fields, deduplicate strictly, and enforce a `150 XP/day` cap. Uploading forged `totalXp` or `authoritativeXp` via `PUT /api/progress` never modifies `users.xp`.
 - Coding submissions are verified server-side against each problem's provided SQLite test cases using the external Paiza execution provider (`server/submissionRunner.ts`), with in-flight duplicate submission protection (`409 Conflict`), NUL-byte rejection, and structured `failedTestCase` reporting. Client-supplied verdicts and test cases are ignored, and Express never executes student code locally. There is no hidden-test LeetCode-style container judge or measured memory/percentiles. See [src/features/coding/WORKSPACE.md](src/features/coding/WORKSPACE.md) and [docs/architecture.md](docs/architecture.md) for limitations and the planned isolated judge architecture.
-- Password reset and email verification remain explicitly unavailable until transactional email (SMTP/API) infrastructure is configured. See [docs/architecture.md](docs/architecture.md) for the planned reset/verification design.
+- **Password reset & email verification**: Backend endpoints (`POST /api/auth/forgot-password`, `POST /api/auth/reset-password`, `POST /api/auth/verify-email/request`, `POST /api/auth/verify-email/confirm`) and `/auth` UI flows use single-use SHA-256-hashed tokens with expiration and forced cross-device session revocation on password reset. Outbound delivery activates automatically when `RESEND_API_KEY` + `EMAIL_FROM` or `EMAIL_WEBHOOK_URL` is configured, and explicitly returns `503 EMAIL_NOT_CONFIGURED` otherwise (never simulated).
 - Rate limiting defaults to in-memory per process and supports `RATE_LIMIT_STORE=sqlite` for restart-persistent / shared-SQLite single-host quotas. Multi-host horizontal deployments require a shared Redis store and `TRUST_PROXY=true` behind a reverse proxy.
 - GitHub Actions CI (`.github/workflows/ci.yml`) runs lint, full TypeScript checks, production build, backend foundation tests, domain model tests, and Playwright Chromium regressions on pushes and pull requests without paid API keys.
 - Tutor/interview histories, code drafts and visualizer sessions remain account-scoped on the device. Learning progress syncs to the server.

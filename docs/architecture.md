@@ -37,12 +37,13 @@ Express owns accounts and bcrypt password hashes in SQLite. Signup normalizes em
   - When the backend is unreachable, only a previously verified, unexpired session with an account-scoped progress cache can open offline cached learning UI.
   - Explicit sign-out flushes pending progress (up to 3 seconds), calls `/api/auth/logout` best-effort, cancels in-flight requests, and clears visible account state while preserving device-local progress cache for future sign-in.
 
-### Planned password reset & email verification architecture (requires external email infrastructure)
+### Password reset & email verification (`server/authRecovery.ts`)
 
-Password reset and email verification are intentionally **not** mocked or simulated because secure delivery requires an external transactional email provider (SMTP/Resend/SES/Postmark):
+Both workflows are implemented end-to-end using SQLite Migration #7 (`users.email_verified_at`, `password_reset_tokens`, `email_verification_tokens`) and a pluggable `EmailSender` transport (never simulated when unconfigured):
 
-- **Password reset**: Add a `password_reset_tokens(id, user_id, token_hash, expires_at, used_at)` table (15-minute TTL, SHA-256 hashed single-use token). `POST /api/auth/forgot-password` always returns a generic `200` response to prevent account enumeration, rate-limited by IP and email. `POST /api/auth/reset-password` validates the token inside a transaction, updates `users.password_hash`, marks `used_at`, and calls `revokeAllUserSessions(userId)`.
-- **Email verification**: Add `email_verified_at TEXT` to `users` and an `email_verification_tokens` table (24-hour TTL, single-use hashed token). Verification links confirm ownership before enabling email-based recovery or notifications.
+- **Transport configuration**: Automatically enables real outbound delivery when `RESEND_API_KEY` + `EMAIL_FROM` or `EMAIL_WEBHOOK_URL` (+ optional `EMAIL_WEBHOOK_SECRET`) is configured. Without a configured provider, request endpoints explicitly return `503 EMAIL_NOT_CONFIGURED`.
+- **Password reset**: `POST /api/auth/forgot-password` (rate-limited, anti-enumeration generic `200`) creates a single-use 15-minute SHA-256-hashed token and sends `/auth?mode=login&resetToken=...`. `POST /api/auth/reset-password` validates token hash/expiry/unused state inside `BEGIN IMMEDIATE`, updates bcrypt `password_hash`, marks `used_at`, increments `users.token_version`, revokes all active `auth_sessions`, and clears cookies.
+- **Email verification**: `POST /api/auth/verify-email/request` (`requireAuth`, rate-limited) issues a single-use 24-hour SHA-256-hashed token; `POST /api/auth/verify-email/confirm` atomically marks `users.email_verified_at` and `used_at`. `publicUser()` exposes `emailVerified`.
 
 ## Progress persistence
 
