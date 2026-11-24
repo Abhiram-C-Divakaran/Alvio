@@ -93,28 +93,28 @@ Branch: `feat/phase2-production-hardening` (branched from `main` `4496bba`).
 - **Coding playground, frontend resilience & CI**: Added strict parameter identifier validation, NUL-byte rejection, concurrent in-flight duplicate submission protection (`409`), and structured `failedTestCase` reporting in `server/submissionRunner.ts` and `server/submissions.ts`; added global and route-scoped React `ErrorBoundary` recovery UI (`src/components/ui/ErrorBoundary.tsx`); guarded `localStorage` access in `CodingWorkspace.tsx` and `ProfilePage.tsx`; cleared all remaining `src/` lint warnings; and added GitHub Actions CI (`.github/workflows/ci.yml`).
 
 - **Password reset & email verification (Migration #7)**: Added `server/authRecovery.ts` (`POST /api/auth/forgot-password`, `POST /api/auth/reset-password`, `POST /api/auth/verify-email/request`, `POST /api/auth/verify-email/confirm`), SHA-256-hashed single-use tokens (`password_reset_tokens`, `email_verification_tokens`, `users.email_verified_at`), forced cross-device session revocation on password reset, pluggable Resend/Webhook email transport (honest `503 EMAIL_NOT_CONFIGURED` when unconfigured), and `/auth` UI flows (`?resetToken=`, `?verifyToken=`, recovery form).
-- **Offline XP queue & judge status**: Added per-account durable offline learning-event queue (`alvio-xp-events-queue:<userId>`) replaying idempotently on reconnect, plus explicit `executionStatus` classification on coding submissions.
+- **Offline XP queue, hidden test cases & restore CLI (Migration #8)**: Added per-account durable offline learning-event queue (`alvio-xp-events-queue:<userId>`) replaying idempotently on reconnect, server-only `problem_hidden_tests` table with strict redaction of hidden inputs/outputs on failure (`hidden: true`), explicit `executionStatus` classification, Profile **Verify email** action, verified `restoreDatabase` (`npm run db:restore`), and [docs/deployment.md](deployment.md).
 
 ### Actual executed test results (2026-11-24 — Final Verified Pass)
 
 | Suite / Command | Mode | Result | Details / Timing |
 | --- | --- | --- | --- |
-| `npx tsc -p tsconfig.app.json --noEmit` | Offline static check | **PASS** | **0 errors** (18.14s; baseline was 269 errors) |
+| `npx tsc -p tsconfig.app.json --noEmit` | Offline static check | **PASS** | **0 errors** (16.55s; baseline was 269 errors) |
 | `npm run lint` (`oxlint`) | Offline static check | **PASS** | **0 errors**, **0 warnings in `src/`** (21 warnings in legacy root helper scripts/tests) |
 | `npm run build` (`vite` + `esbuild`) | Offline build | **PASS** | Built frontend + `dist/server.cjs` cleanly |
-| `npm run test:foundation` | Offline / mocked providers | **PASS** | **69/69 passed** (2.91s), including `auth-hardening` (5), `auth-recovery` (3), `backend-reliability` (4), `xp-ledger` (3), and `backup-and-judge` (5) |
-| `npm run test:models` | Offline unit tests | **PASS** | **10/10 passed** (0.72s) |
-| `npm run test:auth-browser` | Offline Playwright Chromium | **PASS** | **4/4 passed** (13.95s) |
+| `npm run test:foundation` | Offline / mocked providers | **PASS** | **71/71 passed** (3.08s), including `auth-hardening` (5), `auth-recovery` (3), `backend-reliability` (4), `xp-ledger` (3), `backup-and-judge` (5), and `hidden-tests-and-restore` (2) |
+| `npm run test:models` | Offline unit tests | **PASS** | **10/10 passed** (0.71s) |
+| `npm run test:auth-browser` | Offline Playwright Chromium | **PASS** | **4/4 passed** (9.75s) |
 | `npm run test:auth-regressions` | Offline Playwright Chromium | **PASS** | 4/4 suites passed (`auth`, `profile`, `coding-workspace`, `coding-language`) |
 | `npm run test:learning-browser` | Offline Playwright Chromium (AI mocked) | **PASS** | 4/4 suites passed (`navigation-shell` across 8 viewports, `video-lessons`, `tutor`, `visualizer`) |
 | `npm run test:practice-browser` | Offline Playwright Chromium (AI mocked) | **PASS** | 4/4 suites passed (`quiz`, `progress`, `pvp`, `interview-live`) |
-| `npm run test:demo` (full combined run) | Offline / mocked providers | **PASS** | Exit code 0 (297.94s total across all above suites) |
+| `npm run test:demo` (full combined run) | Offline / mocked providers | **PASS** | Exit code 0 (303.53s total across all above suites) |
 | `npm run test:ai-live` | **LIVE Groq API** (`openai/gpt-oss-120b`) | **PASS** | **3/3 passed** (14.10s: AI Tutor streaming + follow-up 6.96s, Mock Interview Q&A + JSON eval + report 4.87s, AI Visualizer follow-up 1.76s) |
 
 ### Remaining known limitations (honest production boundaries)
 
 - Password reset and email verification require setting `RESEND_API_KEY` + `EMAIL_FROM` or `EMAIL_WEBHOOK_URL` in production for live email delivery (unconfigured servers return `503 EMAIL_NOT_CONFIGURED`).
-- Coding Playground evaluates visible SQLite test cases through Paiza.IO rather than an isolated hidden-test container judge.
+- Coding Playground supports server-only hidden tests (`problem_hidden_tests`) with failure redaction, but the default 472-problem catalog seeds visible cases only (`hiddenCount = 0` unless hidden rows are added) and execution still uses external Paiza.IO rather than a self-hosted container sandbox.
 - Rate limits support memory (default) and single-host SQLite (`RATE_LIMIT_STORE=sqlite`); multi-host horizontal scaling requires a shared Redis store.
 - Dependency audit low/moderate advisories in upstream Monaco/Tailwind chains remain tracked for upstream releases; legacy `tests/review-fixes.test.mjs` retains two Node-vs-browser Worker assertions.
 

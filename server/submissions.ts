@@ -115,6 +115,22 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
         return res.status(500).json({ error: 'Problem test data is unavailable.' });
       }
 
+      // Load server-only hidden test cases (never returned by GET /api/problems/:id).
+      const hiddenRows = db
+        .prepare('SELECT input_json, expected_json FROM problem_hidden_tests WHERE problem_id = ? ORDER BY id ASC')
+        .all(problemId) as Array<{ input_json: string; expected_json: string }>;
+      if (hiddenRows.length > 0) {
+        problem.hiddenTestCases = hiddenRows
+          .map((h) => {
+            try {
+              return { input: JSON.parse(h.input_json), expected: JSON.parse(h.expected_json) };
+            } catch {
+              return null;
+            }
+          })
+          .filter((x): x is { input: unknown[]; expected: unknown } => x !== null);
+      }
+
       const verdict = await evaluateSubmission({
         problem,
         code,
@@ -232,6 +248,8 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
         executionStatus: mapExecutionStatus(verdict),
         passedCount: verdict.passedCount,
         totalCount: verdict.totalCount,
+        visibleCount: verdict.visibleCount,
+        hiddenCount: verdict.hiddenCount,
         executionTimeMs: verdict.executionTimeMs,
         message: verdict.message,
         stdout: verdict.stdout,

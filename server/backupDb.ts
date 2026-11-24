@@ -74,13 +74,53 @@ export function verifyDatabaseBackup(backupPath: string): BackupVerificationResu
   }
 }
 
+/**
+ * Verifies a backup snapshot first, removes stale WAL/SHM sidecars on the target path,
+ * and atomically restores the target SQLite file (server must be stopped before restoring).
+ */
+export function restoreDatabase(backupPath: string, targetPath: string): BackupVerificationResult {
+  const resolvedBackup = path.resolve(backupPath);
+  const resolvedTarget = path.resolve(targetPath);
+  if (resolvedBackup === resolvedTarget) {
+    throw new Error('Backup source and restore target paths must differ.');
+  }
+
+  const preCheck = verifyDatabaseBackup(resolvedBackup);
+  if (!preCheck.ok) {
+    throw new Error(`Backup failed integrity check: ${preCheck.integrity}`);
+  }
+
+  fs.mkdirSync(path.dirname(resolvedTarget), { recursive: true });
+  const tempPath = `${resolvedTarget}.restoring-${Date.now()}`;
+  fs.copyFileSync(resolvedBackup, tempPath);
+
+  for (const suffix of ['-wal', '-shm']) {
+    const sidecar = `${resolvedTarget}${suffix}`;
+    if (fs.existsSync(sidecar)) fs.unlinkSync(sidecar);
+  }
+  fs.renameSync(tempPath, resolvedTarget);
+  return verifyDatabaseBackup(resolvedTarget);
+}
+
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain) {
-  const source = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'database.sqlite');
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const destination =
-    process.argv[2] || path.join(process.cwd(), 'data', 'backups', `alvio-backup-${stamp}.sqlite`);
-  const result = backupDatabase(source, destination);
-  console.log(JSON.stringify({ event: 'db_backup_complete', destination, ...result }));
-  if (!result.ok) process.exit(1);
+  const defaultDbPath = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'database.sqlite');
+  if (process.argv[2] === '--restore') {
+    const backupFile = process.argv[3];
+    const targetFile = process.argv[4] || defaultDbPath;
+    if (!backupFile) {
+      console.error('Usage: npm run db:restore -- <backupPath> [targetPath]');
+      process.exit(1);
+    }
+    const restored = restoreDatabase(backupFile, targetFile);
+    console.log(JSON.stringify({ event: 'db_restore_complete', targetFile, ...restored }));
+    if (!restored.ok) process.exit(1);
+  } else {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const destination =
+      process.argv[2] || path.join(process.cwd(), 'data', 'backups', `alvio-backup-${stamp}.sqlite`);
+    const result = backupDatabase(defaultDbPath, destination);
+    console.log(JSON.stringify({ event: 'db_backup_complete', destination, ...result }));
+    if (!result.ok) process.exit(1);
+  }
 }

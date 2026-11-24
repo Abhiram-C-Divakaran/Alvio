@@ -150,6 +150,16 @@ CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT N
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_email_verification_user_id ON email_verification_tokens(user_id);`);
+},(db:DatabaseSync)=>{
+  db.exec(`CREATE TABLE IF NOT EXISTS problem_hidden_tests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    problem_id TEXT NOT NULL,
+    input_json TEXT NOT NULL,
+    expected_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(problem_id) REFERENCES problems(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_problem_hidden_tests_problem_id ON problem_hidden_tests(problem_id);`);
 }];
 for(let i=0;i<migrations.length;i++){if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1))continue;db.exec('BEGIN IMMEDIATE');try{migrations[i](db);db.prepare('INSERT INTO schema_migrations(version) VALUES(?)').run(i+1);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
 }

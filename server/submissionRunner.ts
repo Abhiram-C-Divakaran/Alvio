@@ -42,6 +42,7 @@ export interface SubmissionProblem {
   title?: string;
   signature: ProblemSignature;
   testCases: ProblemTestCase[];
+  hiddenTestCases?: ProblemTestCase[];
 }
 
 export interface ProviderExecutionRequest {
@@ -67,6 +68,7 @@ export type ExecutionProvider = (request: ProviderExecutionRequest) => Promise<P
 
 export interface FailedTestCaseDetail {
   index: number;
+  hidden?: boolean;
   input?: unknown;
   expected?: unknown;
   actual?: unknown;
@@ -76,6 +78,8 @@ export interface ServerSubmissionResult {
   status: VerdictStatus;
   passedCount: number;
   totalCount: number;
+  visibleCount: number;
+  hiddenCount: number;
   executionTimeMs: number;
   message: string;
   stdout: string[];
@@ -875,11 +879,18 @@ export async function evaluateSubmission(params: {
   const provider = params.provider ?? createPaizaProvider();
   const startedAt = performance.now();
 
-  if (!Array.isArray(problem.testCases) || problem.testCases.length === 0) {
+  const visibleCount = Array.isArray(problem.testCases) ? problem.testCases.length : 0;
+  const hiddenCases = Array.isArray(problem.hiddenTestCases) ? problem.hiddenTestCases : [];
+  const hiddenCount = hiddenCases.length;
+  const allTestCases = [...(Array.isArray(problem.testCases) ? problem.testCases : []), ...hiddenCases];
+
+  if (allTestCases.length === 0) {
     return {
       status: 'Error',
       passedCount: 0,
       totalCount: 0,
+      visibleCount: 0,
+      hiddenCount: 0,
       executionTimeMs: 0,
       message: 'No test cases are available for this problem.',
       stdout: [],
@@ -898,7 +909,9 @@ export async function evaluateSubmission(params: {
     return {
       status: 'Error',
       passedCount: 0,
-      totalCount: problem.testCases.length,
+      totalCount: allTestCases.length,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: 0,
       message: 'This problem is missing a valid function signature for server verification.',
       stdout: [],
@@ -907,15 +920,18 @@ export async function evaluateSubmission(params: {
     };
   }
 
-  const totalCount = problem.testCases.length;
+  const totalCount = allTestCases.length;
+  const combinedProblem: SubmissionProblem = { ...problem, testCases: allTestCases };
   const marker = `__ALVIO_RES_${randomBytes(6).toString('hex')}__:`;
-  const wrapped = generateExecutionWrapper(language, code, problem, marker);
+  const wrapped = generateExecutionWrapper(language, code, combinedProblem, marker);
 
   if (wrapped.unsupportedReason || !wrapped.sourceCode) {
     return {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: 0,
       message: wrapped.unsupportedReason || 'This language is not supported for server submission on this problem.',
       stdout: [],
@@ -939,6 +955,8 @@ export async function evaluateSubmission(params: {
         status: 'Error',
         passedCount: 0,
         totalCount,
+        visibleCount,
+        hiddenCount,
         executionTimeMs: elapsed,
         message: 'Time Limit Exceeded: execution timed out.',
         stdout: [],
@@ -950,6 +968,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: elapsed,
       message: err instanceof ExecutionProviderError
         ? err.message
@@ -965,6 +985,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: Math.max(0, Math.round(performance.now() - startedAt)),
       message: 'Code execution service returned a malformed response.',
       stdout: [],
@@ -978,6 +1000,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Time Limit Exceeded: execution timed out.',
       stdout: [],
@@ -992,6 +1016,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: trimMessage(`Compilation Error:\n${buildMsg}`),
       stdout: [],
@@ -1010,6 +1036,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: trimMessage(isSyntax ? `Compilation Error:\n${errText}` : errText),
       stdout: [],
@@ -1023,6 +1051,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: trimMessage(rawStderr || 'Execution completed without a test result.'),
       stdout: [],
@@ -1045,6 +1075,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Execution completed without a valid test result.',
       stdout: outLines.slice(0, MAX_STDOUT_LINES),
@@ -1079,12 +1111,12 @@ export async function evaluateSubmission(params: {
   } else if (pipeMatch) {
     const status = pipeMatch[1] as 'Passed' | 'Failed';
     const count = Number(pipeMatch[2]);
-    const failingCase = status === 'Failed' ? problem.testCases[count] : undefined;
+    const failingCase = status === 'Failed' ? allTestCases[count] : undefined;
     parsed = {
       status,
       passedCount: count,
       message: status === 'Passed'
-        ? 'All provided test cases passed.'
+        ? (hiddenCount > 0 ? 'All visible and hidden test cases passed.' : 'All provided test cases passed.')
         : `Test Case ${count + 1} Failed. Wrong Answer.`,
       ...(failingCase
         ? { failedTestCase: { index: count + 1, input: failingCase.input, expected: failingCase.expected } }
@@ -1097,6 +1129,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Execution returned an unreadable test result.',
       stdout: capturedBeforeMarker,
@@ -1119,6 +1153,8 @@ export async function evaluateSubmission(params: {
       status: 'Error',
       passedCount: 0,
       totalCount,
+      visibleCount,
+      hiddenCount,
       executionTimeMs: computeExecutionTimeMs(details, undefined, startedAt),
       message: 'Execution returned an invalid test count.',
       stdout: capturedBeforeMarker,
@@ -1131,16 +1167,23 @@ export async function evaluateSubmission(params: {
     ? parsed.stdout.slice(0, MAX_STDOUT_LINES).map((item) => String(item))
     : capturedBeforeMarker;
 
+  const isHiddenFailure = status === 'Failed' && passedCount >= visibleCount;
+
   const defaultMessage =
     status === 'Passed'
-      ? 'All provided test cases passed.'
+      ? (hiddenCount > 0 ? 'All visible and hidden test cases passed.' : 'All provided test cases passed.')
       : status === 'Failed'
-        ? `Test Case ${passedCount + 1} Failed. Wrong Answer.`
+        ? (isHiddenFailure
+          ? `Hidden Test Case ${passedCount - visibleCount + 1} Failed. Wrong Answer.`
+          : `Test Case ${passedCount + 1} Failed. Wrong Answer.`)
         : 'Runtime Error';
 
-  const message = typeof parsed.message === 'string' && parsed.message.trim()
-    ? trimMessage(parsed.message)
-    : defaultMessage;
+  // Never leak hidden test case inputs, expected outputs, or actual outputs back to the client.
+  const message = isHiddenFailure
+    ? `Hidden Test Case ${passedCount - visibleCount + 1} Failed. Wrong Answer.`
+    : (typeof parsed.message === 'string' && parsed.message.trim()
+      ? trimMessage(parsed.message)
+      : defaultMessage);
 
   const errorType: SubmissionErrorType =
     status === 'Error'
@@ -1149,26 +1192,33 @@ export async function evaluateSubmission(params: {
 
   let failedTestCase: FailedTestCaseDetail | undefined;
   if (status === 'Failed') {
-    const rawDetail =
-      parsed.failedTestCase && typeof parsed.failedTestCase === 'object' && !Array.isArray(parsed.failedTestCase)
-        ? (parsed.failedTestCase as Record<string, unknown>)
-        : undefined;
-    const fallbackCase = problem.testCases[passedCount];
-    failedTestCase = {
-      index:
-        typeof rawDetail?.index === 'number' && Number.isInteger(rawDetail.index) && rawDetail.index >= 1
-          ? rawDetail.index
-          : passedCount + 1,
-      input: rawDetail && 'input' in rawDetail ? rawDetail.input : fallbackCase?.input,
-      expected: rawDetail && 'expected' in rawDetail ? rawDetail.expected : fallbackCase?.expected,
-      ...(rawDetail && 'actual' in rawDetail ? { actual: rawDetail.actual } : {}),
-    };
+    if (isHiddenFailure) {
+      failedTestCase = { index: passedCount + 1, hidden: true };
+    } else {
+      const rawDetail =
+        parsed.failedTestCase && typeof parsed.failedTestCase === 'object' && !Array.isArray(parsed.failedTestCase)
+          ? (parsed.failedTestCase as Record<string, unknown>)
+          : undefined;
+      const fallbackCase = allTestCases[passedCount];
+      failedTestCase = {
+        index:
+          typeof rawDetail?.index === 'number' && Number.isInteger(rawDetail.index) && rawDetail.index >= 1
+            ? rawDetail.index
+            : passedCount + 1,
+        hidden: false,
+        input: rawDetail && 'input' in rawDetail ? rawDetail.input : fallbackCase?.input,
+        expected: rawDetail && 'expected' in rawDetail ? rawDetail.expected : fallbackCase?.expected,
+        ...(rawDetail && 'actual' in rawDetail ? { actual: rawDetail.actual } : {}),
+      };
+    }
   }
 
   return {
     status,
     passedCount,
     totalCount,
+    visibleCount,
+    hiddenCount,
     executionTimeMs: computeExecutionTimeMs(details, parsed.executionTimeMs, startedAt),
     message,
     stdout,

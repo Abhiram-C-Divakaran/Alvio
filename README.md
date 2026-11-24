@@ -10,7 +10,7 @@ Sign in, explore lessons and visualizers, practice, and take quizzes. Learning p
 
 React 19, TypeScript, React Router and Zustand power the interface. Three.js/React Three Fiber render visualizations; Monaco provides the code editor. Express 5 handles authentication, CSRF protection, API authorization, server-verified coding submissions and Groq AI requests. Node's built-in `node:sqlite` stores accounts, sessions, problems, submissions and learning progress; IndexedDB caches progress offline.
 
-Read [docs/architecture.md](docs/architecture.md) for the session/cookie/CSRF lifecycle, account isolation, progress conflict resolution, API limits, coding submission trust and future isolated judge architecture. For presentation setup and fallback steps, see [docs/demo-runbook.md](docs/demo-runbook.md), [docs/project-presentation-outline.md](docs/project-presentation-outline.md), and [docs/viva-preparation.md](docs/viva-preparation.md).
+Read [docs/architecture.md](docs/architecture.md) for the session/cookie/CSRF lifecycle, account isolation, progress conflict resolution, API limits, coding submission trust and future isolated judge architecture, and [docs/deployment.md](docs/deployment.md) for production deployment, HTTPS reverse proxy, monitoring, and backup/restore runbooks. For presentation setup and fallback steps, see [docs/demo-runbook.md](docs/demo-runbook.md), [docs/project-presentation-outline.md](docs/project-presentation-outline.md), and [docs/viva-preparation.md](docs/viva-preparation.md).
 
 ## Local setup
 
@@ -110,7 +110,7 @@ All TypeScript diagnostics (`npx tsc -p tsconfig.app.json --noEmit`) and reposit
 
 ## Database, backup, and migration
 
-SQLite migrations (7 numbered, transactional, repeatable migrations) run automatically on server startup and are tracked in `schema_migrations`. Existing accounts and learning records are preserved across upgrades, including `users.token_version`, `users.email_verified_at`, `auth_sessions` (`ON DELETE CASCADE`), `password_reset_tokens`, `email_verification_tokens`, `xp_ledger` (`ON DELETE CASCADE`, unique per `(user_id, event_type, event_key)`), and `rate_limits`. Submissions, interactions, progress updates, XP awards, password resets, email confirmations, and session revocations execute inside explicit `BEGIN IMMEDIATE` transactions.
+SQLite migrations (8 numbered, transactional, repeatable migrations) run automatically on server startup and are tracked in `schema_migrations`. Existing accounts and learning records are preserved across upgrades, including `users.token_version`, `users.email_verified_at`, `auth_sessions` (`ON DELETE CASCADE`), `password_reset_tokens`, `email_verification_tokens`, `xp_ledger` (`ON DELETE CASCADE`, unique per `(user_id, event_type, event_key)`), `rate_limits`, and server-only `problem_hidden_tests` (`ON DELETE CASCADE`). Submissions, interactions, progress updates, XP awards, password resets, email confirmations, and session revocations execute inside explicit `BEGIN IMMEDIATE` transactions.
 
 Create a WAL-safe online backup and verify integrity with:
 
@@ -118,7 +118,13 @@ Create a WAL-safe online backup and verify integrity with:
 npm run db:backup
 ```
 
-Backups use SQLite's atomic `VACUUM INTO` followed by `PRAGMA integrity_check`. To restore, stop the server, replace `DATABASE_PATH` (and remove stale `-wal`/`-shm` sidecars) with the verified backup file, and restart.
+Restore from a verified backup after stopping the server:
+
+```sh
+npm run db:restore -- <backupPath>
+```
+
+See [docs/deployment.md](docs/deployment.md) for full production deployment, HTTPS, monitoring, and recovery steps.
 
 ## Security and current limitations
 
