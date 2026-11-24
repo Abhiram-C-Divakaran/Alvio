@@ -14,7 +14,7 @@ Every `POST /execute` job runs inside a fresh ephemeral container with:
 | --- | --- |
 | Network isolation | `--network=none` (zero outbound, DNS, or host loopback access) |
 | Root filesystem | `--read-only` (immutable rootfs) |
-| Scratch space | `--tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m` and `--tmpfs /work:rw,nosuid,nodev,size=64m` |
+| Scratch space | `--tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m,uid=65534,gid=65534,mode=0700` and `--tmpfs /work:rw,nosuid,nodev,size=64m,uid=65534,gid=65534,mode=0700` |
 | Host filesystem | **Zero** bind mounts (`-v` / `--mount` never used); source code is streamed over `stdin` |
 | Capabilities | `--cap-drop=ALL` + `--security-opt=no-new-privileges:true` |
 | User privilege | `--user=65534:65534` (`nobody`, never `root`) |

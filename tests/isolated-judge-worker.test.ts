@@ -64,8 +64,8 @@ test('buildDockerRunArgs enforces strict container isolation and strips host sec
   assert.ok(args.includes('--cpus=1'));
   assert.ok(args.includes('--user=65534:65534'));
   assert.ok(args.includes('--runtime=runsc'));
-  assert.ok(args.some((a) => a.startsWith('--tmpfs=/tmp:rw,noexec,nosuid,nodev,')));
-  assert.ok(args.some((a) => a.startsWith('--tmpfs=/work:rw,nosuid,nodev,')));
+  assert.ok(args.some((a) => a.startsWith('--tmpfs=/tmp:rw,noexec,nosuid,nodev,') && a.includes('uid=65534,gid=65534,mode=0700')));
+  assert.ok(args.some((a) => a.startsWith('--tmpfs=/work:rw,nosuid,nodev,') && a.includes('uid=65534,gid=65534,mode=0700')));
 
   // Never bind-mount any host filesystem path
   assert.equal(args.some((a) => a === '-v' || a === '--volume' || a.startsWith('--mount')), false);
