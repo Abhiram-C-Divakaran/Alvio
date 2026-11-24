@@ -136,3 +136,62 @@ export interface XpLedgerResponse {
   dailyLearningCap: number;
   events: XpLedgerEntry[];
 }
+
+export interface ProfileUser extends PublicUser {
+  location?: string | null;
+  university?: string | null;
+  github?: string | null;
+  linkedin?: string | null;
+  avatar_url?: string | null;
+}
+
+export interface ProfileActivityRow {
+  id: number;
+  user_id: number;
+  activity_type: string;
+  points: number;
+  created_at: string;
+}
+
+export interface CourseProgressRow {
+  id: number;
+  user_id: number;
+  course_name: string;
+  progress: number;
+  updated_at: string;
+}
+
+export interface SolvedProblemSummary {
+  id: string;
+  title: string;
+  difficulty: string;
+  solved_at: string;
+}
+
+export interface PracticeActivityBucket {
+  recordedAt: string;
+  attempts: number;
+}
+
+export interface ProfileResponse {
+  user: ProfileUser;
+  activity: ProfileActivityRow[];
+  courses: CourseProgressRow[];
+  solvedProblems: SolvedProblemSummary[];
+  attemptedProblems: Array<{ id: string }>;
+  practiceActivity: PracticeActivityBucket[];
+}
+
+export interface DashboardApiResponse {
+  user: { id: number; name: string; xp: number; level: string };
+  stats: {
+    topicsCompleted: number;
+    totalTopics: number;
+    timeSpentMins: number;
+    dayStreak: number;
+    daysActive: number;
+    onlineUsers: number | null;
+  };
+  activity: ProfileActivityRow[];
+  allDates: string[];
+}
