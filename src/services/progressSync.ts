@@ -5,7 +5,7 @@ import { mergeProgress } from './mergeProgress';
 import useProgressStore from '../stores/useProgressStore';
 import useAuthStore from '../stores/useAuthStore';
 import type { LearningProgress } from '../types/user';
-import { reportLearningEvent } from './learningEvents';
+import { flushPendingLearningEvents, reportLearningEvent } from './learningEvents';
 
 export const useSyncStatus = create<{ status: 'idle' | 'syncing' | 'synced' | 'offline' | 'error'; message: string }>(() => ({ status: 'idle', message: '' }));
 let cache: ProgressCache | null = null;
@@ -107,6 +107,7 @@ export async function startProgressSync(userId: string, permanentXp?: number) {
     useProgressStore.getState().setProgress(merged); await persist(cache);
     if (generation !== epoch) return;
     if (cache?.pending) schedule(0); else status('synced', 'Progress synced');
+    void flushPendingLearningEvents();
   } catch {
     if (generation !== epoch || !cache) return;
     useProgressStore.getState().setProgress(cache.progress);
@@ -134,7 +135,7 @@ async function flushProgressOnce() {
       useProgressStore.getState().setProgress(cache.progress); await persist(cache);
     }
     if (generation !== epoch || !cache) return;
-    if (!cache.pending) { status('synced', 'Progress synced'); return; }
+    if (!cache.pending) { status('synced', 'Progress synced'); void flushPendingLearningEvents(); return; }
     status('syncing', 'Saving progress…');
     const sent = cache;
     const put = await apiFetch('/api/progress', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(10000), body: JSON.stringify({ progress: sent.progress, revision: sent.revision }) });

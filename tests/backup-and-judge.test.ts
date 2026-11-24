@@ -42,7 +42,7 @@ test('SQLite online VACUUM INTO backup produces verified consistent snapshot wit
   const backupResult = backupDatabase(sourcePath, backupPath);
   assert.equal(backupResult.ok, true);
   assert.equal(backupResult.integrity, 'ok');
-  assert.equal(backupResult.migrationVersion, 6);
+  assert.equal(backupResult.migrationVersion, 7);
   assert.equal(backupResult.usersCount, 1);
   assert.ok(backupResult.sizeBytes > 0);
 
@@ -170,6 +170,7 @@ test('coding judge rejects NUL bytes, blocks duplicate in-flight submits with 40
     assert.equal(firstRes.status, 200);
     const body = await firstRes.json();
     assert.equal(body.status, 'Failed');
+    assert.equal(body.executionStatus, 'wrong_answer');
     assert.deepEqual(body.failedTestCase, { index: 2, input: [4, 5], expected: 9, actual: 8 });
 
     // 3. Bounded limit query param on history endpoint
@@ -246,7 +247,7 @@ test('GET /api/ready reports schema readiness and problem count on production se
     const body = await readyRes.json();
     assert.equal(body.status, 'ready');
     assert.equal(body.database, 'ok');
-    assert.equal(body.migrationVersion, 6);
+    assert.equal(body.migrationVersion, 7);
     assert.equal(typeof body.problemsCount, 'number');
   } finally {
     child.kill();

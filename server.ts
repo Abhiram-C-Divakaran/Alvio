@@ -26,6 +26,7 @@ import db from "./server/db";
 import { registerVisualizer } from './server/visualizer';
 import { registerChat } from './server/chat';
 import { getEpicLevel, registerXpLedger } from './server/xpLedger';
+import { registerAuthRecovery } from './server/authRecovery';
 
 authSecret();
 
@@ -86,6 +87,7 @@ async function startServer() {
 
   registerProgress(app);
   registerXpLedger(app);
+  registerAuthRecovery(app, { allowedOrigins: origins });
   registerVisualizer(app);
   registerSubmissions(app);
   registerChat(app);

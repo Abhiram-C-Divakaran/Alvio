@@ -17,6 +17,9 @@ const body = (value: unknown): RequestInit => ({ method: 'POST', headers: { 'Con
 export const login = (credentials: Credentials) => authRequest<Session>('login', body(credentials));
 export const signup = (credentials: Credentials & { name: string }) => authRequest<Session>('signup', body(credentials));
 export const getCurrentUser = () => authRequest<{ user: ServerUser }>('me', { signal: AbortSignal.timeout(10000) });
+export const requestPasswordReset = (email: string) => authRequest<{ success: boolean; message: string }>('forgot-password', body({ email }));
+export const confirmPasswordReset = (token: string, password: string) => authRequest<{ success: boolean; message: string }>('reset-password', body({ token, password }));
+export const confirmEmailVerification = (token: string) => authRequest<{ verified: boolean }>('verify-email/confirm', body({ token }));
 
 async function revokeOnServer(path: 'logout' | 'logout-all', token: string | null) {
   try {

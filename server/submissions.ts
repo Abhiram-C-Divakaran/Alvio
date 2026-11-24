@@ -38,6 +38,21 @@ function parseProblemRow(row: any): SubmissionProblem | null {
   }
 }
 
+function mapExecutionStatus(verdict: {
+  status: 'Passed' | 'Failed' | 'Error';
+  errorType: 'compilation' | 'runtime' | 'timeout' | 'provider' | 'unsupported' | null;
+}): string {
+  if (verdict.status === 'Passed') return 'accepted';
+  if (verdict.status === 'Failed') return 'wrong_answer';
+  switch (verdict.errorType) {
+    case 'compilation': return 'compilation_error';
+    case 'timeout': return 'time_limit_exceeded';
+    case 'provider': return 'provider_unavailable';
+    case 'unsupported': return 'unsupported';
+    default: return 'runtime_error';
+  }
+}
+
 export function registerSubmissions(app: Express, options: RegisterSubmissionsOptions = {}) {
   const db = options.db ?? defaultDb;
   const timeoutMs = options.timeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
@@ -113,6 +128,7 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
         logFailure(req, 'submission_provider_unavailable');
         return res.status(503).json({
           status: 'Error',
+          executionStatus: 'provider_unavailable',
           passedCount: 0,
           totalCount: verdict.totalCount,
           executionTimeMs: verdict.executionTimeMs,
@@ -128,6 +144,7 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
       if (!verdict.recordable) {
         return res.status(200).json({
           status: verdict.status,
+          executionStatus: mapExecutionStatus(verdict),
           passedCount: verdict.passedCount,
           totalCount: verdict.totalCount,
           executionTimeMs: verdict.executionTimeMs,
@@ -212,6 +229,7 @@ export function registerSubmissions(app: Express, options: RegisterSubmissionsOp
 
       return res.status(200).json({
         status: verdict.status,
+        executionStatus: mapExecutionStatus(verdict),
         passedCount: verdict.passedCount,
         totalCount: verdict.totalCount,
         executionTimeMs: verdict.executionTimeMs,

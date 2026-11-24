@@ -434,7 +434,12 @@ export function csrfProtection(allowedOrigins: string[]): RequestHandler {
 
     const cookies = parseCookies(req.headers.cookie);
     const hasAuthCookie = Boolean(cookies[ACCESS_COOKIE_NAME] || cookies[REFRESH_COOKIE_NAME]);
-    const isAuthBootstrap = req.path === '/auth/login' || req.path === '/auth/signup';
+    const isAuthBootstrap =
+      req.path === '/auth/login' ||
+      req.path === '/auth/signup' ||
+      req.path === '/auth/forgot-password' ||
+      req.path === '/auth/reset-password' ||
+      req.path === '/auth/verify-email/confirm';
 
     // Always reject explicit cross-origin requests even on login/signup if Origin is untrusted.
     const originHeader = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
@@ -507,6 +512,7 @@ export function publicUser(user: any) {
     id: String(user.id),
     name: user.name,
     email: user.email,
+    emailVerified: Boolean(user.email_verified_at),
     xp: user.xp,
     level: user.level,
     avatar: user.avatar_url || undefined,

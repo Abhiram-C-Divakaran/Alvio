@@ -10,7 +10,7 @@
     "lint": "oxlint",
     "db:backup": "tsx server/backupDb.ts",
     "preview": "vite preview",
-    "test:foundation": "npm run build && node --import tsx --test tests/backend-foundation.test.ts tests/auth-hardening.test.ts tests/backend-reliability.test.ts tests/xp-ledger.test.ts tests/backup-and-judge.test.ts tests/progress-sync.test.ts tests/optional-auth.test.ts tests/coding-submissions.test.ts tests/ai-chat.test.ts",
+    "test:foundation": "npm run build && node --import tsx --test tests/backend-foundation.test.ts tests/auth-hardening.test.ts tests/auth-recovery.test.ts tests/backend-reliability.test.ts tests/xp-ledger.test.ts tests/backup-and-judge.test.ts tests/progress-sync.test.ts tests/optional-auth.test.ts tests/coding-submissions.test.ts tests/ai-chat.test.ts",
     "test:ai-live": "node --import tsx --test tests/ai-live.smoke.ts",
     "test:submissions": "node --import tsx --test tests/coding-submissions.test.ts",
     "test:models": "node --import tsx --test tests/auth-destination.test.mjs tests/dashboard-data.test.mjs tests/practice-model.test.mjs tests/progress-model.test.mjs tests/quiz-model.test.mjs tests/heap-operations.test.ts tests/visualizer-progress.test.ts",

@@ -127,6 +127,29 @@ CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT N
     count INTEGER NOT NULL,
     reset_at INTEGER NOT NULL
   );`);
+},(db:DatabaseSync)=>{
+  const userFields=new Set((db.prepare('PRAGMA table_info(users)').all() as any[]).map(x=>x.name));
+  if(!userFields.has('email_verified_at'))db.exec('ALTER TABLE users ADD COLUMN email_verified_at TEXT');
+  db.exec(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_password_reset_user_id ON password_reset_tokens(user_id);
+  CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_email_verification_user_id ON email_verification_tokens(user_id);`);
 }];
 for(let i=0;i<migrations.length;i++){if(db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i+1))continue;db.exec('BEGIN IMMEDIATE');try{migrations[i](db);db.prepare('INSERT INTO schema_migrations(version) VALUES(?)').run(i+1);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
 }

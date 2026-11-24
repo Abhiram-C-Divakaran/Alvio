@@ -214,3 +214,16 @@ test('learning events validate payloads, ignore client XP fields, deduplicate, a
   assert.equal(ledgerB.xp, 0);
   assert.equal(ledgerB.events.length, 0);
 });
+
+test('concurrent multi-device submissions of the same learning event award XP exactly once', async () => {
+  const results = await Promise.all([
+    post('/api/learning/events', 'user-b', { type: 'lesson_completed', topicId: 'binary-tree' }).then((r) => r.json()),
+    post('/api/learning/events', 'user-b', { type: 'lesson_completed', topicId: 'binary-tree' }).then((r) => r.json()),
+    post('/api/learning/events', 'user-b', { type: 'lesson_completed', topicId: 'binary-tree' }).then((r) => r.json()),
+  ]);
+  const totalAwarded = results.reduce((sum, r) => sum + Number(r.pointsAwarded || 0), 0);
+  assert.equal(totalAwarded, 20, 'Concurrent identical events must award XP exactly once');
+  const ledgerB = await (await fetch(`${origin}/api/xp/ledger`, { headers: { Authorization: 'Bearer user-b' } })).json();
+  assert.equal(ledgerB.xp, 20);
+  assert.equal(ledgerB.events.length, 1);
+});
