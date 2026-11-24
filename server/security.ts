@@ -187,6 +187,9 @@ export const securityHeaders: RequestHandler = (req, res, next) => {
   res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
   // Inline styles and worker evaluation are required by Monaco and the local teaching runner.
   if (process.env.NODE_ENV === 'production') {
+    if (req.secure) {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
     res.setHeader(
       'Content-Security-Policy',
       "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net; media-src 'self' blob: https:; worker-src 'self' blob:; connect-src 'self' https://raw.githack.com https://raw.githubusercontent.com https://cdn.jsdelivr.net https://emkc.org https://api.paiza.io; frame-ancestors 'none'; base-uri 'self'; object-src 'none'"

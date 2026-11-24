@@ -208,7 +208,7 @@ test('backupDatabase and restoreDatabase recover user data cleanly after target 
   const backup = backupDatabase(livePath, backupPath);
   assert.equal(backup.ok, true);
   assert.equal(backup.usersCount, 1);
-  assert.equal(backup.migrationVersion, 8);
+  assert.equal(backup.migrationVersion, 9);
 
   // Simulate accidental data deletion on live DB
   const broken = new DatabaseSync(livePath);

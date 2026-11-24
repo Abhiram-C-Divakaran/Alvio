@@ -110,7 +110,7 @@ All TypeScript diagnostics (`npx tsc -p tsconfig.app.json --noEmit`) and reposit
 
 ## Database, backup, and migration
 
-SQLite migrations (8 numbered, transactional, repeatable migrations) run automatically on server startup and are tracked in `schema_migrations`. Existing accounts and learning records are preserved across upgrades, including `users.token_version`, `users.email_verified_at`, `auth_sessions` (`ON DELETE CASCADE`), `password_reset_tokens`, `email_verification_tokens`, `xp_ledger` (`ON DELETE CASCADE`, unique per `(user_id, event_type, event_key)`), `rate_limits`, and server-only `problem_hidden_tests` (`ON DELETE CASCADE`). Submissions, interactions, progress updates, XP awards, password resets, email confirmations, and session revocations execute inside explicit `BEGIN IMMEDIATE` transactions.
+SQLite migrations (9 numbered, transactional, repeatable migrations) run automatically on server startup and are tracked in `schema_migrations`. Existing accounts and learning records are preserved across upgrades, including `users.token_version`, `users.email_verified_at`, `auth_sessions` (`ON DELETE CASCADE`), `password_reset_tokens`, `email_verification_tokens`, `xp_ledger` (`ON DELETE CASCADE`, unique per `(user_id, event_type, event_key)`), `rate_limits`, server-only `problem_hidden_tests` (`ON DELETE CASCADE`), and Migration #9 read-path indexes on `user_submissions`, `user_activity`, and `problem_feedback`. Submissions, interactions, progress updates, XP awards, password resets, email confirmations, and session revocations execute inside explicit `BEGIN IMMEDIATE` transactions.
 
 Create a WAL-safe online backup and verify integrity with:
 

@@ -42,7 +42,7 @@ test('SQLite online VACUUM INTO backup produces verified consistent snapshot wit
   const backupResult = backupDatabase(sourcePath, backupPath);
   assert.equal(backupResult.ok, true);
   assert.equal(backupResult.integrity, 'ok');
-  assert.equal(backupResult.migrationVersion, 8);
+  assert.equal(backupResult.migrationVersion, 9);
   assert.equal(backupResult.usersCount, 1);
   assert.ok(backupResult.sizeBytes > 0);
 
@@ -247,7 +247,7 @@ test('GET /api/ready reports schema readiness and problem count on production se
     const body = await readyRes.json();
     assert.equal(body.status, 'ready');
     assert.equal(body.database, 'ok');
-    assert.equal(body.migrationVersion, 8);
+    assert.equal(body.migrationVersion, 9);
     assert.equal(typeof body.problemsCount, 'number');
   } finally {
     child.kill();

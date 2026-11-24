@@ -161,6 +161,11 @@ CREATE TABLE learning_progress(user_id INTEGER PRIMARY KEY, progress_json TEXT N
     FOREIGN KEY(problem_id) REFERENCES problems(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_problem_hidden_tests_problem_id ON problem_hidden_tests(problem_id);`);
+  }, (db: DatabaseSync) => {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_user_submissions_user_problem_created ON user_submissions(user_id, problem_id, created_at DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_user_submissions_user_status ON user_submissions(user_id, status);
+  CREATE INDEX IF NOT EXISTS idx_user_activity_user_created ON user_activity(user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_problem_feedback_problem_id ON problem_feedback(problem_id);`);
   }];
   for (let i = 0; i < migrations.length; i++) {
     if (db.prepare('SELECT version FROM schema_migrations WHERE version=?').get(i + 1)) continue;

@@ -488,7 +488,9 @@ export async function executeInIsolatedContainer(
   // Compiled languages need compile headroom; all languages need brief containerd cold-start headroom
   // while in-container `ulimit -S -t` enforces the exact CPU execution budget.
   const isCompiled = request.language === 'cpp' || request.language === 'c' || request.language === 'java' || request.language === 'csharp';
-  const startupHeadroomMs = isCompiled ? 6000 : 4000;
+  const activeRuntime = (options.runtime ?? options.env?.JUDGE_DOCKER_RUNTIME ?? '').trim();
+  const gvisorColdStartMs = activeRuntime === 'runsc' ? 4000 : 0;
+  const startupHeadroomMs = (isCompiled ? 6000 : 4000) + gvisorColdStartMs;
   const effectiveTimeoutMs = Math.min(request.timeoutMs, request.limits.cpuTimeLimitSec * 1000 + startupHeadroomMs);
   const args = buildDockerRunArgs({
     language: request.language,
