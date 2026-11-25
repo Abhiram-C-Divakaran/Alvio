@@ -151,7 +151,8 @@ jobs:
       - name: Run live Ubuntu Linux operational drill (production API + gVisor worker + backup/restore + health monitor + rollback)
         run: |
           npm run build
-          DRILL_DIR="$(mktemp -d)"
+          DRILL_DIR="${PWD}/.ops-drill-$$"
+          mkdir -p "${DRILL_DIR}"
           trap 'kill "${API_PID:-}" "${JUDGE_PID:-}" 2>/dev/null || true; rm -rf "${DRILL_DIR}"' EXIT
           DB_PATH="${DRILL_DIR}/staging.sqlite"
           BACKUP_DIR="${DRILL_DIR}/backups"
