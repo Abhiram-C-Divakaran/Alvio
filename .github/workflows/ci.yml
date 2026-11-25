@@ -39,13 +39,13 @@ jobs:
         run: npm run lint
 
       - name: Validate Linux deployment shell scripts
-        run: bash -n deploy/setup-judge-host.sh deploy/health-monitor.sh
+        run: bash -n deploy/setup-api-host.sh deploy/setup-judge-host.sh deploy/run-backup.sh deploy/health-monitor.sh deploy/validate-deployment.sh deploy/rollback-judge.sh
 
       - name: TypeScript type check (app, node config, server & judge worker)
         run: |
           npx tsc -p tsconfig.app.json --noEmit
           npx tsc -p tsconfig.node.json --noEmit
-          npx tsc --ignoreConfig --noEmit --allowImportingTsExtensions --module esnext --moduleResolution bundler --target es2023 --esModuleInterop --skipLibCheck server.ts server/seedHiddenTests.ts server/hiddenTestCoverage.ts judge-worker/server.ts
+          npx tsc --ignoreConfig --noEmit --allowImportingTsExtensions --module esnext --moduleResolution bundler --target es2023 --esModuleInterop --skipLibCheck server.ts server/seedHiddenTests.ts server/hiddenTestCoverage.ts server/validateEnv.ts judge-worker/server.ts
 
       - name: Production Build
         run: npm run build
@@ -147,3 +147,65 @@ jobs:
 
       - name: Run live Linux gVisor (runsc) judge integration & security suite
         run: npm run test:judge-live-docker
+
+      - name: Run live Ubuntu Linux operational drill (production API + gVisor worker + backup/restore + health monitor + rollback)
+        run: |
+          npm run build
+          DRILL_DIR="$(mktemp -d)"
+          trap 'kill "${API_PID:-}" "${JUDGE_PID:-}" 2>/dev/null || true; rm -rf "${DRILL_DIR}"' EXIT
+          DB_PATH="${DRILL_DIR}/staging.sqlite"
+          BACKUP_DIR="${DRILL_DIR}/backups"
+          ENV_FILE="${DRILL_DIR}/api.env"
+          JWT_SECRET="$(node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))")"
+          JUDGE_TOKEN="$(node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))")"
+
+          DATABASE_PATH="${DB_PATH}" npx tsx server/migrateProblems.ts
+          cat > "${ENV_FILE}" <<EOF
+          NODE_ENV=production
+          PORT=3101
+          DATABASE_PATH=${DB_PATH}
+          JWT_SECRET=${JWT_SECRET}
+          ALLOWED_ORIGINS=https://staging.alvio.example.com
+          COOKIE_SECURE=true
+          TRUST_PROXY=true
+          RATE_LIMIT_STORE=sqlite
+          JUDGE_PROVIDER=isolated
+          ISOLATED_JUDGE_URL=http://127.0.0.1:4105
+          ISOLATED_JUDGE_TOKEN=${JUDGE_TOKEN}
+          EOF
+
+          set -a; source "${ENV_FILE}"; set +a
+          npm run ops:check-env
+
+          JUDGE_WORKER_HOST=127.0.0.1 JUDGE_WORKER_PORT=4105 JUDGE_DOCKER_RUNTIME=runsc ISOLATED_JUDGE_TOKEN="${JUDGE_TOKEN}" \
+            npx tsx judge-worker/server.ts >"${DRILL_DIR}/judge.log" 2>&1 &
+          JUDGE_PID=$!
+          node dist/server.cjs >"${DRILL_DIR}/api.log" 2>&1 &
+          API_PID=$!
+
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:4105/health >/dev/null 2>&1 && curl -fsS http://127.0.0.1:3101/api/ready >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+          ALVIO_APP_DIR="${PWD}" DATABASE_PATH="${DB_PATH}" BACKUP_DIR="${BACKUP_DIR}" bash deploy/run-backup.sh
+          LATEST_SNAP="$(find "${BACKUP_DIR}" -maxdepth 1 -name 'alvio-*.sqlite' | head -n 1)"
+          test -n "${LATEST_SNAP}"
+          PERMS="$(stat -c '%a' "${LATEST_SNAP}")"
+          echo "Verified backup snapshot permissions: ${PERMS}"
+          test "${PERMS}" = "600"
+
+          npm run db:restore -- "${LATEST_SNAP}" "${DRILL_DIR}/restored.sqlite"
+
+          ALVIO_API_URL=http://127.0.0.1:3101 ISOLATED_JUDGE_URL=http://127.0.0.1:4105 \
+            CHECK_LOCAL_DOCKER=true DATABASE_PATH="${DB_PATH}" CHECK_BACKUP_DIR="${BACKUP_DIR}" \
+            bash deploy/health-monitor.sh
+
+          ALVIO_PUBLIC_URL=http://127.0.0.1:3101 ISOLATED_JUDGE_URL=http://127.0.0.1:4105 \
+            EXPECT_HTTPS=false bash deploy/validate-deployment.sh
+
+          bash deploy/rollback-judge.sh --env-file "${ENV_FILE}" --no-restart
+          grep -q '^JUDGE_PROVIDER=paiza$' "${ENV_FILE}"
+          echo "PASS: Live Ubuntu operational, gVisor health, backup/restore, validation, and rollback drill complete."
