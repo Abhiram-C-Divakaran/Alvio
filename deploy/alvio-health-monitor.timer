@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Alvio Operational Health Monitor Every 5 Minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

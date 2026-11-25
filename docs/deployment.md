@@ -117,22 +117,33 @@ Alvio ships a standalone isolated coding judge worker under [`judge-worker/`](..
 
 ---
 
-## 8. Turnkey Deployment Artifacts (`deploy/`), Rollback & Scaling Thresholds
+## 8. Turnkey Deployment Artifacts (`deploy/`), Validation, Rollback & Scaling
 
-Ready-to-use Linux production templates are shipped in [`deploy/`](../deploy/):
+Ready-to-use Linux staging/production templates are shipped in [`deploy/`](../deploy/):
 
-- [`deploy/setup-judge-host.sh`](../deploy/setup-judge-host.sh) — bootstraps a dedicated Ubuntu judge VM with official **gVisor (`runsc`)**, verifies `runsc` registration in Docker, pre-pulls all 5 pinned language images, and locks UFW port `4005` exclusively to `EXPRESS_PRIVATE_IP`.
+- [`deploy/api.env.example`](../deploy/api.env.example) & [`deploy/judge-worker.env.example`](../deploy/judge-worker.env.example) — secret-free environment templates for Host A (`/etc/alvio/api.env`, `chmod 640 root:alvio`) and Host B (`/etc/alvio/judge-worker.env`, `chmod 600 root:root`).
+- [`deploy/setup-api-host.sh`](../deploy/setup-api-host.sh) — bootstraps Host A (verifies Node.js 24+, creates `alvio` user and persistent `/var/lib/alvio` + `/var/backups/alvio`, builds production bundle, runs secret-safe `npm run ops:check-env`, runs migrations/seed without overwriting existing DBs, enables API, backup, and monitor timers).
+- [`deploy/setup-judge-host.sh`](../deploy/setup-judge-host.sh) — bootstraps dedicated Ubuntu Host B with official **gVisor (`runsc`)**, verifies `runsc` registration in Docker, pre-pulls all 5 pinned language images, and locks UFW port `4005` exclusively to `EXPRESS_PRIVATE_IP`.
 - [`deploy/alvio-api.service`](../deploy/alvio-api.service) & [`deploy/alvio-judge-worker.service`](../deploy/alvio-judge-worker.service) — hardened `systemd` units with graceful `SIGTERM` handling and journald structured logs.
-- [`deploy/alvio-backup.service`](../deploy/alvio-backup.service) & [`deploy/alvio-backup.timer`](../deploy/alvio-backup.timer) — automated daily WAL-safe `VACUUM INTO` backups with `PRAGMA integrity_check` and 14-day local retention.
+- [`deploy/run-backup.sh`](../deploy/run-backup.sh), [`deploy/alvio-backup.service`](../deploy/alvio-backup.service) & [`deploy/alvio-backup.timer`](../deploy/alvio-backup.timer) — automated daily WAL-safe `VACUUM INTO` backups with `umask 077` (`chmod 0600`), `PRAGMA integrity_check`, 14-day local retention, optional off-host S3/rclone upload (`BACKUP_S3_URI` / `BACKUP_RCLONE_REMOTE`), and failure webhook alerting (`ALERT_WEBHOOK_URL`).
 - [`deploy/nginx-alvio.conf`](../deploy/nginx-alvio.conf) — TLS 1.2/1.3 reverse proxy with HSTS and `proxy_buffering off` for `/api/chat` SSE (port `4005` never proxied).
-- [`deploy/health-monitor.sh`](../deploy/health-monitor.sh) — operational probe checking `/api/health`, `/api/ready`, judge worker `/health` (`runtimeVerified: true`), and zero exited orphan `alvio-judge-*` containers.
+- [`deploy/health-monitor.sh`](../deploy/health-monitor.sh), [`deploy/alvio-health-monitor.service`](../deploy/alvio-health-monitor.service) & [`deploy/alvio-health-monitor.timer`](../deploy/alvio-health-monitor.timer) — 5-minute operational monitor checking `/api/health`, `/api/ready`, judge `/health` (`runtimeVerified: true`), exited orphan `alvio-judge-*` containers, disk usage %, SQLite DB size growth, backup freshness (<26h), HTTP 503 spike counts, and optional webhook alerts.
+- [`deploy/validate-deployment.sh`](../deploy/validate-deployment.sh) — zero-mock live verifier checking public HTTPS headers/HSTS, `/api/health`, `/api/ready` (migration >= 9, 472 problems), CORS origin rejection, unauthenticated `401` enforcement, public non-exposure of port `4005`, and private judge `runsc` health.
+- [`deploy/rollback-judge.sh`](../deploy/rollback-judge.sh) — controlled `JUDGE_PROVIDER=isolated` → `paiza` rollback script with env backup, restart, and readiness verification.
 
-### Controlled Migration & Rollback (`paiza` ↔ `isolated`)
-1. Deploy and bootstrap the dedicated Linux judge VM using `deploy/setup-judge-host.sh`.
-2. Run `JUDGE_DOCKER_RUNTIME=runsc npm run test:judge-live-docker` on the judge VM and verify 12/12 pass under live `runsc`.
-3. Confirm `deploy/health-monitor.sh` passes from the Express host over private networking.
-4. Set `JUDGE_PROVIDER=isolated`, `ISOLATED_JUDGE_URL`, and `ISOLATED_JUDGE_TOKEN` in `/etc/alvio/api.env` and restart `alvio-api.service`.
-5. **Instant rollback:** If the isolated judge host degrades, set `JUDGE_PROVIDER=paiza` in `/etc/alvio/api.env` and restart `alvio-api.service` (while down, Express fails closed with `503 provider_unavailable` and never runs untrusted code on the API host).
+See [docs/operations-runbook.md](./operations-runbook.md) for full incident recovery, alerting thresholds, backup/restore drills, and secret rotation procedures.
+
+### Pre-Flight Environment Check & Controlled Cutover (`paiza` ↔ `isolated`)
+1. Run `npm run ops:check-env` on Host A (loads no secrets to stdout; exits non-zero if `JWT_SECRET`, HTTPS `ALLOWED_ORIGINS`, `COOKIE_SECURE`, `TRUST_PROXY`, persistent `DATABASE_PATH`, or `ISOLATED_JUDGE_*` are misconfigured).
+2. Bootstrap Host B with `deploy/setup-judge-host.sh` and run `JUDGE_DOCKER_RUNTIME=runsc npm run test:judge-live-docker` on Host B (must pass 12/12 under live `runsc`).
+3. Verify `deploy/health-monitor.sh` and `deploy/validate-deployment.sh` pass from Host A over private networking.
+4. Only after steps 1–3 pass, set `JUDGE_PROVIDER=isolated`, `ISOLATED_JUDGE_URL`, and `ISOLATED_JUDGE_TOKEN` in `/etc/alvio/api.env` and restart `alvio-api.service`.
+5. **Instant rollback:** If the isolated judge host degrades, run `sudo bash /opt/alvio/deploy/rollback-judge.sh --env-file /etc/alvio/api.env` (while degraded, Express fails closed with `503 provider_unavailable` and never runs untrusted code on the API host).
+
+### External Services Configuration & Failure Semantics
+- **Groq AI (`GROQ_API_KEY`, `GROQ_CHAT_MODEL`, `GROQ_VISUALIZER_MODEL`):** Server-only; 60s timeout, disconnect cancellation, single bounded transient retry before headers. When unset or unreachable, `/api/chat` and `/api/visualizer` return honest `503` without affecting core learning.
+- **Paiza Fallback (`PAIZA_API_KEY`):** Defaults to `guest` when unset; used whenever `JUDGE_PROVIDER=paiza` (default until target gVisor host is verified).
+- **Email Recovery (`RESEND_API_KEY` + `EMAIL_FROM`, or `EMAIL_WEBHOOK_URL` + `EMAIL_WEBHOOK_SECRET`):** Enables live password-reset and email-verification delivery. When unset, endpoints return honest `503 EMAIL_NOT_CONFIGURED` (never simulated).
 
 ### SQLite Suitability vs PostgreSQL + Distributed Rate Limiting
 - **When SQLite (WAL mode) + `RATE_LIMIT_STORE=sqlite` is suitable:** Single API host deployments up to ~100–300 concurrent active students (thousands of registered users, tens of thousands of daily progress/submission writes, DB size < 2–5 GB on local SSD/NVMe) where `BEGIN IMMEDIATE` write contention stays sub-10ms.

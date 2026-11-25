@@ -490,7 +490,7 @@ export async function executeInIsolatedContainer(
   const isCompiled = request.language === 'cpp' || request.language === 'c' || request.language === 'java' || request.language === 'csharp';
   const activeRuntime = (options.runtime ?? options.env?.JUDGE_DOCKER_RUNTIME ?? '').trim();
   const gvisorColdStartMs = activeRuntime === 'runsc' ? 4000 : 0;
-  const startupHeadroomMs = (isCompiled ? 6000 : 4000) + gvisorColdStartMs;
+  const startupHeadroomMs = (isCompiled ? 8000 : 6000) + gvisorColdStartMs;
   const effectiveTimeoutMs = Math.min(request.timeoutMs, request.limits.cpuTimeLimitSec * 1000 + startupHeadroomMs);
   const args = buildDockerRunArgs({
     language: request.language,
