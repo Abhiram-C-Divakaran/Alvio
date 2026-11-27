@@ -68,6 +68,9 @@ test('Express application code never imports child_process or vm to execute stud
     ...readdirSync(join(ROOT, 'server'))
       .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
       .map((name) => join(ROOT, 'server', name)),
+    ...readdirSync(join(ROOT, 'server', 'hiddenTests'))
+      .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+      .map((name) => join(ROOT, 'server', 'hiddenTests', name)),
   ];
 
   for (const filePath of serverFiles) {
@@ -103,8 +106,8 @@ test('SQLite Migration #9 creates read-path indexes used by EXPLAIN QUERY PLAN a
     const catalog = loadProblemCatalog();
     seedProblemCatalog(db, catalog);
     const hidden = seedHiddenTests(db);
-    assert.equal(hidden.problemsMatched, 83);
-    assert.equal(hidden.inserted, 346);
+    assert.equal(hidden.problemsMatched, 384);
+    assert.equal(hidden.inserted, 1636);
 
     db.prepare('INSERT INTO users (id, email, password_hash, name, xp) VALUES (1, ?, ?, ?, ?)').run(
       'release@example.test',
@@ -157,7 +160,7 @@ test('SQLite Migration #9 creates read-path indexes used by EXPLAIN QUERY PLAN a
     assert.equal(restored.problemsCount, 472);
 
     verifyDb = new DatabaseSync(livePath, { readOnly: true });
-    assert.equal((verifyDb.prepare('SELECT COUNT(*) AS c FROM problem_hidden_tests').get() as any).c, 346);
+    assert.equal((verifyDb.prepare('SELECT COUNT(*) AS c FROM problem_hidden_tests').get() as any).c, 1636);
     assert.equal((verifyDb.prepare('SELECT COUNT(*) AS c FROM user_submissions').get() as any).c, 1);
     assert.equal((verifyDb.prepare('SELECT revision FROM learning_progress WHERE user_id = 1').get() as any).revision, 3);
     verifyDb.close();
@@ -253,7 +256,7 @@ test('production server enforces HTTPS proxy HSTS/Secure cookies, fast readiness
     assert.match(refreshCookie, /HttpOnly/i);
     assert.match(refreshCookie, /Secure/i);
 
-    // Verify full 472-problem catalog latency stays well under 500ms
+    // Verify full 472-problem catalog latency stays well under 500ms and never leaks hidden tests
     const catStart = performance.now();
     const catRes = await fetch(`${origin}/api/problems`);
     const catMs = performance.now() - catStart;
@@ -261,6 +264,20 @@ test('production server enforces HTTPS proxy HSTS/Secure cookies, fast readiness
     const catBody = await catRes.json();
     assert.equal(catBody.length, 472);
     assert.ok(catMs < 500, `/api/problems latency too high: ${catMs}ms`);
+    assert.doesNotMatch(JSON.stringify(catBody), /hiddenTestCases|problem_hidden_tests/i);
+
+    // Verify GET /api/problems/:id never leaks server-only hidden test inputs across Easy/Medium/Hard
+    for (const [problemId, hiddenSentinel] of [
+      ['maximum-subarray', '-5,-2,-8,-1,-4'],
+      ['sort-array-by-parity', '[2,4,6]'],
+      ['substring-with-concatenation-of-all-words', 'barfoofoobarthefoobarman'],
+    ] as const) {
+      const detailRes = await fetch(`${origin}/api/problems/${problemId}`);
+      assert.equal(detailRes.status, 200);
+      const detailRaw = await detailRes.text();
+      assert.equal(detailRaw.includes('hiddenTestCases'), false, `/api/problems/${problemId} leaked hiddenTestCases key`);
+      assert.equal(detailRaw.includes(hiddenSentinel), false, `/api/problems/${problemId} leaked hidden test input`);
+    }
 
     // Verify clean graceful SIGTERM shutdown (Windows SIGTERM terminates directly; POSIX exits 0)
     const exitCode = await new Promise<number | null>((resolve) => {
