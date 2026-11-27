@@ -1,7 +1,13 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { ProblemTestCase } from './submissionRunner';
+import { PHASE7_EASY_HIDDEN_TESTS } from './hiddenTests/easy';
+import { PHASE7_MEDIUM_HIDDEN_TESTS } from './hiddenTests/medium';
+import { PHASE7_HARD_HIDDEN_TESTS } from './hiddenTests/hard';
+import { MANUAL_REVIEW_PROBLEMS, type ManualReviewReasonCode } from './hiddenTests/manualReview';
 
-export const CURATED_HIDDEN_TESTS: Readonly<Record<string, readonly ProblemTestCase[]>> = {
+export { MANUAL_REVIEW_PROBLEMS };
+
+const BASE_CURATED_HIDDEN_TESTS: Readonly<Record<string, readonly ProblemTestCase[]>> = {
   // ===== Original 18 Core Problems =====
   'number-of-digit-one': [
     { input: [1], expected: 1 },
@@ -523,6 +529,13 @@ export const CURATED_HIDDEN_TESTS: Readonly<Record<string, readonly ProblemTestC
   ],
 };
 
+export const CURATED_HIDDEN_TESTS: Readonly<Record<string, readonly ProblemTestCase[]>> = {
+  ...BASE_CURATED_HIDDEN_TESTS,
+  ...PHASE7_EASY_HIDDEN_TESTS,
+  ...PHASE7_MEDIUM_HIDDEN_TESTS,
+  ...PHASE7_HARD_HIDDEN_TESTS,
+};
+
 export interface SeedHiddenTestsSummary {
   problemsMatched: number;
   problemsSkipped: number;
@@ -534,29 +547,82 @@ export interface DifficultyCoverageBucket {
   total: number;
   covered: number;
   uncovered: number;
+  manualReview: number;
   hiddenTests: number;
   coveragePercent: number;
+}
+
+export interface TopicCoverageBucket {
+  total: number;
+  covered: number;
+  uncovered: number;
+  manualReview: number;
+  hiddenTests: number;
+  coveragePercent: number;
+}
+
+export interface ManualReviewReportItem {
+  id: string;
+  title: string;
+  difficulty: string;
+  topic: string;
+  reasonCode: ManualReviewReasonCode;
+  reason: string;
+  remediation: string;
+}
+
+export interface CoverageInventoryItem {
+  id: string;
+  title: string;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  topic: string;
+  covered: boolean;
+  visibleTestCount: number;
+  hiddenTestCount: number;
+  status: 'covered' | 'awaiting_manual_review' | 'uncovered';
+  verificationStatus: 'oracle_verified' | 'flagged_for_review' | 'unverified';
+  reviewReasonCode?: ManualReviewReasonCode;
+  reviewReason?: string;
 }
 
 export interface HiddenTestCoverageReport {
   totalProblems: number;
   problemsWithHiddenTests: number;
   problemsWithoutHiddenTests: number;
+  problemsAwaitingManualReview: number;
+  uncoveredWithoutReviewFlag: string[];
+  verifiableProblems: number;
+  verifiableCoveragePercent: number;
   totalHiddenTests: number;
   coveragePercent: number;
+  minRecommendedHiddenTests: number;
+  insufficientDiversity: Array<{ id: string; hiddenTests: number }>;
   byDifficulty: Record<'Easy' | 'Medium' | 'Hard', DifficultyCoverageBucket>;
+  byTopic: Record<string, TopicCoverageBucket>;
+  manualReviewByReason: Record<string, number>;
+  awaitingManualReview: ManualReviewReportItem[];
 }
 
-/**
- * Computes exact hidden-test coverage statistics against the loaded problem catalog.
- * When `db` is supplied, counts rows directly from `problem_hidden_tests`; otherwise uses `CURATED_HIDDEN_TESTS`.
- */
-export function computeHiddenTestCoverage(
-  catalog: Array<{ id: string; difficulty: string }>,
-  db?: DatabaseSync
-): HiddenTestCoverageReport {
-  const countsByProblem = new Map<string, number>();
+export interface CatalogSummaryProblem {
+  id: string;
+  title?: string;
+  difficulty: string;
+  topic?: string;
+  testCases?: unknown[];
+}
 
+const MIN_RECOMMENDED_HIDDEN_TESTS = 3;
+
+function normalizeTopics(rawTopic?: string): string[] {
+  if (!rawTopic || !rawTopic.trim()) return ['Uncategorized'];
+  return rawTopic
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+function getHiddenCountMap(db?: DatabaseSync): Map<string, number> {
+  const countsByProblem = new Map<string, number>();
   if (db) {
     const rows = db
       .prepare('SELECT problem_id, COUNT(*) AS cnt FROM problem_hidden_tests GROUP BY problem_id')
@@ -569,12 +635,70 @@ export function computeHiddenTestCoverage(
       countsByProblem.set(problemId, cases.length);
     }
   }
+  return countsByProblem;
+}
+
+/**
+ * Builds a complete, auditable per-problem inventory across the entire problem catalog.
+ */
+export function buildCoverageInventory(
+  catalog: CatalogSummaryProblem[],
+  db?: DatabaseSync
+): CoverageInventoryItem[] {
+  const countsByProblem = getHiddenCountMap(db);
+  return catalog.map((problem) => {
+    const difficulty = (problem.difficulty === 'Easy' || problem.difficulty === 'Medium' || problem.difficulty === 'Hard')
+      ? problem.difficulty
+      : 'Medium';
+    const hiddenTestCount = countsByProblem.get(problem.id) || 0;
+    const review = MANUAL_REVIEW_PROBLEMS[problem.id];
+    const covered = hiddenTestCount > 0;
+    const status: CoverageInventoryItem['status'] = covered
+      ? 'covered'
+      : review
+        ? 'awaiting_manual_review'
+        : 'uncovered';
+    const verificationStatus: CoverageInventoryItem['verificationStatus'] = covered
+      ? 'oracle_verified'
+      : review
+        ? 'flagged_for_review'
+        : 'unverified';
+    return {
+      id: problem.id,
+      title: problem.title || problem.id,
+      difficulty,
+      topic: problem.topic || 'Uncategorized',
+      covered,
+      visibleTestCount: Array.isArray(problem.testCases) ? problem.testCases.length : 0,
+      hiddenTestCount,
+      status,
+      verificationStatus,
+      ...(review ? { reviewReasonCode: review.reasonCode, reviewReason: review.reason } : {}),
+    };
+  });
+}
+
+/**
+ * Computes exact hidden-test coverage statistics against the loaded problem catalog.
+ * When `db` is supplied, counts rows directly from `problem_hidden_tests`; otherwise uses `CURATED_HIDDEN_TESTS`.
+ */
+export function computeHiddenTestCoverage(
+  catalog: CatalogSummaryProblem[],
+  db?: DatabaseSync
+): HiddenTestCoverageReport {
+  const countsByProblem = getHiddenCountMap(db);
 
   const byDifficulty: Record<'Easy' | 'Medium' | 'Hard', DifficultyCoverageBucket> = {
-    Easy: { total: 0, covered: 0, uncovered: 0, hiddenTests: 0, coveragePercent: 0 },
-    Medium: { total: 0, covered: 0, uncovered: 0, hiddenTests: 0, coveragePercent: 0 },
-    Hard: { total: 0, covered: 0, uncovered: 0, hiddenTests: 0, coveragePercent: 0 },
+    Easy: { total: 0, covered: 0, uncovered: 0, manualReview: 0, hiddenTests: 0, coveragePercent: 0 },
+    Medium: { total: 0, covered: 0, uncovered: 0, manualReview: 0, hiddenTests: 0, coveragePercent: 0 },
+    Hard: { total: 0, covered: 0, uncovered: 0, manualReview: 0, hiddenTests: 0, coveragePercent: 0 },
   };
+
+  const byTopic: Record<string, TopicCoverageBucket> = {};
+  const insufficientDiversity: Array<{ id: string; hiddenTests: number }> = [];
+  const awaitingManualReview: ManualReviewReportItem[] = [];
+  const uncoveredWithoutReviewFlag: string[] = [];
+  const manualReviewByReason: Record<string, number> = {};
 
   let problemsWithHiddenTests = 0;
   let totalHiddenTests = 0;
@@ -585,14 +709,50 @@ export function computeHiddenTestCoverage(
       : 'Medium';
     const bucket = byDifficulty[diff];
     bucket.total++;
+
     const cnt = countsByProblem.get(problem.id) || 0;
+    const review = MANUAL_REVIEW_PROBLEMS[problem.id];
+
     if (cnt > 0) {
       problemsWithHiddenTests++;
       totalHiddenTests += cnt;
       bucket.covered++;
       bucket.hiddenTests += cnt;
+      if (cnt < MIN_RECOMMENDED_HIDDEN_TESTS) {
+        insufficientDiversity.push({ id: problem.id, hiddenTests: cnt });
+      }
     } else {
       bucket.uncovered++;
+      if (review) {
+        bucket.manualReview++;
+        manualReviewByReason[review.reasonCode] = (manualReviewByReason[review.reasonCode] || 0) + 1;
+        awaitingManualReview.push({
+          id: problem.id,
+          title: problem.title || problem.id,
+          difficulty: diff,
+          topic: problem.topic || 'Uncategorized',
+          reasonCode: review.reasonCode,
+          reason: review.reason,
+          remediation: review.remediation,
+        });
+      } else {
+        uncoveredWithoutReviewFlag.push(problem.id);
+      }
+    }
+
+    for (const tag of normalizeTopics(problem.topic)) {
+      if (!byTopic[tag]) {
+        byTopic[tag] = { total: 0, covered: 0, uncovered: 0, manualReview: 0, hiddenTests: 0, coveragePercent: 0 };
+      }
+      const tb = byTopic[tag];
+      tb.total++;
+      if (cnt > 0) {
+        tb.covered++;
+        tb.hiddenTests += cnt;
+      } else {
+        tb.uncovered++;
+        if (review) tb.manualReview++;
+      }
     }
   }
 
@@ -600,18 +760,77 @@ export function computeHiddenTestCoverage(
     bucket.coveragePercent = bucket.total > 0 ? Number(((bucket.covered / bucket.total) * 100).toFixed(2)) : 0;
   }
 
+  const sortedTopics: Record<string, TopicCoverageBucket> = {};
+  for (const tag of Object.keys(byTopic).sort()) {
+    const tb = byTopic[tag];
+    tb.coveragePercent = tb.total > 0 ? Number(((tb.covered / tb.total) * 100).toFixed(2)) : 0;
+    sortedTopics[tag] = tb;
+  }
+
   const totalProblems = catalog.length;
   const problemsWithoutHiddenTests = totalProblems - problemsWithHiddenTests;
+  const problemsAwaitingManualReview = awaitingManualReview.length;
+  const verifiableProblems = totalProblems - problemsAwaitingManualReview;
   const coveragePercent = totalProblems > 0 ? Number(((problemsWithHiddenTests / totalProblems) * 100).toFixed(2)) : 0;
+  const verifiableCoveragePercent =
+    verifiableProblems > 0 ? Number(((problemsWithHiddenTests / verifiableProblems) * 100).toFixed(2)) : 0;
 
   return {
     totalProblems,
     problemsWithHiddenTests,
     problemsWithoutHiddenTests,
+    problemsAwaitingManualReview,
+    uncoveredWithoutReviewFlag,
+    verifiableProblems,
+    verifiableCoveragePercent,
     totalHiddenTests,
     coveragePercent,
+    minRecommendedHiddenTests: MIN_RECOMMENDED_HIDDEN_TESTS,
+    insufficientDiversity,
     byDifficulty,
+    byTopic: sortedTopics,
+    manualReviewByReason,
+    awaitingManualReview,
   };
+}
+
+/**
+ * Formats a human-readable terminal summary of hidden-test coverage, topic breakdown,
+ * diversity warnings, and manual-review queue.
+ */
+export function formatHiddenTestCoverageReport(report: HiddenTestCoverageReport): string {
+  const lines: string[] = [
+    '=== Alvio Hidden-Test Coverage Report ===',
+    `Catalog Problems:       ${report.totalProblems}`,
+    `Covered (Verified):     ${report.problemsWithHiddenTests} / ${report.totalProblems} (${report.coveragePercent}%)`,
+    `Verifiable Coverage:    ${report.problemsWithHiddenTests} / ${report.verifiableProblems} (${report.verifiableCoveragePercent}%)`,
+    `Awaiting Manual Review: ${report.problemsAwaitingManualReview}`,
+    `Unflagged Uncovered:    ${report.uncoveredWithoutReviewFlag.length}`,
+    `Total Hidden Cases:     ${report.totalHiddenTests}`,
+    `Low Diversity (<${report.minRecommendedHiddenTests}):     ${report.insufficientDiversity.length}`,
+    '',
+    '--- By Difficulty ---',
+  ];
+  for (const diff of ['Easy', 'Medium', 'Hard'] as const) {
+    const b = report.byDifficulty[diff];
+    lines.push(
+      `  ${diff.padEnd(6)} : ${String(b.covered).padStart(3)} / ${String(b.total).padStart(3)} (${String(b.coveragePercent).padStart(6)}%) | hiddenCases=${b.hiddenTests} | manualReview=${b.manualReview}`
+    );
+  }
+  lines.push('', '--- Top Topics ---');
+  const topTopics = Object.entries(report.byTopic)
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, 20);
+  for (const [topic, tb] of topTopics) {
+    lines.push(
+      `  ${topic.padEnd(26)} : ${String(tb.covered).padStart(3)} / ${String(tb.total).padStart(3)} (${String(tb.coveragePercent).padStart(6)}%) | cases=${tb.hiddenTests}`
+    );
+  }
+  lines.push('', '--- Manual Review Breakdown ---');
+  for (const [code, cnt] of Object.entries(report.manualReviewByReason).sort((a, b) => b[1] - a[1])) {
+    lines.push(`  ${code.padEnd(32)} : ${cnt}`);
+  }
+  return lines.join('\n');
 }
 
 /**

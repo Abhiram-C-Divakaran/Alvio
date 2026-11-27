@@ -50,6 +50,9 @@ jobs:
       - name: Production Build
         run: npm run build
 
+      - name: Hidden-Test Coverage & Audit Report
+        run: npm run db:hidden-coverage -- --text
+
       - name: Backend Foundation & Security Tests
         run: npm run test:foundation
 

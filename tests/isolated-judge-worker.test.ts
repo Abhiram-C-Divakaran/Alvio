@@ -350,7 +350,7 @@ test('end-to-end Express -> isolated judge worker handles timeout, OOM, output f
   }
 });
 
-test('curated hidden test suite seeds idempotently across 83 catalog problems, matches signatures, and redacts hidden failures', async () => {
+test('curated hidden test suite seeds idempotently across 384 catalog problems, matches signatures, and redacts hidden failures', async () => {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON;');
   migrate(db);
@@ -362,7 +362,7 @@ test('curated hidden test suite seeds idempotently across 83 catalog problems, m
   const firstRun = seedHiddenTests(db);
   assert.equal(firstRun.problemsMatched, Object.keys(CURATED_HIDDEN_TESTS).length);
   assert.equal(firstRun.problemsSkipped, 0);
-  assert.ok(firstRun.inserted >= 340, `Expected >= 340 hidden test cases, got ${firstRun.inserted}`);
+  assert.ok(firstRun.inserted >= 1600, `Expected >= 1600 hidden test cases, got ${firstRun.inserted}`);
   assert.equal(firstRun.alreadyPresent, 0);
 
   // Re-seeding must be strictly idempotent

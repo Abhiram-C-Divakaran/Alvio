@@ -1,13 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { migrate } from '../server/migrations';
 import { loadProblemCatalog, seedProblemCatalog } from '../server/problemCatalog';
+import { backupDatabase, restoreDatabase } from '../server/backupDb';
 import {
   CURATED_HIDDEN_TESTS,
+  MANUAL_REVIEW_PROBLEMS,
+  buildCoverageInventory,
   computeHiddenTestCoverage,
+  formatHiddenTestCoverageReport,
   seedHiddenTests,
 } from '../server/seedHiddenTests';
+import { EASY_ORACLES } from './oracles/easy';
+import { MEDIUM_ORACLES } from './oracles/medium';
+import { HARD_ORACLES } from './oracles/hard';
 
 /**
  * Independent reference oracles for every curated hidden-test problem.
@@ -573,22 +584,31 @@ const REFERENCE_ORACLES: Record<string, (...args: any[]) => any> = {
     return dp[w1.length][w2.length];
   },
   'merge-k-sorted-lists': (lists: number[][]) => lists.flat().sort((a, b) => a - b),
+  ...EASY_ORACLES,
+  ...MEDIUM_ORACLES,
+  ...HARD_ORACLES,
 };
 
-test('every curated hidden test problem passes independent oracle validation on both visible and hidden cases with zero duplicates', () => {
+test('every curated hidden test problem passes independent oracle validation on both visible and hidden cases with zero duplicates and bounded latency', () => {
   const catalog = loadProblemCatalog();
   const byId = new Map(catalog.map((p) => [p.id, p]));
 
   const curatedIds = Object.keys(CURATED_HIDDEN_TESTS);
-  assert.equal(curatedIds.length, 83, 'Expected 83 curated hidden-test problems');
+  assert.equal(curatedIds.length, 384, 'Expected 384 curated hidden-test problems');
 
   let totalHiddenVerified = 0;
+  let maxCaseBytes = 0;
+  let worstProblemMs = 0;
+  let worstProblemId = '';
+  const suiteStart = performance.now();
 
   for (const problemId of curatedIds) {
     const problem = byId.get(problemId);
     assert.ok(problem, `Curated problem ${problemId} must exist in catalog`);
     const oracle = REFERENCE_ORACLES[problemId];
     assert.ok(oracle, `Missing reference oracle for ${problemId}`);
+
+    const problemStart = performance.now();
 
     // 1. Validate oracle agrees with EVERY visible test case in the catalog
     const seenInputs = new Set<string>();
@@ -602,9 +622,10 @@ test('every curated hidden test problem passes independent oracle validation on 
       seenInputs.add(JSON.stringify(vc.input));
     }
 
-    // 2. Validate every curated hidden test case: arity, uniqueness, and exact oracle expected value
+    // 2. Validate every curated hidden test case: arity, uniqueness, bounded payload, and exact oracle expected value
     const hiddenCases = CURATED_HIDDEN_TESTS[problemId];
     assert.ok(hiddenCases.length >= 3, `${problemId} should have at least 3 hidden edge cases`);
+    assert.ok(hiddenCases.length <= 8, `${problemId} should keep hidden test count bounded for judge latency`);
     for (const hc of hiddenCases) {
       assert.equal(
         hc.input.length,
@@ -612,6 +633,10 @@ test('every curated hidden test problem passes independent oracle validation on 
         `Hidden test arity mismatch on ${problemId}`
       );
       const inputKey = JSON.stringify(hc.input);
+      const payloadBytes = Buffer.byteLength(inputKey) + Buffer.byteLength(JSON.stringify(hc.expected));
+      if (payloadBytes > maxCaseBytes) maxCaseBytes = payloadBytes;
+      assert.ok(payloadBytes <= 8192, `Hidden test payload too large on ${problemId}: ${payloadBytes} bytes`);
+
       assert.equal(
         seenInputs.has(inputKey),
         false,
@@ -627,36 +652,144 @@ test('every curated hidden test problem passes independent oracle validation on 
       );
       totalHiddenVerified++;
     }
+
+    const elapsed = performance.now() - problemStart;
+    if (elapsed > worstProblemMs) {
+      worstProblemMs = elapsed;
+      worstProblemId = problemId;
+    }
   }
 
-  assert.ok(totalHiddenVerified >= 340, `Expected >= 340 oracle-verified hidden tests, got ${totalHiddenVerified}`);
+  const totalSuiteMs = performance.now() - suiteStart;
+  assert.equal(totalHiddenVerified, 1636, `Expected 1636 oracle-verified hidden tests, got ${totalHiddenVerified}`);
+  assert.ok(worstProblemMs < 500, `Worst-case oracle runtime too slow on ${worstProblemId}: ${worstProblemMs.toFixed(1)}ms`);
+  assert.ok(totalSuiteMs < 5000, `Full 384-problem oracle suite too slow: ${totalSuiteMs.toFixed(1)}ms`);
 });
 
-test('hidden test seeding is idempotent in SQLite and coverage report matches persisted database counts', () => {
-  const db = new DatabaseSync(':memory:');
-  db.exec('PRAGMA foreign_keys = ON;');
-  migrate(db);
-
+test('all 472 catalog problems are either oracle-verified covered or explicitly flagged for manual review with zero overlap', () => {
   const catalog = loadProblemCatalog();
-  seedProblemCatalog(db, catalog);
+  const catalogIds = new Set(catalog.map((p) => p.id));
 
-  const first = seedHiddenTests(db);
-  assert.equal(first.problemsMatched, 83);
-  assert.equal(first.problemsSkipped, 0);
-  assert.ok(first.inserted >= 340);
+  for (const id of Object.keys(MANUAL_REVIEW_PROBLEMS)) {
+    assert.ok(catalogIds.has(id), `Manual review entry ${id} must reference a valid catalog problem`);
+    assert.equal(id in CURATED_HIDDEN_TESTS, false, `Problem ${id} cannot be in both CURATED_HIDDEN_TESTS and MANUAL_REVIEW_PROBLEMS`);
+  }
 
-  const second = seedHiddenTests(db);
-  assert.equal(second.inserted, 0);
-  assert.equal(second.alreadyPresent, first.inserted);
+  const report = computeHiddenTestCoverage(catalog);
+  assert.equal(report.totalProblems, 472);
+  assert.equal(report.problemsWithHiddenTests, 384);
+  assert.equal(report.problemsAwaitingManualReview, 88);
+  assert.equal(report.problemsWithoutHiddenTests, 88);
+  assert.deepEqual(report.uncoveredWithoutReviewFlag, [], 'Every uncovered problem must have an explicit audited manual-review reason');
+  assert.equal(report.verifiableProblems, 384);
+  assert.equal(report.verifiableCoveragePercent, 100);
+  assert.equal(report.totalHiddenTests, 1636);
+  assert.deepEqual(report.insufficientDiversity, []);
+  assert.ok(Object.keys(report.byTopic).length >= 25, 'Expected rich topic coverage breakdown');
 
-  const staticReport = computeHiddenTestCoverage(catalog);
-  const dbReport = computeHiddenTestCoverage(catalog, db);
-  assert.deepEqual(dbReport, staticReport);
-  assert.equal(dbReport.totalProblems, 472);
-  assert.equal(dbReport.problemsWithHiddenTests, 83);
-  assert.equal(dbReport.problemsWithoutHiddenTests, 389);
-  assert.equal(dbReport.totalHiddenTests, first.inserted);
-  assert.equal(dbReport.byDifficulty.Easy.covered + dbReport.byDifficulty.Medium.covered + dbReport.byDifficulty.Hard.covered, 83);
+  const inventory = buildCoverageInventory(catalog);
+  assert.equal(inventory.length, 472);
+  assert.equal(inventory.filter((x) => x.status === 'covered').length, 384);
+  assert.equal(inventory.filter((x) => x.status === 'awaiting_manual_review').length, 88);
+  assert.equal(inventory.filter((x) => x.status === 'uncovered').length, 0);
 
-  db.close();
+  const text = formatHiddenTestCoverageReport(report);
+  assert.match(text, /384 \/ 472/);
+  assert.match(text, /Total Hidden Cases:\s+1636/);
+});
+
+test('hidden test seeding is idempotent, fast, preserves existing users, and survives backup/restore intact', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'alvio-phase7-backup-'));
+  const livePath = join(dir, 'live.sqlite');
+  const backupPath = join(dir, 'backup.sqlite');
+  let db: DatabaseSync | null = null;
+  let checkDb: DatabaseSync | null = null;
+
+  try {
+    db = new DatabaseSync(livePath);
+    db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+    migrate(db);
+
+    const catalog = loadProblemCatalog();
+    seedProblemCatalog(db, catalog);
+    db.prepare('INSERT INTO users (id, email, password_hash, name, xp) VALUES (1, ?, ?, ?, ?)').run(
+      'existing@example.test',
+      'hash',
+      'Preserved User',
+      450
+    );
+
+    const seedStart = performance.now();
+    const first = seedHiddenTests(db);
+    const seedMs = performance.now() - seedStart;
+    assert.equal(first.problemsMatched, 384);
+    assert.equal(first.problemsSkipped, 0);
+    assert.equal(first.inserted, 1636);
+    assert.ok(seedMs < 2000, `Hidden test seeding took too long: ${seedMs.toFixed(1)}ms`);
+
+    const second = seedHiddenTests(db);
+    assert.equal(second.inserted, 0);
+    assert.equal(second.alreadyPresent, 1636);
+
+    const staticReport = computeHiddenTestCoverage(catalog);
+    const dbReport = computeHiddenTestCoverage(catalog, db);
+    assert.deepEqual(dbReport, staticReport);
+    assert.equal((db.prepare('SELECT xp FROM users WHERE id = 1').get() as any).xp, 450);
+
+    db.close();
+    db = null;
+
+    const backup = backupDatabase(livePath, backupPath);
+    assert.equal(backup.ok, true);
+    assert.equal(backup.integrity, 'ok');
+    assert.equal(backup.problemsCount, 472);
+    assert.equal(backup.usersCount, 1);
+
+    const wipe = new DatabaseSync(livePath);
+    wipe.exec('DELETE FROM problem_hidden_tests; DELETE FROM users;');
+    wipe.close();
+
+    const restored = restoreDatabase(backupPath, livePath);
+    assert.equal(restored.ok, true);
+    assert.equal(restored.usersCount, 1);
+
+    checkDb = new DatabaseSync(livePath, { readOnly: true });
+    assert.equal((checkDb.prepare('SELECT COUNT(*) AS c FROM problem_hidden_tests').get() as any).c, 1636);
+    assert.equal((checkDb.prepare('SELECT xp FROM users WHERE id = 1').get() as any).xp, 450);
+    checkDb.close();
+    checkDb = null;
+  } finally {
+    try { db?.close(); } catch { /* ignore */ }
+    try { checkDb?.close(); } catch { /* ignore */ }
+    try { await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* ignore */ }
+  }
+});
+
+test('security regression: hidden tests are never leaked in frontend bundles or public catalog serialization', () => {
+  // 1. Public problem catalog loader must never attach hidden tests
+  const catalog = loadProblemCatalog();
+  for (const p of catalog) {
+    assert.equal('hiddenTestCases' in p, false, `Public catalog entry ${p.id} must never contain hiddenTestCases`);
+  }
+
+  // 2. Built frontend JS bundles (dist/assets/*.js) must never contain server-only hidden test sentinels
+  const assetsDir = join(process.cwd(), 'dist', 'assets');
+  if (fs.existsSync(assetsDir)) {
+    const sentinels = [
+      'CURATED_HIDDEN_TESTS',
+      'PHASE7_EASY_HIDDEN_TESTS',
+      'PHASE7_MEDIUM_HIDDEN_TESTS',
+      'PHASE7_HARD_HIDDEN_TESTS',
+      'zchmliaqdgvwncfatcfivphddpzjkgyygueikthqzyeeiebczqbqhdjtkoawkehkbizdmcnilcjjlpoeoqqoqpswtqdpvszfaksn',
+      '824883294',
+      '767944060',
+    ];
+    for (const file of fs.readdirSync(assetsDir)) {
+      if (!file.endsWith('.js')) continue;
+      const content = fs.readFileSync(join(assetsDir, file), 'utf8');
+      for (const sentinel of sentinels) {
+        assert.equal(content.includes(sentinel), false, `Frontend bundle ${file} leaked hidden-test sentinel: ${sentinel}`);
+      }
+    }
+  }
 });
